@@ -43,6 +43,20 @@ def _legacy_doi(value: Any) -> str | None:
     return normalize_doi(text)
 
 
+def _legacy_reference_doi(value: Any) -> str | None:
+    """Return a canonical reference DOI, ignoring malformed legacy values.
+
+    Reference metadata is secondary and the raw source value remains preserved
+    in ``source_record`` for lossless legacy round-tripping. A malformed
+    reference DOI therefore must not prevent migration of an otherwise valid
+    publication and must not become a canonical BibReview identifier.
+    """
+    try:
+        return _legacy_doi(value)
+    except ValueError:
+        return None
+
+
 def _authors(value: Any) -> tuple[Author, ...]:
     if value is None:
         return ()
@@ -87,7 +101,7 @@ def _references(value: Any) -> tuple[Reference, ...]:
     result = []
     for item in value:
         identifiers: dict[str, str] = {}
-        doi = _legacy_doi(item.get("doi"))
+        doi = _legacy_reference_doi(item.get("doi"))
         if doi is not None:
             identifiers["doi"] = doi
         result.append(Reference(identifiers=identifiers, citation=_text(item.get("title"))))
@@ -149,14 +163,7 @@ def _source_reference_projection(value: Any) -> tuple[tuple[str | None, str], ..
         return ()
     if not isinstance(value, list) or any(not isinstance(item, dict) for item in value):
         return None
-    result = []
-    for item in value:
-        try:
-            doi = _legacy_doi(item.get("doi"))
-        except ValueError:
-            return None
-        result.append((doi, _text(item.get("title"))))
-    return tuple(result)
+    return tuple((_legacy_reference_doi(item.get("doi")), _text(item.get("title"))) for item in value)
 
 
 def publication_to_legacy(
