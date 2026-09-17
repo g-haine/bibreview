@@ -4,12 +4,17 @@ from .base import Enrichment, EnrichmentProvider
 from .crossref import CrossRefError, CrossRefProvider
 from .doi import DoiProvider, format_bibtex
 from .elsevier import ElsevierProvider
+from .fallback import AbstractFallback, AbstractProvider
 from .http import HttpError, HttpTransport
 from .ieee import IeeeProvider
+from .mendeley import MendeleyProvider, mendeley_abstract
 from .publisher import PublisherEnrichmentRouter
+from .semantic_scholar import SemanticScholarProvider
 from .springer import SpringerProvider
 
 __all__ = [
+    "AbstractFallback",
+    "AbstractProvider",
     "CrossRefError",
     "CrossRefProvider",
     "DoiProvider",
@@ -19,7 +24,10 @@ __all__ = [
     "HttpError",
     "HttpTransport",
     "IeeeProvider",
+    "MendeleyProvider",
     "PublisherEnrichmentRouter",
+    "SemanticScholarProvider",
     "SpringerProvider",
     "format_bibtex",
+    "mendeley_abstract",
 ]
