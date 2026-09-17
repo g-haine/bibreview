@@ -9,7 +9,16 @@ from typing import Mapping
 
 from .config import BibReviewConfig
 from .identity import IdentityError, normalize_doi
+from .pipeline.collect import (
+    BibtexLookup,
+    CitationLookup,
+    CollectionResult,
+    EnrichmentLookup,
+    WorkProvider,
+    collect as collect_publications,
+)
 from .pipeline.merge import MergeResult, merge_publications
+from .reporting import Reporter
 from .storage import (
     StorageError,
     atomic_write_batch,
@@ -21,7 +30,31 @@ from .storage import (
 
 
 class ProjectStateError(ValueError):
-    """Raised when project state cannot be merged safely."""
+    """Raised when project state cannot be updated safely."""
+
+
+@dataclass(frozen=True)
+class ProjectCollectionPlan:
+    """Read-only description of one canonical collection operation."""
+
+    result: CollectionResult
+    outputs: Mapping[Path, bytes]
+    existing_count: int
+
+    @property
+    def changed(self) -> bool:
+        """Whether applying this plan would write project state."""
+        return bool(self.outputs)
+
+    def summary(self) -> str:
+        """Return a compact human-readable operation summary."""
+        return (
+            f"submitted: {self.result.submitted_count}; "
+            f"candidates: {len(self.result.candidates)}; "
+            f"collected: {len(self.result.items)}; "
+            f"unavailable: {len(self.result.unavailable)}; "
+            f"existing: {self.existing_count}"
+        )
 
 
 @dataclass(frozen=True)
@@ -82,6 +115,103 @@ def _doi_lines(path: Path) -> tuple[str, ...]:
 
 def _lines_bytes(values: tuple[str, ...] | list[str]) -> bytes:
     return b"".join(value.encode("utf-8") + b"\n" for value in values)
+
+
+def _put_if_changed(outputs: dict[Path, bytes], path: Path, content: bytes) -> None:
+    """Add one output only when its on-disk bytes would actually change."""
+    if path.exists() and path.read_bytes() == content:
+        return
+    outputs[path] = content
+
+
+def plan_project_collection(
+    config: BibReviewConfig,
+    *,
+    provider: WorkProvider,
+    enrichment_lookup: EnrichmentLookup | None = None,
+    citation_lookup: CitationLookup | None = None,
+    bibtex_lookup: BibtexLookup | None = None,
+    reporter: Reporter | None = None,
+) -> ProjectCollectionPlan:
+    """Build a complete collection plan without mutating project files.
+
+    ``paths.pending`` is the DOI input queue. New publications are written to
+    canonical ``paths.collected`` staging and remain pending until a later
+    ``bibreview merge`` accepts or rejects them. DOI values unavailable from the
+    metadata provider also remain pending so a later collection run can retry
+    them.
+
+    A non-empty staging bibliography is never overwritten: the caller must merge
+    or otherwise resolve the previous batch before collecting another one.
+    """
+    paths = config.paths
+    existing = _optional_bibliography(paths.bibliography)
+    staged = _optional_bibliography(paths.collected)
+    if staged:
+        raise ProjectStateError(
+            f"{paths.collected}: contains {len(staged)} staged publication(s); "
+            "merge the existing batch before collecting again"
+        )
+
+    submitted = _doi_lines(paths.pending)
+    known = list(_doi_lines(paths.known))
+    known.extend(
+        publication.doi
+        for publication in existing
+        if publication.doi is not None
+    )
+
+    used_slugs = {
+        publication.permalink
+        for publication in existing
+        if publication.permalink
+    }
+    if paths.bibtex.exists():
+        used_slugs.update(path.stem for path in paths.bibtex.glob("*.bib"))
+
+    result = collect_publications(
+        submitted,
+        provider=provider,
+        known=known,
+        used_slugs=used_slugs,
+        enrichment_lookup=enrichment_lookup,
+        citation_lookup=citation_lookup,
+        bibtex_lookup=bibtex_lookup,
+        reporter=reporter,
+    )
+
+    outputs: dict[Path, bytes] = {}
+    collected_bytes = json_bytes(bibliography_data(result.publications))
+    pending_bytes = _lines_bytes(list(result.candidates))
+
+    if result.candidates or paths.collected.exists():
+        _put_if_changed(outputs, paths.collected, collected_bytes)
+    if result.candidates or paths.pending.exists():
+        _put_if_changed(outputs, paths.pending, pending_bytes)
+
+    for item in result.items:
+        if item.bibtex is None:
+            continue
+        slug = item.publication.permalink
+        if not slug:
+            raise ProjectStateError(
+                f"{item.publication.id}: collected publication has no permalink for BibTeX output"
+            )
+        _put_if_changed(outputs, paths.bibtex / f"{slug}.bib", item.bibtex.encode("utf-8"))
+
+    return ProjectCollectionPlan(
+        result=result,
+        outputs=MappingProxyType(outputs),
+        existing_count=len(existing),
+    )
+
+
+def apply_project_collection(plan: ProjectCollectionPlan) -> None:
+    """Apply a previously prepared project collection plan atomically per file."""
+    if not isinstance(plan, ProjectCollectionPlan):
+        raise ProjectStateError("plan must be a ProjectCollectionPlan")
+    if plan.outputs:
+        atomic_write_batch(plan.outputs)
 
 
 def plan_project_merge(config: BibReviewConfig) -> ProjectMergePlan:
