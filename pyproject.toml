@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bibreview"
+version = "0.1.0.dev0"
+description = "Generic bibliographic engine for reproducible literature-review websites"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "GPL-3.0-only"
+authors = [
+  {name = "Ghislain Haine"},
+]
+dependencies = [
+  "PyYAML>=6,<7",
+  "Unidecode>=1.3,<2",
+]
+
+[project.scripts]
+bibreview = "bibreview.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
