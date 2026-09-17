@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import replace
 import unittest
 
 from bibreview.identity import IdentityError
@@ -76,9 +75,10 @@ class BuildPublicationTests(unittest.TestCase):
 
         self.assertEqual(publication.doi, "10.1/test")
         self.assertEqual(publication.identifiers["isbn"], "978-1-234")
-        self.assertEqual(publication.title, "Port  Hamiltonian")
+        # Match the established PHRAISE behavior: strip MathML tags, retain text content.
+        self.assertEqual(publication.title, "Port x Hamiltonian")
         self.assertEqual([(a.given, a.family) for a in publication.authors], [("Ada", "Lovelace")])
-        self.assertEqual(publication.abstract, " Enriched text")
+        self.assertEqual(publication.abstract, "Enriched text")
         self.assertEqual(publication.publication_year, "2025")
         self.assertEqual(publication.created_date.isoformat(), "2024-03-08")
         self.assertEqual(publication.pages, "1--9")
@@ -91,7 +91,8 @@ class BuildPublicationTests(unittest.TestCase):
 
     def test_default_enrichment_uses_crossref_fields(self):
         publication = build_publication("10.1/test", message(), "port-hamiltonian")
-        self.assertEqual(publication.abstract, " CrossRef text")
+        # Canonical in-memory data does not preserve incidental leading whitespace.
+        self.assertEqual(publication.abstract, "CrossRef text")
         self.assertEqual(publication.keywords, ("Control", "Energy"))
         self.assertEqual(publication.event, "")
 
