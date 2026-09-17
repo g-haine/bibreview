@@ -3,15 +3,19 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 
 from . import __version__
 from .config import ConfigError, load_config
+from .pipeline.authors import author_mapping_plan_data, format_author_mapping_plan
 from .pipeline.merge import MergeError
 from .project import (
     ProjectStateError,
+    apply_project_author_mappings,
     apply_project_collection,
     apply_project_merge,
+    plan_project_author_mappings,
     plan_project_collection,
     plan_project_merge,
 )
@@ -32,6 +36,18 @@ def _parser() -> argparse.ArgumentParser:
     commands.add_parser("validate", help="Validate project configuration/state")
     commands.add_parser("status", help="Show the current project configuration summary")
     commands.add_parser("collect", help="Collect pending DOI metadata into canonical staging state")
+    authors = commands.add_parser("authors", help="Inspect author identities and optionally apply safe mappings")
+    authors.add_argument(
+        "--apply-safe",
+        action="store_true",
+        help="Add unique new authors with no plausible existing match",
+    )
+    authors.add_argument(
+        "--json",
+        dest="json_output",
+        action="store_true",
+        help="Print the analysis as JSON instead of a human report",
+    )
     commands.add_parser("merge", help="Merge the collected staging bibliography into project state")
     return parser
 
@@ -84,6 +100,36 @@ def main(argv: list[str] | None = None) -> int:
             print(plan.summary())
             if not plan.changed:
                 print("No pending DOI state changes.")
+        return 0
+
+    if args.command == "authors":
+        try:
+            plan = plan_project_author_mappings(config, apply_safe=args.apply_safe)
+            if args.apply_safe and not args.dry_run:
+                apply_project_author_mappings(plan)
+        except (OSError, StorageError, ValueError, TypeError) as error:
+            print(f"bibreview authors: {error}", file=sys.stderr)
+            return 1
+
+        report_plan = plan.before if args.dry_run else plan.after
+        applied = plan.applied_count if args.apply_safe else 0
+        if args.json_output:
+            if not args.quiet or args.json_output:
+                payload = {
+                    "applied": 0 if args.dry_run else applied,
+                    "would_apply": applied if args.dry_run else 0,
+                    "dry_run": args.dry_run,
+                    **author_mapping_plan_data(report_plan),
+                }
+                print(json.dumps(payload, ensure_ascii=False, indent=2))
+            return 0
+        if not args.quiet:
+            report = format_author_mapping_plan(
+                report_plan,
+                applied=applied,
+                dry_run=args.dry_run,
+            )
+            print(f"Dry run:\n{report}" if args.dry_run else report)
         return 0
 
     if args.command == "merge":
