@@ -21,6 +21,7 @@ from .project import (
     plan_project_discovery,
     plan_project_merge,
 )
+from .project_refresh import apply_project_refresh, plan_project_refresh
 from .reporting import Reporter
 from .runtime import build_collection_services, build_discovery_services
 from .storage import StorageError
@@ -39,6 +40,7 @@ def _parser() -> argparse.ArgumentParser:
     commands.add_parser("status", help="Show the current project configuration summary")
     commands.add_parser("discover", help="Discover and screen new DOI candidates")
     commands.add_parser("collect", help="Collect pending DOI metadata into canonical staging state")
+    commands.add_parser("refresh", help="Recollect stale existing publications into canonical staging state")
     authors = commands.add_parser("authors", help="Inspect author identities and optionally apply safe mappings")
     authors.add_argument(
         "--apply-safe",
@@ -74,6 +76,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Project: {config.project.name} ({config.project.slug})")
             print(f"Schema: {config.schema_version}")
             print(f"Discovery: {config.discovery.provider} / {config.discovery.query or '(no query)'}")
+            refresh_types = ", ".join(config.refresh.types) if config.refresh.types else "disabled"
+            print(f"Refresh: {refresh_types}")
             print("Providers: " + (", ".join(enabled) if enabled else "none"))
             print(f"Bibliography: {config.paths.bibliography}")
             print(f"Collected staging: {config.paths.collected}")
@@ -121,13 +125,43 @@ def main(argv: list[str] | None = None) -> int:
                     print(f"Dry run: {plan.summary()}")
                 return 0
             apply_project_collection(plan)
-        except (OSError, ValueError, TypeError) as error:
+        except (OSError, StorageError, ValueError, TypeError) as error:
             print(f"bibreview collect: {error}", file=sys.stderr)
             return 1
         if not args.quiet:
             print(plan.summary())
             if not plan.changed:
                 print("No pending DOI state changes.")
+        return 0
+
+    if args.command == "refresh":
+        reporter = Reporter(-1 if args.quiet else args.verbose)
+        try:
+            services = build_collection_services(config, reporter=reporter)
+            plan = plan_project_refresh(
+                config,
+                provider=services.provider,
+                enrichment_lookup=services.enrichment_lookup,
+                citation_lookup=services.citation_lookup,
+                bibtex_lookup=services.bibtex_lookup,
+                reporter=reporter,
+            )
+            if args.dry_run:
+                if not args.quiet:
+                    print(f"Dry run: {plan.summary()}")
+                    for backup in plan.bibtex_backups:
+                        print(f"Would create BibTeX backup: {backup}")
+                return 0
+            apply_project_refresh(plan)
+        except (OSError, StorageError, ValueError, TypeError) as error:
+            print(f"bibreview refresh: {error}", file=sys.stderr)
+            return 1
+        if not args.quiet:
+            print(plan.summary())
+            for backup in plan.bibtex_backups:
+                print(f"BibTeX backup: {backup}")
+            if not plan.changed:
+                print("No refresh state changes.")
         return 0
 
     if args.command == "authors":
