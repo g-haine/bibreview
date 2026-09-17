@@ -57,8 +57,15 @@ class HttpTransport:
         params: Mapping[str, object] | None = None,
         headers: Mapping[str, str] | None = None,
         context: str | None = None,
+        accepted_redirect_statuses: frozenset[int] = frozenset(),
     ) -> requests.Response | None:
-        """Perform one GET request and return ``None`` for HTTP 404."""
+        """Perform one GET request and return ``None`` for HTTP 404.
+
+        ``accepted_redirect_statuses`` is intentionally narrow: a listed status
+        is accepted only after the request has redirected to another host. This
+        supports DOI landing-page discovery when a publisher denies the final
+        page while keeping the DOI resolver itself subject to normal failures.
+        """
         response = None
         initial_host = urlsplit(url).hostname or "unknown host"
         operation = context or "HTTP request"
@@ -80,6 +87,11 @@ class HttpTransport:
             )
             if response.status_code == 404:
                 return None
+            if (
+                response.status_code in accepted_redirect_statuses
+                and final_host != initial_host
+            ):
+                return response
             response.raise_for_status()
             return response
         except requests.RequestException as error:
