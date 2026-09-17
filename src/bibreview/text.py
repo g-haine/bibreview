@@ -14,6 +14,18 @@ def slugify(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", unidecode(value[:240]).lower()).strip("-")
 
 
+def safe_component(value: str) -> str:
+    """Validate a portable single path component used for generated files."""
+    if (
+        not isinstance(value, str)
+        or not value
+        or value in {".", "..", "index"}
+        or re.search(r"[/\\\x00-\x1f<>:\"|?*]", value)
+    ):
+        raise ValueError(f"unsafe or reserved file name: {value!r}")
+    return value
+
+
 def clean_metadata(value: str, *, abstract: bool = False) -> str:
     """Remove control/JATS markup while preserving the current PHRAISE contract."""
     if not isinstance(value, str):
