@@ -29,6 +29,17 @@ discovery:
     - monograph
   exclude_doi_substrings: []
 
+# Existing-publication refresh is opt-in. Here, incomplete journal articles are
+# checked against their current DOI BibTeX; stale records are recollected into
+# data/collected.json and later updated through the normal merge command.
+refresh:
+  types:
+    - journal-article
+  when_missing_any:
+    - volume
+    - issue
+    - pages
+
 relevance:
   patterns:
     - 'fluid[-\\s]+structure'
