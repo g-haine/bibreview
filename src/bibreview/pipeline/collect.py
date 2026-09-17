@@ -224,7 +224,7 @@ def build_publication(
         type=_string(message.get("type")),
         title=title,
         authors=_authors(message.get("author")),
-        abstract=clean_metadata(enrichment.abstract, abstract=True),
+        abstract=clean_metadata(enrichment.abstract, abstract=True).strip(),
         container_title=_first(message.get("container-title")),
         publication_year=_publication_year(message, created),
         volume=_string(message.get("volume")),
