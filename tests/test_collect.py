@@ -1,0 +1,165 @@
+from __future__ import annotations
+
+import unittest
+
+from bibreview.identity import IdentityError
+from bibreview.pipeline.collect import Enrichment, build_publication, collect, prepare_dois
+
+
+class FakeProvider:
+    def __init__(self, works=None):
+        self.works = works or {}
+        self.calls = []
+
+    def work(self, doi):
+        self.calls.append(doi)
+        return self.works.get(doi)
+
+
+def message(title="Port-Hamiltonian systems"):
+    return {
+        "title": [title],
+        "type": "journal-article",
+        "author": [
+            {"given": "Ada", "family": "Lovelace", "ORCID": "0000-0000"},
+            {"given": "", "family": ""},
+        ],
+        "abstract": "Abstract CrossRef text",
+        "container-title": ["Journal"],
+        "created": {"date-parts": [[2024, 3, 8]]},
+        "published-print": {"date-parts": [[2025, 1, 1]]},
+        "volume": "7",
+        "issue": "1",
+        "page": "1-9",
+        "publisher": "Publisher",
+        "subject": ["Control", "Energy"],
+        "isbn-type": [{"type": "print", "value": "978-1-234"}],
+        "reference": [],
+    }
+
+
+class PrepareDoisTests(unittest.TestCase):
+    def test_normalizes_deduplicates_and_filters_known_dois(self):
+        self.assertEqual(
+            prepare_dois(
+                ["10.1/NEW", "https://doi.org/10.1/new", "", "10.1/other"],
+                ["doi: 10.1/OTHER"],
+            ),
+            ("10.1/new",),
+        )
+
+    def test_invalid_doi_is_rejected(self):
+        with self.assertRaises(IdentityError):
+            prepare_dois(["not-a-doi"])
+
+
+class BuildPublicationTests(unittest.TestCase):
+    def test_builds_canonical_publication_from_crossref(self):
+        data = message("Port <mml:math>x</mml:math> Hamiltonian")
+        data["reference"] = [
+            {"DOI": "10.2/REF"},
+            {"author": "A", "article-title": "Title", "year": 2020},
+        ]
+
+        publication = build_publication(
+            "10.1/TEST",
+            data,
+            "port-hamiltonian",
+            enrichment_lookup=lambda doi, work: Enrichment(
+                abstract="Abstract Enriched text",
+                keywords=("control", "energy"),
+                event="Conference",
+            ),
+            citation_lookup=lambda doi: f"Citation for {doi}",
+        )
+
+        self.assertEqual(publication.doi, "10.1/test")
+        self.assertEqual(publication.identifiers["isbn"], "978-1-234")
+        # Match the established PHRAISE behavior: strip MathML tags, retain text content.
+        self.assertEqual(publication.title, "Port x Hamiltonian")
+        self.assertEqual([(a.given, a.family) for a in publication.authors], [("Ada", "Lovelace")])
+        self.assertEqual(publication.abstract, "Enriched text")
+        self.assertEqual(publication.publication_year, "2025")
+        self.assertEqual(publication.created_date.isoformat(), "2024-03-08")
+        self.assertEqual(publication.pages, "1--9")
+        self.assertEqual(publication.event, "Conference")
+        self.assertEqual(publication.keywords, ("control", "energy"))
+        self.assertEqual(publication.references[0].identifiers["doi"], "10.2/ref")
+        self.assertEqual(publication.references[0].citation, "Citation for 10.2/ref")
+        self.assertEqual(publication.references[1].identifiers, {})
+        self.assertEqual(publication.references[1].citation, "A, Title. (2020)")
+
+    def test_default_enrichment_uses_crossref_fields(self):
+        publication = build_publication("10.1/test", message(), "port-hamiltonian")
+        # Canonical in-memory data does not preserve incidental leading whitespace.
+        self.assertEqual(publication.abstract, "CrossRef text")
+        self.assertEqual(publication.keywords, ("Control", "Energy"))
+        self.assertEqual(publication.event, "")
+
+    def test_missing_creation_date_is_rejected(self):
+        data = message()
+        data["created"] = {"date-parts": [[2024, 3]]}
+        with self.assertRaisesRegex(ValueError, "missing CrossRef creation date"):
+            build_publication("10.1/test", data, "port-hamiltonian")
+
+    def test_invalid_reference_doi_is_not_promoted(self):
+        data = message()
+        data["reference"] = [
+            {"DOI": "10.1016/j.geomphys. 2021.104201", "unstructured": "Legacy citation"}
+        ]
+        publication = build_publication("10.1/test", data, "port-hamiltonian")
+        self.assertEqual(publication.references[0].identifiers, {})
+        self.assertEqual(publication.references[0].citation, "Legacy citation")
+
+
+class CollectionTests(unittest.TestCase):
+    def test_collect_filters_known_tracks_absent_and_resolves_slug_collisions(self):
+        provider = FakeProvider(
+            {
+                "10.1/new": message(),
+                "10.1/other": message(),
+            }
+        )
+        result = collect(
+            ["10.1/KNOWN", "10.1/NEW", "10.1/missing", "10.1/OTHER"],
+            provider=provider,
+            known=["10.1/known"],
+            used_slugs=["port-hamiltonian-systems"],
+        )
+
+        self.assertEqual(result.candidates, ("10.1/new", "10.1/missing", "10.1/other"))
+        self.assertEqual(result.unavailable, ("10.1/missing",))
+        self.assertEqual(provider.calls, list(result.candidates))
+        self.assertEqual(
+            [item.publication.permalink for item in result.items],
+            ["port-hamiltonian-systems0", "port-hamiltonian-systems00"],
+        )
+        self.assertEqual(len({publication.id for publication in result.publications}), 2)
+
+    def test_collect_can_attach_bibtex_without_owning_bibtex_provider(self):
+        provider = FakeProvider({"10.1/new": message()})
+        result = collect(
+            ["10.1/new"],
+            provider=provider,
+            bibtex_lookup=lambda doi: f"@article{{{doi}}}\n",
+        )
+        self.assertEqual(result.items[0].bibtex, "@article{10.1/new}\n")
+
+    def test_provider_failure_propagates_before_any_persistence_layer(self):
+        class FailingProvider:
+            def work(self, doi):
+                raise RuntimeError("offline")
+
+        with self.assertRaisesRegex(RuntimeError, "offline"):
+            collect(["10.1/new"], provider=FailingProvider())
+
+    def test_collection_result_does_not_depend_on_legacy_record_shape(self):
+        provider = FakeProvider({"10.1/new": message()})
+        result = collect(["10.1/new"], provider=provider)
+        publication = result.publications[0]
+        self.assertFalse(hasattr(publication, "journal"))
+        self.assertEqual(publication.container_title, "Journal")
+
+
+if __name__ == "__main__":
+    unittest.main()
