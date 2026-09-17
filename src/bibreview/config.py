@@ -68,6 +68,7 @@ class ProjectConfig:
 @dataclass(frozen=True)
 class PathsConfig:
     bibliography: Path
+    collected: Path
     author_mappings: Path
     known: Path
     pending: Path
@@ -173,6 +174,7 @@ def load_config(path: str | Path = "bibreview.yml") -> BibReviewConfig:
     paths_raw = _mapping(raw.get("paths"), "paths")
     paths = PathsConfig(
         bibliography=_path(base, paths_raw.get("bibliography"), "data/bibliography.json", "paths.bibliography"),
+        collected=_path(base, paths_raw.get("collected"), "data/collected.json", "paths.collected"),
         author_mappings=_path(base, paths_raw.get("author_mappings"), "data/authors.json", "paths.author_mappings"),
         known=_path(base, paths_raw.get("known"), "data/known.txt", "paths.known"),
         pending=_path(base, paths_raw.get("pending"), "data/pending.txt", "paths.pending"),
