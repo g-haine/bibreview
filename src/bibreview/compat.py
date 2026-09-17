@@ -76,7 +76,10 @@ def _authors(value: Any) -> tuple[Author, ...]:
         if projection is None:
             continue
         given, family = projection
-        result.append(Author(given=given, family=family))
+        source_fields = deepcopy(
+            {key: field_value for key, field_value in item.items() if key not in {"given", "family"}}
+        )
+        result.append(Author(given=given, family=family, source_fields=source_fields))
     return tuple(result)
 
 
@@ -206,11 +209,15 @@ def publication_to_legacy(
     source_authors = _source_author_projection(result.get("authors"))
     canonical_authors = tuple((author.given, author.family) for author in publication.authors)
     if source_authors != canonical_authors:
-        result["authors"] = [
-            {key: value for key, value in (("given", author.given), ("family", author.family))
-             if value is not None}
-            for author in publication.authors
-        ]
+        rendered_authors = []
+        for author in publication.authors:
+            rendered = deepcopy(dict(author.source_fields))
+            if author.given is not None:
+                rendered["given"] = author.given
+            if author.family is not None:
+                rendered["family"] = author.family
+            rendered_authors.append(rendered)
+        result["authors"] = rendered_authors
 
     source_keywords = _keywords(result.get("keywords"))
     if source_keywords != publication.keywords:
