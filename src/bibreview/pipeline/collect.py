@@ -16,6 +16,7 @@ from typing import Any, Protocol
 
 from ..identity import IdentityError, new_publication_id, normalize_doi
 from ..model import Author, Publication, Reference
+from ..providers.base import Enrichment
 from ..reporting import Reporter
 from ..text import clean_metadata, safe_component, slugify
 
@@ -25,23 +26,6 @@ class WorkProvider(Protocol):
 
     def work(self, doi: str) -> dict | None:
         """Return one provider work record, or ``None`` when it is absent."""
-
-
-@dataclass(frozen=True)
-class Enrichment:
-    """Optional provider-independent additions to a CrossRef work record."""
-
-    abstract: str = ""
-    keywords: tuple[str, ...] = ()
-    event: str = ""
-
-    def __post_init__(self) -> None:
-        if not isinstance(self.abstract, str) or not isinstance(self.event, str):
-            raise TypeError("enrichment abstract and event must be strings")
-        normalized = tuple(self.keywords)
-        if any(not isinstance(keyword, str) for keyword in normalized):
-            raise TypeError("enrichment keywords must contain strings")
-        object.__setattr__(self, "keywords", normalized)
 
 
 @dataclass(frozen=True)
@@ -203,13 +187,18 @@ def build_publication(
     safe_component(slug)
     created = _created_date(message, normalized_doi)
     title = _MATHML.sub("", _first(message.get("title")))
-    enrichment = (
-        enrichment_lookup(normalized_doi, message)
-        if enrichment_lookup is not None
-        else _default_enrichment(message)
-    )
-    if not isinstance(enrichment, Enrichment):
-        raise TypeError("enrichment lookup must return Enrichment")
+    base_enrichment = _default_enrichment(message)
+    if enrichment_lookup is None:
+        enrichment = base_enrichment
+    else:
+        extra = enrichment_lookup(normalized_doi, message)
+        if not isinstance(extra, Enrichment):
+            raise TypeError("enrichment lookup must return Enrichment")
+        enrichment = Enrichment(
+            abstract=extra.abstract or base_enrichment.abstract,
+            keywords=extra.keywords or base_enrichment.keywords,
+            event=extra.event or base_enrichment.event,
+        )
 
     identifiers: dict[str, str] = {"doi": normalized_doi}
     isbn_values = message.get("isbn-type")
