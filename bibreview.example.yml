@@ -5,6 +5,18 @@ project:
   slug: example-review
   title: Example bibliographic review
 
+paths:
+  bibliography: data/bibliography.json
+  collected: data/collected.json
+  author_mappings: data/authors.json
+  known: data/known.txt
+  pending: data/pending.txt
+  rejected: data/rejected.txt
+  review: data/review.txt
+  bibtex: bib
+  archive: archive
+  site: site
+
 discovery:
   provider: openalex
   query: fluid-structure interaction

@@ -40,6 +40,7 @@ class ConfigTests(unittest.TestCase):
         config = load_config(path)
         self.assertEqual(config.project.slug, "example-review")
         self.assertEqual(config.paths.bibliography, root / "data/bibliography.json")
+        self.assertEqual(config.paths.collected, root / "data/collected.json")
         self.assertEqual(config.paths.pending, root / "data/pending.txt")
         self.assertEqual(config.discovery.query, "fluid-structure interaction")
 
