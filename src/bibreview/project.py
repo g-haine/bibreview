@@ -9,6 +9,11 @@ from typing import Mapping
 
 from .config import BibReviewConfig
 from .identity import IdentityError, normalize_doi
+from .pipeline.authors import (
+    AuthorMappingPlan,
+    apply_safe_author_mappings as apply_safe_author_mapping_data,
+    plan_author_mappings,
+)
 from .pipeline.collect import (
     BibtexLookup,
     CitationLookup,
@@ -26,6 +31,7 @@ from .storage import (
     bibliography_data,
     json_bytes,
     read_bibliography,
+    read_json,
 )
 
 
@@ -55,6 +61,21 @@ class ProjectCollectionPlan:
             f"unavailable: {len(self.result.unavailable)}; "
             f"existing: {self.existing_count}"
         )
+
+
+@dataclass(frozen=True)
+class ProjectAuthorMappingPlan:
+    """Read-only description of one author-mapping analysis/application."""
+
+    before: AuthorMappingPlan
+    after: AuthorMappingPlan
+    outputs: Mapping[Path, bytes]
+    applied_count: int
+
+    @property
+    def changed(self) -> bool:
+        """Whether applying this plan would update project mapping state."""
+        return bool(self.outputs)
 
 
 @dataclass(frozen=True)
@@ -210,6 +231,52 @@ def apply_project_collection(plan: ProjectCollectionPlan) -> None:
     """Apply a previously prepared project collection plan atomically per file."""
     if not isinstance(plan, ProjectCollectionPlan):
         raise ProjectStateError("plan must be a ProjectCollectionPlan")
+    if plan.outputs:
+        atomic_write_batch(plan.outputs)
+
+
+def plan_project_author_mappings(
+    config: BibReviewConfig,
+    *,
+    apply_safe: bool = False,
+) -> ProjectAuthorMappingPlan:
+    """Analyze canonical publication authors and optionally plan safe mappings.
+
+    Ambiguous proposals are never written automatically. Missing mapping state is
+    treated as an empty mapping so new projects can bootstrap the file through
+    ``--apply-safe``.
+    """
+    publications = _optional_bibliography(config.paths.bibliography)
+    mapping = (
+        read_json(config.paths.author_mappings, dict)
+        if config.paths.author_mappings.exists()
+        else {}
+    )
+    before = plan_author_mappings(publications, mapping)
+    if not apply_safe or not before.safe:
+        return ProjectAuthorMappingPlan(
+            before=before,
+            after=before,
+            outputs=MappingProxyType({}),
+            applied_count=0,
+        )
+
+    updated = apply_safe_author_mapping_data(mapping, before)
+    after = plan_author_mappings(publications, updated)
+    outputs: dict[Path, bytes] = {}
+    _put_if_changed(outputs, config.paths.author_mappings, json_bytes(updated))
+    return ProjectAuthorMappingPlan(
+        before=before,
+        after=after,
+        outputs=MappingProxyType(outputs),
+        applied_count=len(before.safe),
+    )
+
+
+def apply_project_author_mappings(plan: ProjectAuthorMappingPlan) -> None:
+    """Apply a previously prepared safe author-mapping plan."""
+    if not isinstance(plan, ProjectAuthorMappingPlan):
+        raise ProjectStateError("plan must be a ProjectAuthorMappingPlan")
     if plan.outputs:
         atomic_write_batch(plan.outputs)
 
