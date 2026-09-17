@@ -19,6 +19,17 @@ DEFAULT_DISCOVERY_TYPES = (
     "book",
     "monograph",
 )
+REFRESHABLE_PUBLICATION_FIELDS = frozenset({
+    "title",
+    "abstract",
+    "container_title",
+    "publication_year",
+    "volume",
+    "issue",
+    "pages",
+    "publisher",
+    "event",
+})
 
 
 class ConfigError(ValueError):
@@ -118,6 +129,14 @@ class DiscoveryConfig:
 
 
 @dataclass(frozen=True)
+class RefreshConfig:
+    """Policy selecting existing publications eligible for refresh checks."""
+
+    types: tuple[str, ...] = ()
+    when_missing_any: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class RelevanceConfig:
     patterns: tuple[str, ...] = ()
     unmatched: str = "manual-review"
@@ -155,6 +174,7 @@ class BibReviewConfig:
     project: ProjectConfig
     paths: PathsConfig
     discovery: DiscoveryConfig
+    refresh: RefreshConfig
     relevance: RelevanceConfig
     providers: Mapping[str, ProviderConfig]
     site: SiteConfig
@@ -232,6 +252,22 @@ def load_config(path: str | Path = "bibreview.yml") -> BibReviewConfig:
         ),
     )
 
+    refresh_raw = _mapping(raw.get("refresh"), "refresh")
+    refresh_fields = _string_tuple(
+        refresh_raw.get("when_missing_any"),
+        "refresh.when_missing_any",
+    )
+    unknown_refresh_fields = set(refresh_fields) - REFRESHABLE_PUBLICATION_FIELDS
+    if unknown_refresh_fields:
+        raise ConfigError(
+            "refresh.when_missing_any contains unsupported publication field(s): "
+            + ", ".join(sorted(unknown_refresh_fields))
+        )
+    refresh = RefreshConfig(
+        types=_string_tuple(refresh_raw.get("types"), "refresh.types"),
+        when_missing_any=refresh_fields,
+    )
+
     relevance_raw = _mapping(raw.get("relevance"), "relevance")
     patterns_raw = relevance_raw.get("patterns", [])
     if not isinstance(patterns_raw, list) or any(not isinstance(v, str) for v in patterns_raw):
@@ -281,6 +317,7 @@ def load_config(path: str | Path = "bibreview.yml") -> BibReviewConfig:
         project=project,
         paths=paths,
         discovery=discovery,
+        refresh=refresh,
         relevance=relevance,
         providers=MappingProxyType(providers),
         site=site,
