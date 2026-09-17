@@ -2,7 +2,9 @@ from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
 from pathlib import Path
 import tempfile
+from types import SimpleNamespace
 import unittest
+from unittest.mock import patch
 
 from bibreview.cli import main
 from bibreview.config import load_config
@@ -19,6 +21,19 @@ project:
 site:
   enabled: false
 """
+
+
+class FakeProvider:
+    def work(self, doi):
+        if doi != "10.1/new":
+            return None
+        return {
+            "type": "journal-article",
+            "title": ["New publication"],
+            "container-title": ["Journal"],
+            "created": {"date-parts": [[2026, 9, 17]]},
+            "published-print": {"date-parts": [[2026]]},
+        }
 
 
 class CliTests(unittest.TestCase):
@@ -44,6 +59,63 @@ class CliTests(unittest.TestCase):
             for path in self.root.rglob("*")
             if path.is_file()
         }
+
+    def collection_services(self):
+        return SimpleNamespace(
+            provider=FakeProvider(),
+            enrichment_lookup=None,
+            citation_lookup=None,
+            bibtex_lookup=lambda doi: "@article{new}\n",
+        )
+
+    def test_collect_dry_run_then_apply_uses_canonical_staging(self):
+        write_bibliography(
+            self.config.paths.bibliography,
+            [self.publication("10.1/old", "Old publication")],
+        )
+        write_bibliography(self.config.paths.collected, [])
+        self.config.paths.pending.write_text(
+            "10.1/old\n10.1/new\n10.1/missing\n",
+            encoding="utf-8",
+        )
+        before = self.snapshot()
+
+        stdout = StringIO()
+        stderr = StringIO()
+        with patch(
+            "bibreview.cli.build_collection_services",
+            return_value=self.collection_services(),
+        ), redirect_stdout(stdout), redirect_stderr(stderr):
+            code = main([
+                "--config", str(self.config_path),
+                "--dry-run",
+                "collect",
+            ])
+        self.assertEqual(code, 0, stderr.getvalue())
+        self.assertIn("Dry run:", stdout.getvalue())
+        self.assertIn("collected: 1", stdout.getvalue())
+        self.assertEqual(before, self.snapshot())
+
+        stdout = StringIO()
+        stderr = StringIO()
+        with patch(
+            "bibreview.cli.build_collection_services",
+            return_value=self.collection_services(),
+        ), redirect_stdout(stdout), redirect_stderr(stderr):
+            code = main(["--config", str(self.config_path), "collect"])
+        self.assertEqual(code, 0, stderr.getvalue())
+        self.assertIn("collected: 1", stdout.getvalue())
+        staged = read_bibliography(self.config.paths.collected)
+        self.assertEqual(len(staged), 1)
+        self.assertEqual(staged[0].doi, "10.1/new")
+        self.assertEqual(
+            self.config.paths.pending.read_text(encoding="utf-8"),
+            "10.1/new\n10.1/missing\n",
+        )
+        self.assertEqual(
+            (self.config.paths.bibtex / "new-publication.bib").read_text(encoding="utf-8"),
+            "@article{new}\n",
+        )
 
     def test_merge_dry_run_does_not_mutate_state(self):
         write_bibliography(

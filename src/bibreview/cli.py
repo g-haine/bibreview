@@ -8,7 +8,15 @@ import sys
 from . import __version__
 from .config import ConfigError, load_config
 from .pipeline.merge import MergeError
-from .project import ProjectStateError, apply_project_merge, plan_project_merge
+from .project import (
+    ProjectStateError,
+    apply_project_collection,
+    apply_project_merge,
+    plan_project_collection,
+    plan_project_merge,
+)
+from .reporting import Reporter
+from .runtime import build_collection_services
 from .storage import StorageError
 
 
@@ -23,6 +31,7 @@ def _parser() -> argparse.ArgumentParser:
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("validate", help="Validate project configuration/state")
     commands.add_parser("status", help="Show the current project configuration summary")
+    commands.add_parser("collect", help="Collect pending DOI metadata into canonical staging state")
     commands.add_parser("merge", help="Merge the collected staging bibliography into project state")
     return parser
 
@@ -49,6 +58,32 @@ def main(argv: list[str] | None = None) -> int:
             print("Providers: " + (", ".join(enabled) if enabled else "none"))
             print(f"Bibliography: {config.paths.bibliography}")
             print(f"Collected staging: {config.paths.collected}")
+        return 0
+
+    if args.command == "collect":
+        reporter = Reporter(-1 if args.quiet else args.verbose)
+        try:
+            services = build_collection_services(config, reporter=reporter)
+            plan = plan_project_collection(
+                config,
+                provider=services.provider,
+                enrichment_lookup=services.enrichment_lookup,
+                citation_lookup=services.citation_lookup,
+                bibtex_lookup=services.bibtex_lookup,
+                reporter=reporter,
+            )
+            if args.dry_run:
+                if not args.quiet:
+                    print(f"Dry run: {plan.summary()}")
+                return 0
+            apply_project_collection(plan)
+        except (OSError, ValueError, TypeError) as error:
+            print(f"bibreview collect: {error}", file=sys.stderr)
+            return 1
+        if not args.quiet:
+            print(plan.summary())
+            if not plan.changed:
+                print("No pending DOI state changes.")
         return 0
 
     if args.command == "merge":
