@@ -57,6 +57,14 @@ def _legacy_reference_doi(value: Any) -> str | None:
         return None
 
 
+def _author_projection(item: Mapping[str, Any]) -> tuple[str | None, str | None] | None:
+    given = item.get("given") if isinstance(item.get("given"), str) else None
+    family = item.get("family") if isinstance(item.get("family"), str) else None
+    if not ((given or "").strip() or (family or "").strip()):
+        return None
+    return given, family
+
+
 def _authors(value: Any) -> tuple[Author, ...]:
     if value is None:
         return ()
@@ -64,12 +72,11 @@ def _authors(value: Any) -> tuple[Author, ...]:
         raise CompatibilityError("legacy authors must be a list of objects or null")
     result = []
     for item in value:
-        given = item.get("given")
-        family = item.get("family")
-        if not ((isinstance(given, str) and given.strip()) or (isinstance(family, str) and family.strip())):
-            raise CompatibilityError("legacy author needs a non-empty given or family name")
-        result.append(Author(given=given if isinstance(given, str) else None,
-                             family=family if isinstance(family, str) else None))
+        projection = _author_projection(item)
+        if projection is None:
+            continue
+        given, family = projection
+        result.append(Author(given=given, family=family))
     return tuple(result)
 
 
@@ -153,9 +160,7 @@ def _source_author_projection(value: Any) -> tuple[tuple[str | None, str | None]
         return ()
     if not isinstance(value, list) or any(not isinstance(item, dict) for item in value):
         return None
-    return tuple((item.get("given") if isinstance(item.get("given"), str) else None,
-                  item.get("family") if isinstance(item.get("family"), str) else None)
-                 for item in value)
+    return tuple(projection for item in value if (projection := _author_projection(item)) is not None)
 
 
 def _source_reference_projection(value: Any) -> tuple[tuple[str | None, str], ...] | None:
