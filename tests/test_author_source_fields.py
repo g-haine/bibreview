@@ -42,6 +42,7 @@ class AuthorSourceFieldTests(unittest.TestCase):
 
         self.assertEqual(author.given, "Ada")
         self.assertEqual(author.family, "Lovelace")
+        self.assertIsNone(author.literal)
         self.assertEqual(
             dict(author.source_fields),
             {
@@ -50,6 +51,27 @@ class AuthorSourceFieldTests(unittest.TestCase):
                 "affiliation": [{"name": "Example Institute"}],
             },
         )
+
+    def test_collection_preserves_literal_author_name(self) -> None:
+        message = {
+            "title": ["Port-Hamiltonian systems"],
+            "type": "journal-article",
+            "author": [
+                {
+                    "name": "Example Research Consortium",
+                    "sequence": "additional",
+                }
+            ],
+            "created": {"date-parts": [[2026, 9, 17]]},
+        }
+
+        publication = build_publication("10.1234/example", message, "port-hamiltonian-systems")
+        author = publication.authors[0]
+
+        self.assertEqual(author.literal, "Example Research Consortium")
+        self.assertIsNone(author.given)
+        self.assertIsNone(author.family)
+        self.assertEqual(dict(author.source_fields), {"sequence": "additional"})
 
     def test_legacy_author_extras_survive_canonical_name_change(self) -> None:
         record = {
