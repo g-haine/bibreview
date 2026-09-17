@@ -56,6 +56,25 @@ class CompatibilityTests(unittest.TestCase):
         self.assertEqual(item.publication.id, migration_id_from_doi("10.1000/example"))
         self.assertEqual(item.publication.doi, "10.1000/example")
 
+    def test_legacy_isbn_becomes_canonical_identifier(self) -> None:
+        item = legacy_record_to_publication(LEGACY_RECORD)
+        self.assertEqual(item.publication.identifiers["isbn"], LEGACY_RECORD["isbn"])
+
+    def test_literal_legacy_author_becomes_canonical_literal_name(self) -> None:
+        record = dict(LEGACY_RECORD)
+        record["authors"] = [
+            {
+                "name": "Example Research Consortium",
+                "sequence": "additional",
+            }
+        ]
+        item = legacy_record_to_publication(record)
+
+        author = item.publication.authors[0]
+        self.assertEqual(author.literal, "Example Research Consortium")
+        self.assertEqual(dict(author.source_fields), {"sequence": "additional"})
+        self.assertEqual(publication_to_legacy(item), record)
+
     def test_round_trip_preserves_legacy_record_exactly(self) -> None:
         item = legacy_record_to_publication(LEGACY_RECORD)
         self.assertEqual(publication_to_legacy(item), LEGACY_RECORD)
