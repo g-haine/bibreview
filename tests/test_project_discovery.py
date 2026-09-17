@@ -144,7 +144,10 @@ class ProjectDiscoveryTests(unittest.TestCase):
             self.config.paths.rejected.read_text(encoding="utf-8"),
             "10.1/already-rejected\n10.1/unsupported\n",
         )
-        self.assertEqual(len(self.config.paths.bibliography.read_bytes()), len(before["data/bibliography.json"]))
+        self.assertEqual(
+            self.config.paths.bibliography.read_bytes(),
+            before["data/bibliography.json"],
+        )
 
     def test_no_candidates_is_a_noop_when_queue_files_do_not_exist(self):
         discovery = FakeDiscoveryProvider([])
