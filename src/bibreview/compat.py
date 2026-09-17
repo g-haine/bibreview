@@ -57,12 +57,19 @@ def _legacy_reference_doi(value: Any) -> str | None:
         return None
 
 
-def _author_projection(item: Mapping[str, Any]) -> tuple[str | None, str | None] | None:
+def _author_projection(
+    item: Mapping[str, Any],
+) -> tuple[str | None, str | None, str | None] | None:
     given = item.get("given") if isinstance(item.get("given"), str) else None
     family = item.get("family") if isinstance(item.get("family"), str) else None
-    if not ((given or "").strip() or (family or "").strip()):
+    literal = item.get("name") if isinstance(item.get("name"), str) else None
+    if not (
+        (given or "").strip()
+        or (family or "").strip()
+        or (literal or "").strip()
+    ):
         return None
-    return given, family
+    return given, family, literal
 
 
 def _authors(value: Any) -> tuple[Author, ...]:
@@ -75,11 +82,22 @@ def _authors(value: Any) -> tuple[Author, ...]:
         projection = _author_projection(item)
         if projection is None:
             continue
-        given, family = projection
+        given, family, literal = projection
         source_fields = deepcopy(
-            {key: field_value for key, field_value in item.items() if key not in {"given", "family"}}
+            {
+                key: field_value
+                for key, field_value in item.items()
+                if key not in {"given", "family", "name"}
+            }
         )
-        result.append(Author(given=given, family=family, source_fields=source_fields))
+        result.append(
+            Author(
+                given=given,
+                family=family,
+                literal=literal,
+                source_fields=source_fields,
+            )
+        )
     return tuple(result)
 
 
@@ -136,6 +154,9 @@ def legacy_record_to_publication(record: Mapping[str, Any]) -> LegacyPublication
         )
 
     identifiers = {"doi": doi} if doi is not None else {}
+    isbn = _text(record.get("isbn")).strip()
+    if isbn:
+        identifiers["isbn"] = isbn
     publication = Publication(
         id=publication_id,
         identifiers=identifiers,
@@ -158,7 +179,9 @@ def legacy_record_to_publication(record: Mapping[str, Any]) -> LegacyPublication
     return LegacyPublication(publication=publication, source_record=deepcopy(dict(record)))
 
 
-def _source_author_projection(value: Any) -> tuple[tuple[str | None, str | None], ...] | None:
+def _source_author_projection(
+    value: Any,
+) -> tuple[tuple[str | None, str | None, str | None], ...] | None:
     if value is None:
         return ()
     if not isinstance(value, list) or any(not isinstance(item, dict) for item in value):
@@ -204,10 +227,13 @@ def publication_to_legacy(
     result["pages"] = publication.pages
     result["publisher"] = publication.publisher
     result["event"] = publication.event
+    result["isbn"] = publication.identifiers.get("isbn", "")
     result["permalink"] = publication.permalink
 
     source_authors = _source_author_projection(result.get("authors"))
-    canonical_authors = tuple((author.given, author.family) for author in publication.authors)
+    canonical_authors = tuple(
+        (author.given, author.family, author.literal) for author in publication.authors
+    )
     if source_authors != canonical_authors:
         rendered_authors = []
         for author in publication.authors:
@@ -216,6 +242,8 @@ def publication_to_legacy(
                 rendered["given"] = author.given
             if author.family is not None:
                 rendered["family"] = author.family
+            if author.literal is not None:
+                rendered["name"] = author.literal
             rendered_authors.append(rendered)
         result["authors"] = rendered_authors
 
