@@ -17,6 +17,7 @@ class Author:
 
     given: str | None = None
     family: str | None = None
+    literal: str | None = None
     source_fields: Mapping[str, object] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -24,15 +25,21 @@ class Author:
             raise ValueError("author given name must be a string or None")
         if self.family is not None and not isinstance(self.family, str):
             raise ValueError("author family name must be a string or None")
-        if not ((self.given or "").strip() or (self.family or "").strip()):
+        if self.literal is not None and not isinstance(self.literal, str):
+            raise ValueError("author literal name must be a string or None")
+        if not (
+            (self.given or "").strip()
+            or (self.family or "").strip()
+            or (self.literal or "").strip()
+        ):
             raise ValueError("author must contain at least one non-empty name component")
         if not isinstance(self.source_fields, Mapping):
             raise ValueError("author source_fields must be a mapping")
         extras = deepcopy(dict(self.source_fields))
         if any(not isinstance(key, str) or not key for key in extras):
             raise ValueError("author source_fields keys must be non-empty strings")
-        if {"given", "family"} & extras.keys():
-            raise ValueError("author source_fields must not duplicate given/family")
+        if {"given", "family", "literal"} & extras.keys():
+            raise ValueError("author source_fields must not duplicate canonical name fields")
         object.__setattr__(self, "source_fields", MappingProxyType(extras))
 
 
