@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import unittest
 
+from bibreview.pipeline.collect import collect
 from bibreview.pipeline.enrich import EnrichmentService, crossref_enrichment
 from bibreview.providers.base import Enrichment
 
@@ -24,6 +25,14 @@ class StubFallback:
     def abstract(self, doi: str) -> str:
         self.calls.append(doi)
         return self.value
+
+
+class StubWorkProvider:
+    def __init__(self, work: dict):
+        self.work_record = work
+
+    def work(self, doi: str) -> dict:
+        return self.work_record
 
 
 class CrossRefEnrichmentTests(unittest.TestCase):
@@ -122,6 +131,39 @@ class EnrichmentServiceTests(unittest.TestCase):
         service = EnrichmentService(publisher=InvalidPublisher())
         with self.assertRaisesRegex(TypeError, "must return Enrichment"):
             service.for_collection("10.1/test", {})
+
+    def test_collection_service_plugs_directly_into_collect_pipeline(self) -> None:
+        work = {
+            "title": ["Example"],
+            "type": "journal-article",
+            "author": [{"given": "Ada", "family": "Lovelace"}],
+            "abstract": "CrossRef abstract",
+            "subject": ["CrossRef"],
+            "container-title": ["Journal"],
+            "created": {"date-parts": [[2026, 9, 17]]},
+            "published-print": {"date-parts": [[2026, 1, 1]]},
+            "reference": [],
+        }
+        service = EnrichmentService(
+            publisher=StubPublisher(
+                Enrichment(
+                    abstract="Publisher text",
+                    keywords=("publisher",),
+                    event="Conference",
+                )
+            )
+        )
+
+        result = collect(
+            ["10.1/test"],
+            provider=StubWorkProvider(work),
+            enrichment_lookup=service.for_collection,
+        )
+        publication = result.publications[0]
+
+        self.assertEqual(publication.abstract, "Publisher text")
+        self.assertEqual(publication.keywords, ("publisher",))
+        self.assertEqual(publication.event, "Conference")
 
 
 if __name__ == "__main__":
