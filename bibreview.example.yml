@@ -1,0 +1,24 @@
+schema_version: 1
+
+project:
+  name: Example Review
+  slug: example-review
+  title: Example bibliographic review
+
+discovery:
+  provider: openalex
+  query: fluid-structure interaction
+
+relevance:
+  patterns:
+    - 'fluid[-\\s]+structure'
+  unmatched: manual-review
+
+providers:
+  crossref:
+    enabled: true
+  openalex:
+    enabled: true
+
+site:
+  enabled: false
