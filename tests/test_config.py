@@ -2,7 +2,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from bibreview.config import ConfigError, load_config
+from bibreview.config import ConfigError, DEFAULT_DISCOVERY_TYPES, load_config
 
 
 BASE = """\
@@ -43,6 +43,26 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(config.paths.collected, root / "data/collected.json")
         self.assertEqual(config.paths.pending, root / "data/pending.txt")
         self.assertEqual(config.discovery.query, "fluid-structure interaction")
+        self.assertEqual(config.discovery.accepted_types, DEFAULT_DISCOVERY_TYPES)
+        self.assertEqual(config.discovery.exclude_doi_substrings, ())
+
+    def test_loads_configurable_discovery_type_and_doi_exclusions(self):
+        _, path = self.write(BASE.replace(
+            "  query: fluid-structure interaction\n",
+            "  query: fluid-structure interaction\n"
+            "  accepted_types:\n"
+            "    - journal-article\n"
+            "    - proceedings-article\n"
+            "  exclude_doi_substrings:\n"
+            "    - zenodo\n"
+            "    - arxiv\n",
+        ))
+        config = load_config(path)
+        self.assertEqual(
+            config.discovery.accepted_types,
+            ("journal-article", "proceedings-article"),
+        )
+        self.assertEqual(config.discovery.exclude_doi_substrings, ("zenodo", "arxiv"))
 
     def test_rejects_unknown_schema_version(self):
         _, path = self.write(BASE.replace("schema_version: 1", "schema_version: 2"))
@@ -58,6 +78,16 @@ class ConfigTests(unittest.TestCase):
         _, path = self.write(BASE.replace("'fluid[-\\s]+structure'", "'[broken'"))
         with self.assertRaisesRegex(ConfigError, "relevance.patterns"):
             load_config(path)
+
+    def test_rejects_invalid_discovery_string_lists(self):
+        for field in ("accepted_types", "exclude_doi_substrings"):
+            with self.subTest(field=field):
+                _, path = self.write(BASE.replace(
+                    "  query: fluid-structure interaction\n",
+                    f"  query: fluid-structure interaction\n  {field}: not-a-list\n",
+                ))
+                with self.assertRaisesRegex(ConfigError, f"discovery.{field}"):
+                    load_config(path)
 
 
 if __name__ == "__main__":

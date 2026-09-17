@@ -14,6 +14,8 @@ import os
 from . import __version__
 from .config import BibReviewConfig, ProviderConfig
 from .pipeline.collect import BibtexLookup, CitationLookup, EnrichmentLookup, WorkProvider
+from .pipeline.discover import EnrichmentLookup as DiscoveryEnrichmentLookup
+from .pipeline.discover import WorkProvider as DiscoveryWorkProvider
 from .pipeline.enrich import EnrichmentService
 from .providers.crossref import CrossRefProvider
 from .providers.doi import DoiProvider
@@ -22,6 +24,7 @@ from .providers.fallback import AbstractFallback
 from .providers.http import HttpTransport
 from .providers.ieee import IeeeProvider
 from .providers.mendeley import MendeleyProvider
+from .providers.openalex import OpenAlexProvider
 from .providers.publisher import PublisherEnrichmentRouter
 from .providers.semantic_scholar import SemanticScholarProvider
 from .providers.springer import SpringerProvider
@@ -36,6 +39,23 @@ class CollectionServices:
     enrichment_lookup: EnrichmentLookup
     citation_lookup: CitationLookup
     bibtex_lookup: BibtexLookup
+
+
+@dataclass(frozen=True)
+class DiscoveryServices:
+    """Concrete collaborators required by canonical project discovery."""
+
+    discovery_provider: OpenAlexProvider
+    provider: DiscoveryWorkProvider
+    enrichment_lookup: DiscoveryEnrichmentLookup
+
+
+@dataclass(frozen=True)
+class _CoreServices:
+    transport: HttpTransport
+    crossref: CrossRefProvider
+    doi: DoiProvider
+    enrichment: EnrichmentService
 
 
 def _provider(config: BibReviewConfig, name: str) -> ProviderConfig | None:
@@ -70,23 +90,38 @@ def _secret(
     return value
 
 
-def build_collection_services(
+def _optional_api_key(
+    provider: ProviderConfig | None,
+    *,
+    provider_name: str,
+    environ: Mapping[str, str],
+    reporter: Reporter,
+) -> str:
+    """Resolve an optional provider key without disabling unauthenticated use."""
+    if provider is None or not provider.api_key_env:
+        return ""
+    value = environ.get(provider.api_key_env, "").strip()
+    if not value:
+        reporter.warning(
+            f"{provider_name} API key variable {provider.api_key_env} is unset; "
+            "continuing without an API key."
+        )
+    return value
+
+
+def _build_core_services(
     config: BibReviewConfig,
     *,
-    reporter: Reporter | None = None,
-    environ: Mapping[str, str] | None = None,
-) -> CollectionServices:
-    """Compose configured network providers for one collection command run."""
-    progress = reporter or Reporter()
-    environment = os.environ if environ is None else environ
-
+    reporter: Reporter,
+    environ: Mapping[str, str],
+) -> _CoreServices:
     crossref_config = config.providers.get("crossref")
     if crossref_config is not None and not crossref_config.enabled:
-        raise ValueError("CrossRef must be enabled for DOI-backed collection")
+        raise ValueError("CrossRef must be enabled for DOI-backed workflows")
 
     user_agent = f"BibReview/{__version__}"
     transport = HttpTransport(
-        reporter=progress,
+        reporter=reporter,
         default_headers={"User-Agent": user_agent},
     )
     crossref = CrossRefProvider(transport)
@@ -100,22 +135,22 @@ def build_collection_services(
         elsevier_config,
         field="api_key_env",
         provider_name="Elsevier",
-        environ=environment,
-        reporter=progress,
+        environ=environ,
+        reporter=reporter,
     )
     springer_key = _secret(
         springer_config,
         field="api_key_env",
         provider_name="Springer",
-        environ=environment,
-        reporter=progress,
+        environ=environ,
+        reporter=reporter,
     )
     ieee_key = _secret(
         ieee_config,
         field="api_key_env",
         provider_name="IEEE",
-        environ=environment,
-        reporter=progress,
+        environ=environ,
+        reporter=reporter,
     )
 
     elsevier = ElsevierProvider(transport, api_key=elsevier_key) if elsevier_key else None
@@ -141,8 +176,8 @@ def build_collection_services(
         mendeley_config,
         field="token_env",
         provider_name="Mendeley",
-        environ=environment,
-        reporter=progress,
+        environ=environ,
+        reporter=reporter,
     )
     mendeley = (
         MendeleyProvider(transport, token=mendeley_token, user_agent=user_agent)
@@ -155,13 +190,60 @@ def build_collection_services(
         fallback = AbstractFallback(
             semantic_scholar=semantic,
             mendeley=mendeley,
-            reporter=progress,
+            reporter=reporter,
         )
 
-    enrichment = EnrichmentService(publisher=publisher, fallback=fallback)
+    return _CoreServices(
+        transport=transport,
+        crossref=crossref,
+        doi=doi,
+        enrichment=EnrichmentService(publisher=publisher, fallback=fallback),
+    )
+
+
+def build_collection_services(
+    config: BibReviewConfig,
+    *,
+    reporter: Reporter | None = None,
+    environ: Mapping[str, str] | None = None,
+) -> CollectionServices:
+    """Compose configured network providers for one collection command run."""
+    progress = reporter or Reporter()
+    environment = os.environ if environ is None else environ
+    core = _build_core_services(config, reporter=progress, environ=environment)
     return CollectionServices(
-        provider=crossref,
-        enrichment_lookup=enrichment.for_collection,
-        citation_lookup=doi.citation,
-        bibtex_lookup=doi.bibtex,
+        provider=core.crossref,
+        enrichment_lookup=core.enrichment.for_collection,
+        citation_lookup=core.doi.citation,
+        bibtex_lookup=core.doi.bibtex,
+    )
+
+
+def build_discovery_services(
+    config: BibReviewConfig,
+    *,
+    reporter: Reporter | None = None,
+    environ: Mapping[str, str] | None = None,
+) -> DiscoveryServices:
+    """Compose configured OpenAlex/CrossRef services for one discovery run."""
+    progress = reporter or Reporter()
+    environment = os.environ if environ is None else environ
+    if config.discovery.provider != "openalex":
+        raise ValueError(f"unsupported discovery provider: {config.discovery.provider}")
+
+    openalex_config = config.providers.get("openalex")
+    if openalex_config is not None and not openalex_config.enabled:
+        raise ValueError("OpenAlex must be enabled when selected for discovery")
+
+    core = _build_core_services(config, reporter=progress, environ=environment)
+    openalex_key = _optional_api_key(
+        openalex_config,
+        provider_name="OpenAlex",
+        environ=environment,
+        reporter=progress,
+    )
+    return DiscoveryServices(
+        discovery_provider=OpenAlexProvider(core.transport, api_key=openalex_key),
+        provider=core.crossref,
+        enrichment_lookup=core.enrichment.for_discovery,
     )

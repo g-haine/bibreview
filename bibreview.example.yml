@@ -20,6 +20,14 @@ paths:
 discovery:
   provider: openalex
   query: fluid-structure interaction
+  max_pages: 20
+  accepted_types:
+    - journal-article
+    - proceedings-article
+    - book-chapter
+    - book
+    - monograph
+  exclude_doi_substrings: []
 
 relevance:
   patterns:
@@ -31,6 +39,8 @@ providers:
     enabled: true
   openalex:
     enabled: true
+    # Optional: discovery also works without an OpenAlex API key.
+    api_key_env: OPENALEX_API_KEY
 
 site:
   enabled: false

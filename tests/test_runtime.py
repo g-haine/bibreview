@@ -5,8 +5,9 @@ import unittest
 
 from bibreview.config import load_config
 from bibreview.providers.crossref import CrossRefProvider
+from bibreview.providers.openalex import OpenAlexProvider
 from bibreview.reporting import Reporter
-from bibreview.runtime import build_collection_services
+from bibreview.runtime import build_collection_services, build_discovery_services
 
 
 CONFIG = """\
@@ -14,9 +15,15 @@ schema_version: 1
 project:
   name: Example Review
   slug: example-review
+discovery:
+  provider: openalex
+  query: example query
 providers:
   crossref:
     enabled: true
+  openalex:
+    enabled: true
+    api_key_env: OPENALEX_KEY
   elsevier:
     enabled: true
     api_key_env: ELSEVIER_KEY
@@ -60,6 +67,24 @@ class RuntimeTests(unittest.TestCase):
         self.assertTrue(callable(services.bibtex_lookup))
         self.assertEqual(stream.getvalue(), "")
 
+    def test_discovery_services_compose_openalex_crossref_and_discovery_enrichment(self):
+        stream = StringIO()
+        services = build_discovery_services(
+            self.config(),
+            reporter=Reporter(stream=stream),
+            environ={
+                "OPENALEX_KEY": "openalex-secret",
+                "ELSEVIER_KEY": "elsevier-secret",
+                "IEEE_KEY": "ieee-secret",
+                "MENDELEY_TOKEN": "mendeley-secret",
+            },
+        )
+        self.assertIsInstance(services.discovery_provider, OpenAlexProvider)
+        self.assertEqual(services.discovery_provider.api_key, "openalex-secret")
+        self.assertIsInstance(services.provider, CrossRefProvider)
+        self.assertTrue(callable(services.enrichment_lookup))
+        self.assertEqual(stream.getvalue(), "")
+
     def test_missing_optional_secrets_warn_and_do_not_block_collection_wiring(self):
         stream = StringIO()
         services = build_collection_services(
@@ -72,6 +97,17 @@ class RuntimeTests(unittest.TestCase):
         self.assertIn("Elsevier", warnings)
         self.assertIn("IEEE", warnings)
         self.assertIn("Mendeley", warnings)
+
+    def test_missing_openalex_key_warns_but_discovery_remains_available(self):
+        stream = StringIO()
+        services = build_discovery_services(
+            self.config(),
+            reporter=Reporter(stream=stream),
+            environ={},
+        )
+        self.assertIsInstance(services.discovery_provider, OpenAlexProvider)
+        self.assertEqual(services.discovery_provider.api_key, "")
+        self.assertIn("OpenAlex API key variable OPENALEX_KEY is unset", stream.getvalue())
 
     def test_crossref_cannot_be_disabled_for_doi_collection(self):
         config = self.config("""\
@@ -87,6 +123,31 @@ site:
 """)
         with self.assertRaisesRegex(ValueError, "CrossRef must be enabled"):
             build_collection_services(config, environ={})
+
+    def test_selected_openalex_provider_cannot_be_disabled(self):
+        config = self.config("""\
+schema_version: 1
+project:
+  name: Example Review
+  slug: example-review
+discovery:
+  provider: openalex
+  query: example
+providers:
+  crossref:
+    enabled: true
+  openalex:
+    enabled: false
+site:
+  enabled: false
+""")
+        with self.assertRaisesRegex(ValueError, "OpenAlex must be enabled"):
+            build_discovery_services(config, environ={})
+
+    def test_unknown_discovery_provider_is_rejected_at_composition_boundary(self):
+        config = self.config(CONFIG.replace("provider: openalex", "provider: unknown", 1))
+        with self.assertRaisesRegex(ValueError, "unsupported discovery provider"):
+            build_discovery_services(config, environ={})
 
 
 if __name__ == "__main__":

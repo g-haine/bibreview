@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
-from typing import Mapping
+from typing import Mapping, Protocol
 
 from .config import BibReviewConfig
 from .identity import IdentityError, normalize_doi
@@ -22,6 +22,12 @@ from .pipeline.collect import (
     WorkProvider,
     collect as collect_publications,
 )
+from .pipeline.discover import (
+    DiscoveryResult,
+    EnrichmentLookup as DiscoveryEnrichmentLookup,
+    WorkProvider as DiscoveryWorkProvider,
+    discover as discover_publications,
+)
 from .pipeline.merge import MergeResult, merge_publications
 from .reporting import Reporter
 from .storage import (
@@ -37,6 +43,13 @@ from .storage import (
 
 class ProjectStateError(ValueError):
     """Raised when project state cannot be updated safely."""
+
+
+class CandidateProvider(Protocol):
+    """Configured source of DOI candidates for one discovery run."""
+
+    def discover(self, query: str, *, max_pages: int = 20) -> tuple[str, ...]:
+        """Return normalized DOI candidates in provider order."""
 
 
 @dataclass(frozen=True)
@@ -60,6 +73,34 @@ class ProjectCollectionPlan:
             f"collected: {len(self.result.items)}; "
             f"unavailable: {len(self.result.unavailable)}; "
             f"existing: {self.existing_count}"
+        )
+
+
+@dataclass(frozen=True)
+class ProjectDiscoveryPlan:
+    """Read-only description of one discovery/relevance operation."""
+
+    result: DiscoveryResult
+    outputs: Mapping[Path, bytes]
+    known_count: int
+    pending_count: int
+    rejected_count: int
+    review_count: int
+
+    @property
+    def changed(self) -> bool:
+        """Whether applying this plan would update discovery queue state."""
+        return bool(self.outputs)
+
+    def summary(self) -> str:
+        """Return a compact human-readable operation summary."""
+        return (
+            f"candidates: {len(self.result.candidates)}; "
+            f"screened: {self.result.screened_count}; "
+            f"queued: {len(self.result.queued)}; "
+            f"review: {len(self.result.review)}; "
+            f"rejected: {len(self.result.rejected)}; "
+            f"skipped: {len(self.result.skipped)}"
         )
 
 
@@ -136,6 +177,16 @@ def _doi_lines(path: Path) -> tuple[str, ...]:
 
 def _lines_bytes(values: tuple[str, ...] | list[str]) -> bytes:
     return b"".join(value.encode("utf-8") + b"\n" for value in values)
+
+
+def _append_unique(values: list[str], additions: tuple[str, ...]) -> list[str]:
+    result = list(values)
+    seen = set(result)
+    for value in additions:
+        if value not in seen:
+            seen.add(value)
+            result.append(value)
+    return result
 
 
 def _put_if_changed(outputs: dict[Path, bytes], path: Path, content: bytes) -> None:
@@ -231,6 +282,77 @@ def apply_project_collection(plan: ProjectCollectionPlan) -> None:
     """Apply a previously prepared project collection plan atomically per file."""
     if not isinstance(plan, ProjectCollectionPlan):
         raise ProjectStateError("plan must be a ProjectCollectionPlan")
+    if plan.outputs:
+        atomic_write_batch(plan.outputs)
+
+
+def plan_project_discovery(
+    config: BibReviewConfig,
+    *,
+    discovery_provider: CandidateProvider,
+    provider: DiscoveryWorkProvider,
+    enrichment_lookup: DiscoveryEnrichmentLookup | None = None,
+    reporter: Reporter | None = None,
+) -> ProjectDiscoveryPlan:
+    """Discover and screen DOI candidates without mutating bibliography data."""
+    if not config.discovery.query:
+        raise ProjectStateError("discovery.query must not be empty")
+
+    paths = config.paths
+    existing = _optional_bibliography(paths.bibliography)
+    known = list(_doi_lines(paths.known))
+    pending = list(_doi_lines(paths.pending))
+    rejected = list(_doi_lines(paths.rejected))
+    review = list(_doi_lines(paths.review))
+
+    candidates = discovery_provider.discover(
+        config.discovery.query,
+        max_pages=config.discovery.max_pages,
+    )
+    already_classified = list(known) + pending + review
+    already_classified.extend(
+        publication.doi
+        for publication in existing
+        if publication.doi is not None
+    )
+
+    result = discover_publications(
+        candidates,
+        provider=provider,
+        known=already_classified,
+        rejected=rejected,
+        patterns=config.relevance.patterns,
+        unmatched=config.relevance.unmatched,
+        accepted_types=config.discovery.accepted_types,
+        excluded_doi_substrings=config.discovery.exclude_doi_substrings,
+        enrichment_lookup=enrichment_lookup,
+        reporter=reporter,
+    )
+
+    pending = _append_unique(pending, result.queued)
+    rejected = _append_unique(rejected, result.rejected)
+    review = _append_unique(review, result.review)
+
+    outputs: dict[Path, bytes] = {}
+    if result.candidates or paths.pending.exists() or paths.rejected.exists() or paths.review.exists():
+        _put_if_changed(outputs, paths.pending, _lines_bytes(pending))
+        _put_if_changed(outputs, paths.rejected, _lines_bytes(rejected))
+        _put_if_changed(outputs, paths.review, _lines_bytes(review))
+
+    return ProjectDiscoveryPlan(
+        result=result,
+        outputs=MappingProxyType(outputs),
+        known_count=len(known),
+        pending_count=len(pending),
+        rejected_count=len(rejected),
+        review_count=len(review),
+    )
+
+
+def apply_project_discovery(plan: ProjectDiscoveryPlan) -> None:
+    """Apply a previously prepared discovery plan atomically per state file."""
+    if not isinstance(plan, ProjectDiscoveryPlan):
+        raise ProjectStateError("plan must be a ProjectDiscoveryPlan")
     if plan.outputs:
         atomic_write_batch(plan.outputs)
 

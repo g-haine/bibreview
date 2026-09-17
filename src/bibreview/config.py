@@ -12,6 +12,13 @@ import yaml
 
 SCHEMA_VERSION = 1
 _SLUG = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+DEFAULT_DISCOVERY_TYPES = (
+    "journal-article",
+    "proceedings-article",
+    "book-chapter",
+    "book",
+    "monograph",
+)
 
 
 class ConfigError(ValueError):
@@ -37,6 +44,28 @@ def _string(value: Any, name: str, *, required: bool = False) -> str:
     if required and not value:
         raise ConfigError(f"{name} must not be empty")
     return value
+
+
+def _string_tuple(
+    value: Any,
+    name: str,
+    *,
+    default: tuple[str, ...] = (),
+) -> tuple[str, ...]:
+    if value is None:
+        return default
+    if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
+        raise ConfigError(f"{name} must be a list of strings")
+    result: list[str] = []
+    seen: set[str] = set()
+    for index, item in enumerate(value, 1):
+        cleaned = item.strip()
+        if not cleaned:
+            raise ConfigError(f"{name}[{index}] must not be empty")
+        if cleaned not in seen:
+            seen.add(cleaned)
+            result.append(cleaned)
+    return tuple(result)
 
 
 def _boolean(value: Any, name: str, default: bool) -> bool:
@@ -84,6 +113,8 @@ class DiscoveryConfig:
     provider: str = "openalex"
     query: str = ""
     max_pages: int = 20
+    accepted_types: tuple[str, ...] = DEFAULT_DISCOVERY_TYPES
+    exclude_doi_substrings: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -190,6 +221,15 @@ def load_config(path: str | Path = "bibreview.yml") -> BibReviewConfig:
         provider=_string(discovery_raw.get("provider"), "discovery.provider") or "openalex",
         query=_string(discovery_raw.get("query"), "discovery.query"),
         max_pages=_integer(discovery_raw.get("max_pages"), "discovery.max_pages", 20),
+        accepted_types=_string_tuple(
+            discovery_raw.get("accepted_types"),
+            "discovery.accepted_types",
+            default=DEFAULT_DISCOVERY_TYPES,
+        ),
+        exclude_doi_substrings=_string_tuple(
+            discovery_raw.get("exclude_doi_substrings"),
+            "discovery.exclude_doi_substrings",
+        ),
     )
 
     relevance_raw = _mapping(raw.get("relevance"), "relevance")
