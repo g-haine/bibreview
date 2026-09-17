@@ -33,6 +33,12 @@ class ModelTests(unittest.TestCase):
         second = Publication(id=identifier, title="Corrected title", identifiers={"doi": "10.1/x"})
         self.assertEqual(first.id, second.id)
 
+    def test_literal_author_name_is_supported(self):
+        author = Author(literal="Example Research Consortium")
+        self.assertIsNone(author.given)
+        self.assertIsNone(author.family)
+        self.assertEqual(author.literal, "Example Research Consortium")
+
 
 if __name__ == "__main__":
     unittest.main()
