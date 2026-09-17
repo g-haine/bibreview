@@ -137,7 +137,7 @@ class SiteTransformTests(unittest.TestCase):
             year="2025",
             title="Unsafe",
         )
-        with self.assertRaisesRegex(SiteTransformError, "Unsafe or reserved file name"):
+        with self.assertRaisesRegex(SiteTransformError, "unsafe or reserved file name"):
             build_site_model((unsafe,), {})
 
     def test_requires_created_date_and_decimal_publication_year(self) -> None:
