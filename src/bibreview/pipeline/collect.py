@@ -122,12 +122,24 @@ def _authors(value: Any) -> tuple[Author, ...]:
             continue
         given = _string(item.get("given")).strip() or None
         family = _string(item.get("family")).strip() or None
-        if given is None and family is None:
+        literal = _string(item.get("name")).strip() or None
+        if given is None and family is None and literal is None:
             continue
         source_fields = deepcopy(
-            {key: field_value for key, field_value in item.items() if key not in {"given", "family"}}
+            {
+                key: field_value
+                for key, field_value in item.items()
+                if key not in {"given", "family", "name"}
+            }
         )
-        result.append(Author(given=given, family=family, source_fields=source_fields))
+        result.append(
+            Author(
+                given=given,
+                family=family,
+                literal=literal,
+                source_fields=source_fields,
+            )
+        )
     return tuple(result)
 
 
