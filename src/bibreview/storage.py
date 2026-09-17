@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from copy import deepcopy
+from datetime import date, datetime
 import json
 import os
 from pathlib import Path
 import stat
 import tempfile
-from typing import Any
+from typing import Any, Iterable, Mapping
+
+from .model import Author, Publication, Reference
 
 
 class StorageError(ValueError):
@@ -40,23 +43,47 @@ def json_bytes(value: Any) -> bytes:
 
 def atomic_write(path: Path | str, content: bytes) -> None:
     """Replace one file atomically after staging it beside the destination."""
-    destination = Path(path)
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    temporary: Path | None = None
+    atomic_write_batch({Path(path): content})
+
+
+def atomic_write_batch(outputs: Mapping[Path | str, bytes]) -> None:
+    """Stage every output before atomically replacing each destination.
+
+    Staging is all-or-nothing: if any temporary file cannot be prepared, no
+    destination is replaced. Replacement itself is atomic per file, not a
+    filesystem transaction across the complete batch; concurrent writers are
+    therefore unsupported.
+    """
+    prepared: list[tuple[Path, bytes]] = []
+    resolved: set[Path] = set()
+    for raw_path, content in outputs.items():
+        destination = Path(raw_path)
+        if not isinstance(content, bytes):
+            raise StorageError(f"{destination}: batch content must be bytes")
+        key = destination.resolve()
+        if key in resolved:
+            raise StorageError(f"duplicate output path: {destination}")
+        resolved.add(key)
+        prepared.append((destination, content))
+
+    staged: list[tuple[Path, Path]] = []
     try:
-        with tempfile.NamedTemporaryFile(
-            dir=destination.parent,
-            prefix=f".{destination.name}.",
-            delete=False,
-        ) as stream:
-            temporary = Path(stream.name)
-            stream.write(content)
-        mode = stat.S_IMODE(destination.stat().st_mode) if destination.exists() else 0o644
-        temporary.chmod(mode)
-        os.replace(temporary, destination)
-        temporary = None
+        for destination, content in prepared:
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile(
+                dir=destination.parent,
+                prefix=f".{destination.name}.",
+                delete=False,
+            ) as stream:
+                temporary = Path(stream.name)
+                stream.write(content)
+            mode = stat.S_IMODE(destination.stat().st_mode) if destination.exists() else 0o644
+            temporary.chmod(mode)
+            staged.append((temporary, destination))
+        for temporary, destination in staged:
+            os.replace(temporary, destination)
     finally:
-        if temporary is not None:
+        for temporary, _ in staged:
             temporary.unlink(missing_ok=True)
 
 
@@ -75,3 +102,179 @@ def backup_path(directory: Path | str, prefix: str, suffix: str) -> Path:
         count += 1
         candidate = root / f"{prefix}-{stamp}-{count}{suffix}"
     return candidate
+
+
+def publication_data(publication: Publication) -> dict[str, Any]:
+    """Convert one canonical publication to the persisted BibReview JSON shape."""
+    if not isinstance(publication, Publication):
+        raise StorageError("bibliography entries must be Publication objects")
+    return {
+        "id": publication.id,
+        "identifiers": dict(publication.identifiers),
+        "type": publication.type,
+        "title": publication.title,
+        "authors": [
+            {
+                "given": author.given,
+                "family": author.family,
+                "source_fields": deepcopy(dict(author.source_fields)),
+            }
+            for author in publication.authors
+        ],
+        "abstract": publication.abstract,
+        "container_title": publication.container_title,
+        "publication_year": publication.publication_year,
+        "volume": publication.volume,
+        "issue": publication.issue,
+        "pages": publication.pages,
+        "publisher": publication.publisher,
+        "event": publication.event,
+        "keywords": list(publication.keywords),
+        "created_date": publication.created_date.isoformat() if publication.created_date else None,
+        "permalink": publication.permalink,
+        "references": [
+            {
+                "identifiers": dict(reference.identifiers),
+                "citation": reference.citation,
+            }
+            for reference in publication.references
+        ],
+    }
+
+
+def _mapping(value: Any, name: str) -> Mapping[str, Any]:
+    if not isinstance(value, Mapping):
+        raise StorageError(f"{name} must be an object")
+    return value
+
+
+def _string(value: Any, name: str, *, nullable: bool = False) -> str | None:
+    if nullable and value is None:
+        return None
+    if not isinstance(value, str):
+        raise StorageError(f"{name} must be a string" + (" or null" if nullable else ""))
+    return value
+
+
+def publication_from_data(value: Mapping[str, Any]) -> Publication:
+    """Build and validate one Publication from canonical persisted JSON data."""
+    record = _mapping(value, "publication")
+    required = {
+        "id", "identifiers", "type", "title", "authors", "abstract",
+        "container_title", "publication_year", "volume", "issue", "pages",
+        "publisher", "event", "keywords", "created_date", "permalink", "references",
+    }
+    missing = required - record.keys()
+    unknown = record.keys() - required
+    if missing:
+        raise StorageError(f"publication missing fields: {', '.join(sorted(missing))}")
+    if unknown:
+        raise StorageError(f"publication has unknown fields: {', '.join(sorted(unknown))}")
+
+    identifiers = _mapping(record["identifiers"], "publication.identifiers")
+    if any(not isinstance(key, str) or not isinstance(item, str) for key, item in identifiers.items()):
+        raise StorageError("publication.identifiers must map strings to strings")
+
+    raw_authors = record["authors"]
+    if not isinstance(raw_authors, list):
+        raise StorageError("publication.authors must be a list")
+    authors: list[Author] = []
+    for index, raw_author in enumerate(raw_authors, 1):
+        author = _mapping(raw_author, f"publication.authors[{index}]")
+        if set(author) != {"given", "family", "source_fields"}:
+            raise StorageError(
+                f"publication.authors[{index}] must contain given, family, and source_fields"
+            )
+        source_fields = _mapping(author["source_fields"], f"publication.authors[{index}].source_fields")
+        authors.append(
+            Author(
+                given=_string(author["given"], f"publication.authors[{index}].given", nullable=True),
+                family=_string(author["family"], f"publication.authors[{index}].family", nullable=True),
+                source_fields=deepcopy(dict(source_fields)),
+            )
+        )
+
+    raw_keywords = record["keywords"]
+    if not isinstance(raw_keywords, list) or any(not isinstance(item, str) for item in raw_keywords):
+        raise StorageError("publication.keywords must be a list of strings")
+
+    raw_references = record["references"]
+    if not isinstance(raw_references, list):
+        raise StorageError("publication.references must be a list")
+    references: list[Reference] = []
+    for index, raw_reference in enumerate(raw_references, 1):
+        reference = _mapping(raw_reference, f"publication.references[{index}]")
+        if set(reference) != {"identifiers", "citation"}:
+            raise StorageError(
+                f"publication.references[{index}] must contain identifiers and citation"
+            )
+        ref_identifiers = _mapping(
+            reference["identifiers"], f"publication.references[{index}].identifiers"
+        )
+        if any(not isinstance(key, str) or not isinstance(item, str)
+               for key, item in ref_identifiers.items()):
+            raise StorageError(
+                f"publication.references[{index}].identifiers must map strings to strings"
+            )
+        references.append(
+            Reference(
+                identifiers=dict(ref_identifiers),
+                citation=_string(reference["citation"], f"publication.references[{index}].citation"),
+            )
+        )
+
+    raw_date = record["created_date"]
+    if raw_date is None:
+        created_date = None
+    elif isinstance(raw_date, str):
+        try:
+            created_date = date.fromisoformat(raw_date)
+        except ValueError as error:
+            raise StorageError("publication.created_date must be an ISO date or null") from error
+    else:
+        raise StorageError("publication.created_date must be an ISO date or null")
+
+    try:
+        return Publication(
+            id=_string(record["id"], "publication.id"),
+            identifiers=dict(identifiers),
+            type=_string(record["type"], "publication.type"),
+            title=_string(record["title"], "publication.title"),
+            authors=tuple(authors),
+            abstract=_string(record["abstract"], "publication.abstract"),
+            container_title=_string(record["container_title"], "publication.container_title"),
+            publication_year=_string(record["publication_year"], "publication.publication_year"),
+            volume=_string(record["volume"], "publication.volume"),
+            issue=_string(record["issue"], "publication.issue"),
+            pages=_string(record["pages"], "publication.pages"),
+            publisher=_string(record["publisher"], "publication.publisher"),
+            event=_string(record["event"], "publication.event"),
+            keywords=tuple(raw_keywords),
+            created_date=created_date,
+            permalink=_string(record["permalink"], "publication.permalink"),
+            references=tuple(references),
+        )
+    except ValueError as error:
+        raise StorageError(f"invalid publication: {error}") from error
+
+
+def bibliography_data(publications: Iterable[Publication]) -> list[dict[str, Any]]:
+    """Convert canonical publications to deterministic persisted JSON data."""
+    return [publication_data(publication) for publication in publications]
+
+
+def read_bibliography(path: Path | str) -> tuple[Publication, ...]:
+    """Read a canonical BibReview bibliography."""
+    records = read_json(path, list)
+    result: list[Publication] = []
+    for index, record in enumerate(records, 1):
+        try:
+            result.append(publication_from_data(record))
+        except StorageError as error:
+            raise StorageError(f"{path}: record {index}: {error}") from error
+    return tuple(result)
+
+
+def write_bibliography(path: Path | str, publications: Iterable[Publication]) -> None:
+    """Atomically write a canonical BibReview bibliography."""
+    write_json(path, bibliography_data(publications))

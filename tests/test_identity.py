@@ -7,6 +7,7 @@ from bibreview.identity import (
     new_publication_id,
     normalize_doi,
     shared_strong_identifier,
+    strong_identifiers,
 )
 
 
@@ -40,6 +41,15 @@ class IdentityTests(unittest.TestCase):
         )
         self.assertEqual(match, ("doi", "10.1234/abc"))
         self.assertIsNone(shared_strong_identifier({}, {}))
+
+    def test_isbn_is_metadata_but_not_an_automatic_merge_key(self):
+        self.assertEqual(strong_identifiers({"isbn": "978-0-00-000000-0"}), ())
+        self.assertIsNone(
+            shared_strong_identifier(
+                {"isbn": "978-0-00-000000-0"},
+                {"isbn": "978-0-00-000000-0"},
+            )
+        )
 
 
 if __name__ == "__main__":
