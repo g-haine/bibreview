@@ -9,6 +9,7 @@ collection.
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping
+from copy import deepcopy
 from dataclasses import dataclass
 from datetime import date
 import re
@@ -123,7 +124,10 @@ def _authors(value: Any) -> tuple[Author, ...]:
         family = _string(item.get("family")).strip() or None
         if given is None and family is None:
             continue
-        result.append(Author(given=given, family=family))
+        source_fields = deepcopy(
+            {key: field_value for key, field_value in item.items() if key not in {"given", "family"}}
+        )
+        result.append(Author(given=given, family=family, source_fields=source_fields))
     return tuple(result)
 
 
