@@ -89,6 +89,10 @@ class StorageTests(unittest.TestCase):
                         "affiliation": [{"name": "Example Institute"}],
                     },
                 ),
+                Author(
+                    literal="Example Research Consortium",
+                    source_fields={"sequence": "additional"},
+                ),
             ),
             abstract="Abstract",
             container_title="Journal",
@@ -116,6 +120,8 @@ class StorageTests(unittest.TestCase):
             bibliography_data(loaded)[0]["authors"][0]["source_fields"]["ORCID"],
             "example-orcid",
         )
+        self.assertEqual(loaded[0].authors[1].literal, "Example Research Consortium")
+        self.assertEqual(loaded[0].identifiers["isbn"], "978-0-00-000000-0")
 
     def test_canonical_reader_rejects_unknown_fields(self) -> None:
         publication = Publication(id=new_publication_id(), title="Example")
