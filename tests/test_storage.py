@@ -1,11 +1,25 @@
 from __future__ import annotations
 
+from datetime import date
 import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
-from bibreview.storage import StorageError, atomic_write, json_bytes, read_json, write_json
+from bibreview.identity import new_publication_id
+from bibreview.model import Author, Publication, Reference
+from bibreview.storage import (
+    StorageError,
+    atomic_write,
+    atomic_write_batch,
+    bibliography_data,
+    json_bytes,
+    read_bibliography,
+    read_json,
+    write_bibliography,
+    write_json,
+)
 
 
 class StorageTests(unittest.TestCase):
@@ -34,6 +48,84 @@ class StorageTests(unittest.TestCase):
             atomic_write(path, b"content\n")
             self.assertEqual(path.read_bytes(), b"content\n")
             self.assertEqual([candidate.name for candidate in root.iterdir()], ["data.txt"])
+
+    def test_batch_staging_failure_preserves_all_existing_outputs(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            first = root / "first.txt"
+            second = root / "second.txt"
+            first.write_bytes(b"old-first\n")
+            second.write_bytes(b"old-second\n")
+            original = tempfile.NamedTemporaryFile
+            count = 0
+
+            def fail_second(*args, **kwargs):
+                nonlocal count
+                count += 1
+                if count == 2:
+                    raise OSError("staging failed")
+                return original(*args, **kwargs)
+
+            with patch("bibreview.storage.tempfile.NamedTemporaryFile", side_effect=fail_second):
+                with self.assertRaisesRegex(OSError, "staging failed"):
+                    atomic_write_batch({first: b"new-first\n", second: b"new-second\n"})
+
+            self.assertEqual(first.read_bytes(), b"old-first\n")
+            self.assertEqual(second.read_bytes(), b"old-second\n")
+            self.assertEqual(sorted(path.name for path in root.iterdir()), ["first.txt", "second.txt"])
+
+    def test_canonical_bibliography_round_trip(self) -> None:
+        publication = Publication(
+            id=new_publication_id(),
+            identifiers={"doi": "10.1234/Example", "isbn": "978-0-00-000000-0"},
+            type="journal-article",
+            title="Port-Hamiltonian example",
+            authors=(
+                Author(
+                    given="Ada",
+                    family="Lovelace",
+                    source_fields={
+                        "ORCID": "example-orcid",
+                        "affiliation": [{"name": "Example Institute"}],
+                    },
+                ),
+            ),
+            abstract="Abstract",
+            container_title="Journal",
+            publication_year="2026",
+            volume="1",
+            issue="2",
+            pages="1--9",
+            publisher="Publisher",
+            event="Conference",
+            keywords=("control", "energy"),
+            created_date=date(2026, 9, 17),
+            permalink="port-hamiltonian-example",
+            references=(
+                Reference(identifiers={"doi": "10.1234/ref"}, citation="Reference"),
+                Reference(citation="Reference without DOI"),
+            ),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "bibliography.json"
+            write_bibliography(path, [publication])
+            loaded = read_bibliography(path)
+
+        self.assertEqual(loaded, (publication,))
+        self.assertEqual(
+            bibliography_data(loaded)[0]["authors"][0]["source_fields"]["ORCID"],
+            "example-orcid",
+        )
+
+    def test_canonical_reader_rejects_unknown_fields(self) -> None:
+        publication = Publication(id=new_publication_id(), title="Example")
+        record = bibliography_data([publication])[0]
+        record["typo"] = "value"
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "bibliography.json"
+            path.write_bytes(json_bytes([record]))
+            with self.assertRaisesRegex(StorageError, "unknown fields"):
+                read_bibliography(path)
 
 
 if __name__ == "__main__":
