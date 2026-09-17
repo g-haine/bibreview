@@ -18,6 +18,12 @@ schema_version: 1
 project:
   name: Example Review
   slug: example-review
+discovery:
+  provider: openalex
+  query: port-Hamiltonian
+relevance:
+  patterns:
+    - 'port[-\\s]+hamiltonian'
 site:
   enabled: false
 """
@@ -34,6 +40,22 @@ class FakeProvider:
             "created": {"date-parts": [[2026, 9, 17]]},
             "published-print": {"date-parts": [[2026]]},
         }
+
+
+class FakeDiscoveryProvider:
+    def discover(self, query, *, max_pages=20):
+        return ("10.1/relevant", "10.1/review", "10.1/unsupported")
+
+
+class FakeDiscoveryWorkProvider:
+    def work(self, doi):
+        if doi == "10.1/relevant":
+            return {"type": "journal-article", "title": ["Port-Hamiltonian model"]}
+        if doi == "10.1/review":
+            return {"type": "journal-article", "title": ["Generic model"]}
+        if doi == "10.1/unsupported":
+            return {"type": "dataset", "title": ["Port-Hamiltonian data"]}
+        return None
 
 
 class CliTests(unittest.TestCase):
@@ -67,6 +89,64 @@ class CliTests(unittest.TestCase):
             citation_lookup=None,
             bibtex_lookup=lambda doi: "@article{new}\n",
         )
+
+    def discovery_services(self):
+        return SimpleNamespace(
+            discovery_provider=FakeDiscoveryProvider(),
+            provider=FakeDiscoveryWorkProvider(),
+            enrichment_lookup=None,
+        )
+
+    def test_discover_dry_run_then_apply_updates_only_queue_state(self):
+        before = self.snapshot()
+        stdout = StringIO()
+        stderr = StringIO()
+        with patch(
+            "bibreview.cli.build_discovery_services",
+            return_value=self.discovery_services(),
+        ), redirect_stdout(stdout), redirect_stderr(stderr):
+            code = main([
+                "--config", str(self.config_path),
+                "--dry-run",
+                "discover",
+            ])
+        self.assertEqual(code, 0, stderr.getvalue())
+        self.assertIn("Dry run:", stdout.getvalue())
+        self.assertIn("queued: 1", stdout.getvalue())
+        self.assertIn("review: 1", stdout.getvalue())
+        self.assertIn("rejected: 1", stdout.getvalue())
+        self.assertEqual(before, self.snapshot())
+
+        stdout = StringIO()
+        stderr = StringIO()
+        with patch(
+            "bibreview.cli.build_discovery_services",
+            return_value=self.discovery_services(),
+        ), redirect_stdout(stdout), redirect_stderr(stderr):
+            code = main(["--config", str(self.config_path), "discover"])
+        self.assertEqual(code, 0, stderr.getvalue())
+        self.assertIn("queued: 1", stdout.getvalue())
+        self.assertEqual(self.config.paths.pending.read_text(encoding="utf-8"), "10.1/relevant\n")
+        self.assertEqual(self.config.paths.review.read_text(encoding="utf-8"), "10.1/review\n")
+        self.assertEqual(self.config.paths.rejected.read_text(encoding="utf-8"), "10.1/unsupported\n")
+
+    def test_discover_errors_are_reported_without_traceback(self):
+        services = SimpleNamespace(
+            discovery_provider=FakeDiscoveryProvider(),
+            provider=FakeDiscoveryWorkProvider(),
+            enrichment_lookup=lambda doi, message: "not enrichment",
+        )
+        stdout = StringIO()
+        stderr = StringIO()
+        with patch(
+            "bibreview.cli.build_discovery_services",
+            return_value=services,
+        ), redirect_stdout(stdout), redirect_stderr(stderr):
+            code = main(["--config", str(self.config_path), "discover"])
+        self.assertEqual(code, 1)
+        self.assertEqual(stdout.getvalue(), "")
+        self.assertIn("bibreview discover:", stderr.getvalue())
+        self.assertNotIn("Traceback", stderr.getvalue())
 
     def test_collect_dry_run_then_apply_uses_canonical_staging(self):
         write_bibliography(
