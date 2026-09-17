@@ -1,4 +1,4 @@
-"""BibReview command-line interface foundation."""
+"""BibReview command-line interface."""
 
 from __future__ import annotations
 
@@ -7,6 +7,9 @@ import sys
 
 from . import __version__
 from .config import ConfigError, load_config
+from .pipeline.merge import MergeError
+from .project import ProjectStateError, apply_project_merge, plan_project_merge
+from .storage import StorageError
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -16,10 +19,11 @@ def _parser() -> argparse.ArgumentParser:
     output = parser.add_mutually_exclusive_group()
     output.add_argument("-v", "--verbose", action="count", default=0)
     output.add_argument("-q", "--quiet", action="store_true")
-    parser.add_argument("--dry-run", action="store_true", help="Reserved for mutating M3 commands")
+    parser.add_argument("--dry-run", action="store_true", help="Validate and plan mutating commands without writing files")
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("validate", help="Validate project configuration/state")
     commands.add_parser("status", help="Show the current project configuration summary")
+    commands.add_parser("merge", help="Merge the collected staging bibliography into project state")
     return parser
 
 
@@ -44,6 +48,28 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Discovery: {config.discovery.provider} / {config.discovery.query or '(no query)'}")
             print("Providers: " + (", ".join(enabled) if enabled else "none"))
             print(f"Bibliography: {config.paths.bibliography}")
+            print(f"Collected staging: {config.paths.collected}")
+        return 0
+
+    if args.command == "merge":
+        try:
+            plan = plan_project_merge(config)
+            if args.dry_run:
+                if not args.quiet:
+                    print(f"Dry run: {plan.summary()}")
+                    if plan.backup is not None:
+                        print(f"Would create backup: {plan.backup}")
+                return 0
+            apply_project_merge(plan)
+        except (OSError, StorageError, MergeError, ProjectStateError) as error:
+            print(f"bibreview merge: {error}", file=sys.stderr)
+            return 1
+        if not args.quiet:
+            print(plan.summary())
+            if plan.backup is not None:
+                print(f"Backup: {plan.backup}")
+            if not plan.changed:
+                print("No collected publications; project state unchanged.")
         return 0
 
     raise AssertionError("unreachable")
