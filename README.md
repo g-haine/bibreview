@@ -17,6 +17,8 @@ The current M3 implementation includes:
 - `bibreview discover`, `collect`, `refresh`, `authors`, and `merge` commands;
 - `--dry-run` support for mutating CLI workflows.
 
+M4 site extraction has started with a renderer-independent transformation layer in `bibreview.site`. `build_site_model()` converts canonical publications plus reviewed author mappings into immutable publication, author, year, and reference-link data. It contains no Markdown, HTML, Liquid, Jekyll, filesystem, or project-branding logic. Rendering remains a separate later layer so another project can reuse the same bibliographic site model with a different presentation.
+
 ## Project-state handoff
 
 Discovery, collection, refresh, and merge use explicit persisted states:
@@ -61,5 +63,23 @@ Refresh is deliberately separate from discovery. It is opt-in through `refresh.t
 `data/collected.json` is a staging bibliography, not a backup. This separation keeps backups in `archive/` and avoids using an overwritten bibliography file as an implicit data-transfer mechanism. Collection and refresh both refuse to overwrite a non-empty staging batch.
 
 During `bibreview merge`, accepted staged publications are merged by persistent UUID and approved strong identifiers, accepted DOI values move from `pending` to `known`, rejected DOI values are discarded from the staged batch, the staging bibliography is emptied, and the previous bibliography is backed up before replacement. A dry run computes the same plan without mutating files.
+
+## Site-model boundary
+
+The M4 transformation boundary is intentionally one-way and side-effect free:
+
+```text
+Publication + author_mappings
+          ↓
+  build_site_model
+          ↓
+       SiteModel
+          ↓
+ renderer (future M4 step)
+          ↓
+ static-site files
+```
+
+`SiteModel` preserves source-visible author names while linking them to reviewed author identities, prepares author/year membership, validates safe unique publication permalinks, and resolves DOI references to internal permalinks when the referenced work is present in the same bibliography. Project-specific category names, prose, CSS, templates, and branding do not belong in this transformation layer.
 
 PHRAISE remains the integration and non-regression reference during extraction.
