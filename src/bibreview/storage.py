@@ -117,6 +117,7 @@ def publication_data(publication: Publication) -> dict[str, Any]:
             {
                 "given": author.given,
                 "family": author.family,
+                "literal": author.literal,
                 "source_fields": deepcopy(dict(author.source_fields)),
             }
             for author in publication.authors
@@ -181,15 +182,16 @@ def publication_from_data(value: Mapping[str, Any]) -> Publication:
     authors: list[Author] = []
     for index, raw_author in enumerate(raw_authors, 1):
         author = _mapping(raw_author, f"publication.authors[{index}]")
-        if set(author) != {"given", "family", "source_fields"}:
+        if set(author) != {"given", "family", "literal", "source_fields"}:
             raise StorageError(
-                f"publication.authors[{index}] must contain given, family, and source_fields"
+                f"publication.authors[{index}] must contain given, family, literal, and source_fields"
             )
         source_fields = _mapping(author["source_fields"], f"publication.authors[{index}].source_fields")
         authors.append(
             Author(
                 given=_string(author["given"], f"publication.authors[{index}].given", nullable=True),
                 family=_string(author["family"], f"publication.authors[{index}].family", nullable=True),
+                literal=_string(author["literal"], f"publication.authors[{index}].literal", nullable=True),
                 source_fields=deepcopy(dict(source_fields)),
             )
         )
