@@ -223,7 +223,9 @@ class JekyllSiteConfig:
     date_timezone: str = "+0100"
     author_path_prefix: str = "authors"
     bibtex_asset_prefix: str = "assets/bib"
-    category_by_type: Mapping[str, str] = field(default_factory=dict)
+    category_by_type: Mapping[str, str] = field(
+        default_factory=lambda: MappingProxyType({})
+    )
     event_category_rules: tuple[tuple[str, str], ...] = ()
     isbn_types: tuple[str, ...] = ("book", "monograph")
     keyword_joiner: str = ", "
@@ -240,7 +242,7 @@ class SiteConfig:
     baseurl: str = ""
     search: bool = True
     branding: SiteBrandingConfig = SiteBrandingConfig()
-    jekyll: JekyllSiteConfig = JekyllSiteConfig()
+    jekyll: JekyllSiteConfig = field(default_factory=JekyllSiteConfig)
 
 
 @dataclass(frozen=True)
