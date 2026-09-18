@@ -26,7 +26,7 @@ project:
     email: ada@example.org
 arxiv:
   enabled: true
-  query: all:port AND all:Hamiltonian
+  query: all:fluid AND all:structure
   max_results: 25
   sort_by: lastUpdatedDate
   sort_order: descending
@@ -40,7 +40,7 @@ class FakeArxivProvider:
     def fetch(self):
         return (
             ArxivEntry(
-                title="Port-Hamiltonian example",
+                title="Fluid-structure example",
                 summary="Summary",
                 url="https://arxiv.org/abs/2609.12345v2",
                 authors=("Ada Lovelace", "Emmy Noether"),
@@ -73,7 +73,7 @@ class ProjectArxivTests(unittest.TestCase):
         )
         self.assertEqual(request.get_header("From"), "ada@example.org")
 
-    def test_plan_and_apply_preserve_phraise_compatible_json_shape(self):
+    def test_plan_and_apply_preserve_stable_json_shape(self):
         plan = plan_project_arxiv(
             self.config,
             provider=FakeArxivProvider(),
@@ -92,7 +92,7 @@ class ProjectArxivTests(unittest.TestCase):
             payload["papers"],
             [
                 {
-                    "title": "Port-Hamiltonian example",
+                    "title": "Fluid-structure example",
                     "summary": "Summary",
                     "url": "https://arxiv.org/abs/2609.12345v2",
                     "authors": ["Ada Lovelace", "Emmy Noether"],
