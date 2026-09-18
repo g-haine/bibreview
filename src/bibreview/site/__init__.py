@@ -1,5 +1,11 @@
-"""Static-site transformation and pure rendering primitives for BibReview."""
+"""Static-site transformation, rendering, and persistence primitives."""
 
+from .persist import (
+    SitePersistenceError,
+    SitePersistencePlan,
+    apply_rendered_artifacts,
+    plan_rendered_artifacts,
+)
 from .render import (
     JekyllIndexRenderOptions,
     JekyllPublicationRenderOptions,
@@ -28,13 +34,17 @@ __all__ = [
     "SiteAuthor",
     "SiteAuthorPage",
     "SiteModel",
+    "SitePersistenceError",
+    "SitePersistencePlan",
     "SitePublication",
     "SitePublicationAuthor",
     "SiteReference",
     "SiteRenderError",
     "SiteTransformError",
     "SiteYearPage",
+    "apply_rendered_artifacts",
     "build_site_model",
+    "plan_rendered_artifacts",
     "render_jekyll_index_pages",
     "render_jekyll_publication_posts",
     "site_model_data",
