@@ -17,7 +17,7 @@ The current M3 implementation includes:
 - `bibreview discover`, `collect`, `refresh`, `authors`, and `merge` commands;
 - `--dry-run` support for mutating CLI workflows.
 
-M4 site extraction now has two explicit layers in `bibreview.site`. `build_site_model()` converts canonical publications plus reviewed author mappings into immutable publication, author, year, and reference-link data. Pure Jekyll renderers convert that model into immutable `RenderedArtifact(path, content)` values for author/year indexes and publication posts. Rendering performs no filesystem or network access. Publication BibTeX and category policy are supplied explicitly by the caller, while project-specific editorial HTML remains configurable rather than hard-coded.
+M4 site extraction now has three explicit layers in `bibreview.site`. `build_site_model()` converts canonical publications plus reviewed author mappings into immutable publication, author, year, and reference-link data. Pure Jekyll renderers convert that model into immutable `RenderedArtifact(path, content)` values. `plan_rendered_artifacts()` then reconciles those artifacts with explicitly managed generated directories and returns a read-only persistence plan; `apply_rendered_artifacts()` performs atomic-per-file writes followed by deletion of obsolete generated files. Rendering itself still performs no filesystem or network access.
 
 ## Project-state handoff
 
@@ -75,11 +75,15 @@ Publication + author_mappings
           ↓
        SiteModel
           ↓
- renderer (future M4 step)
+     pure renderer
           ↓
- static-site files
+ RenderedArtifact[]
+          ↓
+ persistence plan
+          ↓
+ managed site files
 ```
 
-`SiteModel` preserves source-visible author names while linking them to reviewed author identities, prepares author/year membership, validates safe unique publication permalinks, and resolves DOI references to internal permalinks when the referenced work is present in the same bibliography. Project-specific category names, prose, CSS, templates, and branding do not belong in this transformation layer. The Jekyll rendering layer covers author/year indexes and publication posts. `render_jekyll_publication_posts()` requires a UUID-keyed BibTeX mapping and explicit category policy, keeping provider calls, BibTeX acquisition, file cleanup, persistence, deployment, CSS, templates, and branding outside the renderer.
+`SiteModel` preserves source-visible author names while linking them to reviewed author identities, prepares author/year membership, validates safe unique publication permalinks, and resolves DOI references to internal permalinks when the referenced work is present in the same bibliography. Project-specific category names, prose, CSS, templates, and branding do not belong in this transformation layer. The Jekyll rendering layer covers author/year indexes and publication posts. `render_jekyll_publication_posts()` requires a UUID-keyed BibTeX mapping and explicit category policy, keeping provider calls and BibTeX acquisition outside the renderer. Site persistence is deliberately mechanical: callers declare complete ownership of generated top-level directories such as `_posts`, `authors`, or `years`; artifacts outside those roots are rejected, path traversal and symlinked managed roots are refused, unchanged files are left alone, and only obsolete files inside declared generated roots may be deleted. Deployment, CSS, templates, branding, and non-generated project files remain outside BibReview.
 
 PHRAISE remains the integration and non-regression reference during extraction.
