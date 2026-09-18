@@ -7,10 +7,12 @@ editorial HTML around the generic author index without changing renderer code.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import html
 import json
 import re
+from types import MappingProxyType
+from typing import Mapping
 
 from unidecode import unidecode
 
@@ -39,6 +41,57 @@ class JekyllIndexRenderOptions:
     include_authorless_year_publications: bool = True
 
 
+@dataclass(frozen=True)
+class JekyllPublicationRenderOptions:
+    """Project-supplied presentation policy for Jekyll publication posts."""
+
+    baseurl_expression: str = "{{ site.baseurl }}"
+    date_timezone: str = "+0100"
+    author_path_prefix: str = "authors"
+    bibtex_asset_prefix: str = "assets/bib"
+    category_by_type: Mapping[str, str] = field(default_factory=dict)
+    event_category_rules: tuple[tuple[str, str], ...] = ()
+    isbn_types: tuple[str, ...] = ("book", "monograph")
+    keyword_joiner: str = ", "
+    tag_delimiter: str = ";"
+
+    def __post_init__(self) -> None:
+        category_by_type = dict(self.category_by_type)
+        if any(
+            not isinstance(key, str)
+            or not key
+            or not isinstance(value, str)
+            or not value
+            for key, value in category_by_type.items()
+        ):
+            raise SiteRenderError(
+                "category_by_type must map non-empty strings to non-empty strings"
+            )
+        rules = tuple(self.event_category_rules)
+        for rule in rules:
+            if (
+                not isinstance(rule, tuple)
+                or len(rule) != 2
+                or not all(isinstance(item, str) and item for item in rule)
+            ):
+                raise SiteRenderError(
+                    "event_category_rules must contain (pattern, category) string pairs"
+                )
+            try:
+                re.compile(rule[0])
+            except re.error as error:
+                raise SiteRenderError(
+                    f"invalid event category regular expression {rule[0]!r}"
+                ) from error
+        if any(not isinstance(item, str) or not item for item in self.isbn_types):
+            raise SiteRenderError("isbn_types must contain non-empty strings")
+        object.__setattr__(
+            self, "category_by_type", MappingProxyType(category_by_type)
+        )
+        object.__setattr__(self, "event_category_rules", rules)
+        object.__setattr__(self, "isbn_types", tuple(self.isbn_types))
+
+
 def _yaml_scalar(value: str) -> str:
     """Render a conservative YAML scalar compatible with Jekyll front matter."""
     if (
@@ -60,9 +113,13 @@ def _page_header(title: str, permalink: str) -> str:
     )
 
 
-def _jekyll_text(value: str) -> str:
-    """Escape Liquid delimiters and translate dollar math to MathJax delimiters."""
+def _jekyll_text(value: str, *, mathjax_backslashes: int = 1) -> str:
+    """Escape Liquid delimiters and translate dollar math for a Jekyll context."""
+    if mathjax_backslashes < 1:
+        raise SiteRenderError("mathjax_backslashes must be positive")
     value = value.replace("{{", "{[[:space:]]{").replace("}}", "}[[:space:]]}")
+    opening = "\\" * mathjax_backslashes + "( "
+    closing = " " + "\\" * mathjax_backslashes + ")"
     rendered: list[str] = []
     for line in value.split("\n"):
         pieces = line.split("$")
@@ -70,7 +127,7 @@ def _jekyll_text(value: str) -> str:
             "".join(
                 piece
                 + (
-                    ("\\( " if index % 2 == 0 else " \\)")
+                    (opening if index % 2 == 0 else closing)
                     if index < len(pieces) - 1
                     else ""
                 )
@@ -127,6 +184,176 @@ def _author_letter(name: str) -> str:
     if not surname:
         raise SiteRenderError(f"cannot determine index letter for author {name!r}")
     return surname[0].upper()
+
+
+def _publication_category(
+    publication: SitePublication,
+    options: JekyllPublicationRenderOptions,
+) -> str:
+    for pattern, category in options.event_category_rules:
+        if publication.event and re.search(pattern, publication.event):
+            return category
+    category = options.category_by_type.get(publication.type)
+    if category is None:
+        identity = publication.identifiers.get("doi", publication.id)
+        raise SiteRenderError(
+            f"no Jekyll category configured for publication type "
+            f"{publication.type!r} ({identity})"
+        )
+    return category
+
+
+def _publication_keyword_text(
+    publication: SitePublication,
+    options: JekyllPublicationRenderOptions,
+) -> str:
+    return _jekyll_text(
+        options.keyword_joiner.join(publication.keywords),
+        mathjax_backslashes=2,
+    )
+
+
+def _render_publication_reference(reference) -> str | None:
+    citation = reference.citation
+    if reference.doi is None:
+        return f"- {citation}" if citation else None
+    if reference.permalink:
+        citation = f"[{citation}]({reference.permalink})"
+    return f"- {citation} -- [{reference.doi}](https://doi.org/{reference.doi})"
+
+
+def _render_jekyll_publication_post(
+    publication: SitePublication,
+    bibtex: str,
+    options: JekyllPublicationRenderOptions,
+) -> RenderedArtifact:
+    if not isinstance(bibtex, str):
+        raise SiteRenderError(
+            f"BibTeX for publication {publication.id!r} must be a string"
+        )
+
+    title = _jekyll_text(publication.title, mathjax_backslashes=2)
+    names = [author.name for author in publication.authors]
+    keyword_text = _publication_keyword_text(publication, options)
+    category = _publication_category(publication, options)
+    date_text = publication.created_date.isoformat()
+
+    lines = [
+        "---",
+        f"title: {json.dumps(title, ensure_ascii=False)}",
+        f"date: {date_text} 00:00:00 {options.date_timezone}",
+        f"permalink: {publication.permalink}",
+        f"year: {publication.year}",
+        f"authors: {_yaml_scalar(', '.join(names))}",
+        f"category: {category}",
+    ]
+    if keyword_text:
+        lines.append("tags:")
+        lines.extend(
+            "  - " + _yaml_scalar(item.strip(" "))
+            for item in keyword_text.split(options.tag_delimiter)
+        )
+
+    author_links = ", ".join(
+        f"[{author.name}]({options.author_path_prefix}/{author.slug})"
+        for author in publication.authors
+    )
+    lines.extend(
+        [
+            "---",
+            " ",
+            "## Authors",
+            author_links,
+            " ",
+            "## Abstract",
+            _jekyll_text(publication.abstract, mathjax_backslashes=2),
+            " ",
+        ]
+    )
+    if keyword_text:
+        lines.extend(["## Keywords", keyword_text, " "])
+
+    lines.append("## Citation")
+    if publication.type in options.isbn_types:
+        lines.append(f"- **ISBN:** {publication.identifiers.get('isbn', '')}")
+    else:
+        for label, value in (
+            ("Journal", publication.container_title),
+            ("Year", publication.year),
+            ("Volume", publication.volume),
+            ("Issue", publication.issue),
+            ("Pages", publication.pages),
+        ):
+            lines.append(f"- **{label}:** {value}")
+
+    lines.append(f"- **Publisher:** {publication.publisher}")
+    doi = publication.identifiers.get("doi")
+    if doi is not None:
+        lines.append(f"- **DOI:** [{doi}](https://doi.org/{doi})")
+    if publication.event:
+        lines.append(f"- **Note:** {publication.event}")
+
+    lines.extend([" ", "## BibTeX", "{% highlight bibtex %}", "{% raw %}"])
+    rendered = "\n".join(lines) + "\n" + bibtex
+    rendered += "\n".join(
+        [
+            "{% endraw %}",
+            "{% endhighlight %}",
+            " ",
+            f"[Download the bib file]({options.baseurl_expression}/"
+            f"{options.bibtex_asset_prefix}/{publication.permalink}.bib)",
+            " ",
+            "",
+        ]
+    )
+
+    references = [
+        item
+        for item in (
+            _render_publication_reference(reference)
+            for reference in publication.references
+        )
+        if item is not None
+    ]
+    if references:
+        rendered += "## References\n" + "\n".join(references) + "\n\n"
+
+    return RenderedArtifact(
+        path=f"_posts/{date_text}-{publication.permalink}.md",
+        content=rendered,
+    )
+
+
+def render_jekyll_publication_posts(
+    model: SiteModel,
+    bibtex_by_publication_id: Mapping[str, str],
+    *,
+    options: JekyllPublicationRenderOptions | None = None,
+) -> tuple[RenderedArtifact, ...]:
+    """Render Jekyll publication posts without network or filesystem access."""
+    if not isinstance(model, SiteModel):
+        raise SiteRenderError("model must be a SiteModel")
+    if not isinstance(bibtex_by_publication_id, Mapping):
+        raise SiteRenderError("bibtex_by_publication_id must be a mapping")
+    options = options or JekyllPublicationRenderOptions()
+
+    artifacts: list[RenderedArtifact] = []
+    paths: set[str] = set()
+    for publication in model.publications:
+        if publication.id not in bibtex_by_publication_id:
+            raise SiteRenderError(
+                f"missing BibTeX for publication id {publication.id!r}"
+            )
+        artifact = _render_jekyll_publication_post(
+            publication,
+            bibtex_by_publication_id[publication.id],
+            options,
+        )
+        if artifact.path in paths:
+            raise SiteRenderError(f"duplicate rendered artifact path {artifact.path!r}")
+        paths.add(artifact.path)
+        artifacts.append(artifact)
+    return tuple(artifacts)
 
 
 def render_jekyll_index_pages(
