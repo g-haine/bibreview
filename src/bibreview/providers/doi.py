@@ -55,7 +55,7 @@ class DoiProvider:
 
 
 def format_bibtex(value: str) -> str:
-    """Preserve PHRAISE's validated line-oriented BibTeX output format."""
+    """Normalize DOI-resolved BibTeX to BibReview's stable line-oriented format."""
     value = value.replace(" @", "@").replace("},", "},\n ")
     for field in ("series", "pages", "title"):
         value = value.replace(f", {field}", f",\n  {field}")
