@@ -224,7 +224,7 @@ permalink: /years/2024
             )
         }
         self.assertNotIn("anonymous-work", filtered["years/2025.md"])
-        self.assertIn("new-work", legacy["years/2025.md"])
+        self.assertIn("new-work", filtered["years/2025.md"])
 
     def test_missing_publication_reference_is_rejected(self) -> None:
         model = self.model()
