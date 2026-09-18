@@ -60,12 +60,7 @@ def _relative_path(value: str, *, name: str) -> PurePosixPath:
 
 
 def _managed_root(value: str) -> PurePosixPath:
-    path = _relative_path(value, name="managed root")
-    if len(path.parts) != 1:
-        raise SitePersistenceError(
-            f"managed root must be one top-level generated directory: {value!r}"
-        )
-    return path
+    return _relative_path(value, name="managed root")
 
 
 def _assert_no_symlink_parent(root: Path, relative: PurePosixPath) -> None:
@@ -80,7 +75,28 @@ def _assert_no_symlink_parent(root: Path, relative: PurePosixPath) -> None:
 
 
 def _owned(relative: PurePosixPath, managed: tuple[PurePosixPath, ...]) -> bool:
-    return any(relative.parts[0] == root.parts[0] for root in managed)
+    return any(
+        relative.parts[: len(root.parts)] == root.parts
+        for root in managed
+    )
+
+
+def _overlap(first: PurePosixPath, second: PurePosixPath) -> bool:
+    shorter, longer = sorted((first, second), key=lambda item: len(item.parts))
+    return longer.parts[: len(shorter.parts)] == shorter.parts
+
+
+def _assert_no_symlink_directory_chain(
+    root: Path,
+    relative: PurePosixPath,
+) -> None:
+    current = root
+    for part in relative.parts:
+        current = current / part
+        if current.is_symlink():
+            raise SitePersistenceError(
+                f"managed root traverses symlinked directory: {current}"
+            )
 
 
 def plan_rendered_artifacts(
@@ -91,10 +107,11 @@ def plan_rendered_artifacts(
 ) -> SitePersistencePlan:
     """Plan deterministic writes/deletions without mutating the filesystem.
 
-    managed_roots declares complete ownership of top-level generated
-    directories such as _posts, authors and years. Existing files below those
-    roots that are absent from artifacts are planned for deletion. Artifacts
-    outside managed roots are rejected.
+    managed_roots declares complete ownership of generated directories such as
+    _posts, authors, years, or a dedicated nested subtree such as
+    _data/bibreview. Existing files below those roots that are absent from
+    artifacts are planned for deletion. Overlapping roots and artifacts outside
+    managed roots are rejected.
 
     The site root itself is never created or modified while planning.
     """
@@ -106,15 +123,19 @@ def plan_rendered_artifacts(
     managed = tuple(_managed_root(value) for value in managed_roots)
     if not managed:
         raise SitePersistenceError("managed_roots must not be empty")
-    if len({item.parts[0] for item in managed}) != len(managed):
+    if len(set(managed)) != len(managed):
         raise SitePersistenceError("managed_roots contains duplicates")
+    for index, first in enumerate(managed):
+        for second in managed[index + 1 :]:
+            if _overlap(first, second):
+                raise SitePersistenceError(
+                    "managed_roots must not overlap: "
+                    f"{first.as_posix()!r} and {second.as_posix()!r}"
+                )
 
     for managed_root in managed:
-        directory = site_root / managed_root.parts[0]
-        if directory.is_symlink():
-            raise SitePersistenceError(
-                f"managed root must not be a symlink: {directory}"
-            )
+        _assert_no_symlink_directory_chain(site_root, managed_root)
+        directory = site_root.joinpath(*managed_root.parts)
         if directory.exists() and not directory.is_dir():
             raise SitePersistenceError(
                 f"managed root is not a directory: {directory}"
@@ -158,11 +179,8 @@ def plan_rendered_artifacts(
 
     deletes: list[Path] = []
     for managed_root in managed:
-        directory = site_root / managed_root.parts[0]
-        if directory.is_symlink():
-            raise SitePersistenceError(
-                f"managed root must not be a symlink: {directory}"
-            )
+        _assert_no_symlink_directory_chain(site_root, managed_root)
+        directory = site_root.joinpath(*managed_root.parts)
         if not directory.exists():
             continue
         if not directory.is_dir():

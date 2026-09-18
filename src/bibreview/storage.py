@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from dataclasses import dataclass
 from datetime import date, datetime
 import json
 import os
@@ -16,6 +17,25 @@ from .model import Author, Publication, Reference
 
 class StorageError(ValueError):
     """Raised when persisted project state cannot be read or represented safely."""
+
+
+BIBLIOGRAPHY_SCHEMA_VERSION = 1
+
+
+@dataclass(frozen=True)
+class BibliographyMetadata:
+    """Global metadata attached to one persisted bibliography document."""
+
+    schema_version: int = BIBLIOGRAPHY_SCHEMA_VERSION
+    last_update: date | None = None
+
+
+@dataclass(frozen=True)
+class BibliographyDocument:
+    """Canonical bibliography document with global metadata and publications."""
+
+    metadata: BibliographyMetadata
+    publications: tuple[Publication, ...]
 
 
 def read_json(path: Path | str, expected_type: type) -> Any:
@@ -265,9 +285,93 @@ def bibliography_data(publications: Iterable[Publication]) -> list[dict[str, Any
     return [publication_data(publication) for publication in publications]
 
 
-def read_bibliography(path: Path | str) -> tuple[Publication, ...]:
-    """Read a canonical BibReview bibliography."""
-    records = read_json(path, list)
+def bibliography_metadata_data(metadata: BibliographyMetadata) -> dict[str, Any]:
+    """Convert bibliography metadata to persisted JSON data."""
+    if not isinstance(metadata, BibliographyMetadata):
+        raise StorageError("metadata must be BibliographyMetadata")
+    if metadata.schema_version != BIBLIOGRAPHY_SCHEMA_VERSION:
+        raise StorageError(
+            "unsupported bibliography schema version: "
+            f"{metadata.schema_version}"
+        )
+    return {
+        "schema_version": metadata.schema_version,
+        "last_update": (
+            metadata.last_update.isoformat()
+            if metadata.last_update is not None
+            else None
+        ),
+    }
+
+
+def bibliography_document_data(
+    publications: Iterable[Publication],
+    *,
+    metadata: BibliographyMetadata | None = None,
+) -> dict[str, Any]:
+    """Convert a canonical bibliography document to persisted JSON data."""
+    metadata = metadata or BibliographyMetadata()
+    return {
+        "metadata": bibliography_metadata_data(metadata),
+        "publications": bibliography_data(publications),
+    }
+
+
+def _bibliography_metadata_from_data(value: Any) -> BibliographyMetadata:
+    metadata = _mapping(value, "bibliography.metadata")
+    required = {"schema_version", "last_update"}
+    missing = required - metadata.keys()
+    unknown = metadata.keys() - required
+    if missing:
+        raise StorageError(
+            "bibliography.metadata missing fields: "
+            + ", ".join(sorted(missing))
+        )
+    if unknown:
+        raise StorageError(
+            "bibliography.metadata has unknown fields: "
+            + ", ".join(sorted(unknown))
+        )
+
+    schema_version = metadata["schema_version"]
+    if (
+        not isinstance(schema_version, int)
+        or isinstance(schema_version, bool)
+        or schema_version != BIBLIOGRAPHY_SCHEMA_VERSION
+    ):
+        raise StorageError(
+            "bibliography.metadata.schema_version must be "
+            f"{BIBLIOGRAPHY_SCHEMA_VERSION}"
+        )
+
+    raw_last_update = metadata["last_update"]
+    if raw_last_update is None:
+        last_update = None
+    elif isinstance(raw_last_update, str):
+        try:
+            last_update = date.fromisoformat(raw_last_update)
+        except ValueError as error:
+            raise StorageError(
+                "bibliography.metadata.last_update must be an ISO date or null"
+            ) from error
+    else:
+        raise StorageError(
+            "bibliography.metadata.last_update must be an ISO date or null"
+        )
+
+    return BibliographyMetadata(
+        schema_version=schema_version,
+        last_update=last_update,
+    )
+
+
+def _publications_from_records(
+    records: Any,
+    *,
+    path: Path | str,
+) -> tuple[Publication, ...]:
+    if not isinstance(records, list):
+        raise StorageError(f"{path}: bibliography.publications must be a list")
     result: list[Publication] = []
     for index, record in enumerate(records, 1):
         try:
@@ -277,6 +381,77 @@ def read_bibliography(path: Path | str) -> tuple[Publication, ...]:
     return tuple(result)
 
 
-def write_bibliography(path: Path | str, publications: Iterable[Publication]) -> None:
-    """Atomically write a canonical BibReview bibliography."""
-    write_json(path, bibliography_data(publications))
+def read_bibliography_document(path: Path | str) -> BibliographyDocument:
+    """Read a canonical bibliography document.
+
+    The historical bare-list representation is accepted as a migration input
+    and interpreted as a document with empty metadata. Writers always emit the
+    document representation.
+    """
+    source = Path(path)
+    try:
+        value = json.loads(source.read_text(encoding="utf-8"))
+    except OSError:
+        raise
+    except (ValueError, UnicodeError) as error:
+        raise StorageError(f"{source}: {error}") from error
+
+    if isinstance(value, list):
+        return BibliographyDocument(
+            metadata=BibliographyMetadata(),
+            publications=_publications_from_records(value, path=source),
+        )
+    if not isinstance(value, Mapping):
+        raise StorageError(f"{source}: expected bibliography document object")
+    required = {"metadata", "publications"}
+    missing = required - value.keys()
+    unknown = value.keys() - required
+    if missing:
+        raise StorageError(
+            f"{source}: bibliography document missing fields: "
+            + ", ".join(sorted(missing))
+        )
+    if unknown:
+        raise StorageError(
+            f"{source}: bibliography document has unknown fields: "
+            + ", ".join(sorted(unknown))
+        )
+    return BibliographyDocument(
+        metadata=_bibliography_metadata_from_data(value["metadata"]),
+        publications=_publications_from_records(
+            value["publications"],
+            path=source,
+        ),
+    )
+
+
+def read_bibliography(path: Path | str) -> tuple[Publication, ...]:
+    """Read canonical publications, ignoring document-level metadata."""
+    return read_bibliography_document(path).publications
+
+
+def write_bibliography(
+    path: Path | str,
+    publications: Iterable[Publication],
+    *,
+    metadata: BibliographyMetadata | None = None,
+) -> None:
+    """Atomically write a canonical bibliography document."""
+    write_json(
+        path,
+        bibliography_document_data(publications, metadata=metadata),
+    )
+
+
+def write_bibliography_document(
+    path: Path | str,
+    document: BibliographyDocument,
+) -> None:
+    """Atomically write one complete canonical bibliography document."""
+    if not isinstance(document, BibliographyDocument):
+        raise StorageError("document must be BibliographyDocument")
+    write_bibliography(
+        path,
+        document.publications,
+        metadata=document.metadata,
+    )

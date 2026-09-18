@@ -1,3 +1,4 @@
+from datetime import date
 from pathlib import Path
 import tempfile
 import unittest
@@ -6,7 +7,12 @@ from bibreview.config import load_config
 from bibreview.identity import new_publication_id
 from bibreview.model import Publication
 from bibreview.project import apply_project_merge, plan_project_merge
-from bibreview.storage import read_bibliography, write_bibliography
+from bibreview.storage import (
+    BibliographyMetadata,
+    read_bibliography,
+    read_bibliography_document,
+    write_bibliography,
+)
 
 
 CONFIG = """\
@@ -80,6 +86,10 @@ class ProjectMergeTests(unittest.TestCase):
         apply_project_merge(plan)
 
         merged = read_bibliography(self.config.paths.bibliography)
+        document = read_bibliography_document(
+            self.config.paths.bibliography
+        )
+        self.assertEqual(document.metadata.last_update, date.today())
         self.assertEqual([publication.title for publication in merged], [
             "Corrected title", "New publication", "DOI-less publication"
         ])
@@ -110,6 +120,34 @@ class ProjectMergeTests(unittest.TestCase):
         self.assertFalse(plan.changed)
         apply_project_merge(plan)
         self.assertEqual(before, self.snapshot())
+
+    def test_unchanged_incoming_preserves_last_update(self):
+        existing = self.publication("10.1/old", "Stable title")
+        previous = date(2026, 9, 1)
+        write_bibliography(
+            self.config.paths.bibliography,
+            [existing],
+            metadata=BibliographyMetadata(last_update=previous),
+        )
+        write_bibliography(self.config.paths.collected, [existing])
+        self.config.paths.known.write_text("10.1/old\n", encoding="utf-8")
+        self.config.paths.pending.write_text("10.1/old\n", encoding="utf-8")
+
+        plan = plan_project_merge(self.config)
+        self.assertEqual(plan.result.unchanged_ids, (existing.id,))
+        self.assertEqual(plan.result.added_ids, ())
+        self.assertEqual(plan.result.updated_ids, ())
+        apply_project_merge(plan)
+
+        document = read_bibliography_document(
+            self.config.paths.bibliography
+        )
+        self.assertEqual(document.metadata.last_update, previous)
+        self.assertEqual(document.publications, (existing,))
+        self.assertEqual(
+            self.config.paths.pending.read_text(encoding="utf-8"),
+            "",
+        )
 
     def test_invalid_doi_state_fails_before_any_write(self):
         write_bibliography(

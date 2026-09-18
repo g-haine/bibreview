@@ -14,10 +14,10 @@ The current M3 implementation includes:
 - an opt-in refresh/recollect pipeline for stale existing publications;
 - canonical author-mapping analysis, bibliography merge, and JSON storage;
 - staged multi-file writes with atomic replacement per destination file;
-- `bibreview discover`, `collect`, `refresh`, `authors`, and `merge` commands;
+- `bibreview discover`, `collect`, `refresh`, `authors`, `merge`, and `render` commands;
 - `--dry-run` support for mutating CLI workflows.
 
-M4 site extraction now has three explicit layers in `bibreview.site`. `build_site_model()` converts canonical publications plus reviewed author mappings into immutable publication, author, year, and reference-link data. Pure Jekyll renderers convert that model into immutable `RenderedArtifact(path, content)` values. `plan_rendered_artifacts()` then reconciles those artifacts with explicitly managed generated directories and returns a read-only persistence plan; `apply_rendered_artifacts()` performs atomic-per-file writes followed by deletion of obsolete generated files. Rendering itself still performs no filesystem or network access.
+M4 site extraction now has three explicit layers in `bibreview.site`. `build_site_model()` converts canonical publications plus reviewed author mappings into immutable publication, author, year, and reference-link data. Pure Jekyll renderers convert that model into immutable `RenderedArtifact(path, content)` values. `plan_rendered_artifacts()` then reconciles those artifacts with explicitly managed generated directories and returns a read-only persistence plan; `apply_rendered_artifacts()` performs atomic-per-file writes followed by deletion of obsolete generated files. The project-level `bibreview render` command composes those layers from `bibreview.yml`; the pure renderers themselves still perform no filesystem or network access.
 
 ## Runtime secrets
 
@@ -33,6 +33,37 @@ act only as defaults: variables already present in the process environment take
 precedence. A missing configured file does not abort the command; BibReview
 warns and continues with the process environment, so optional providers retain
 their normal missing-secret behavior.
+
+## Canonical bibliography document
+
+BibReview persists bibliographies as a document rather than a bare publication
+array:
+
+```json
+{
+  "metadata": {
+    "schema_version": 1,
+    "last_update": "2026-09-18"
+  },
+  "publications": [
+    {
+      "id": "...",
+      "identifiers": {"doi": "..."},
+      "title": "..."
+    }
+  ]
+}
+```
+
+`metadata.last_update` belongs to the canonical bibliography state. The merge
+operation updates it only when publications are actually added or updated; a
+merge that merely clears staging or processes an unchanged publication preserves
+the previous date. Collection/refresh staging uses the same document envelope
+with `last_update: null`.
+
+For migration safety, readers still accept the historical bare-array shape and
+interpret it as a document with empty metadata. Writers always emit the document
+shape.
 
 ## Project-state handoff
 
@@ -99,6 +130,6 @@ Publication + author_mappings
  managed site files
 ```
 
-`SiteModel` preserves source-visible author names while linking them to reviewed author identities, prepares author/year membership, validates safe unique publication permalinks, and resolves DOI references to internal permalinks when the referenced work is present in the same bibliography. Project-specific category names, prose, CSS, templates, and branding do not belong in this transformation layer. The Jekyll rendering layer covers author/year indexes and publication posts. `render_jekyll_publication_posts()` requires a UUID-keyed BibTeX mapping and explicit category policy, keeping provider calls and BibTeX acquisition outside the renderer. Site persistence is deliberately mechanical: callers declare complete ownership of generated top-level directories such as `_posts`, `authors`, or `years`; artifacts outside those roots are rejected, path traversal and symlinked managed roots are refused, unchanged files are left alone, and only obsolete files inside declared generated roots may be deleted. Deployment, CSS, templates, branding, and non-generated project files remain outside BibReview.
+`SiteModel` preserves source-visible author names while linking them to reviewed author identities, prepares author/year membership, validates safe unique publication permalinks, and resolves DOI references to internal permalinks when the referenced work is present in the same bibliography. Project-specific category names and optional index prose live in `site.jekyll` configuration rather than engine source code. The Jekyll rendering layer covers author/year indexes and publication posts. `bibreview render` requires a tracked BibTeX file for every publication, performs no provider/network fallback, and reports unused BibTeX files without moving or deleting them. Site persistence owns only `_posts`, `authors`, and `years`: artifacts outside those roots are rejected, path traversal and symlinked managed roots are refused, unchanged files are left alone, and only obsolete files inside those generated roots may be deleted. Deployment, CSS, templates, branding, source BibTeX lifecycle, and non-generated project files remain outside the render command.
 
 PHRAISE remains the integration and non-regression reference during extraction.

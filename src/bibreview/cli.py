@@ -22,6 +22,7 @@ from .project import (
     plan_project_merge,
 )
 from .project_refresh import apply_project_refresh, plan_project_refresh
+from .project_render import apply_project_render, plan_project_render
 from .reporting import Reporter
 from .runtime import build_collection_services, build_discovery_services
 from .storage import StorageError
@@ -54,6 +55,7 @@ def _parser() -> argparse.ArgumentParser:
         help="Print the analysis as JSON instead of a human report",
     )
     commands.add_parser("merge", help="Merge the collected staging bibliography into project state")
+    commands.add_parser("render", help="Render and reconcile configured static-site artifacts")
     return parser
 
 
@@ -213,6 +215,27 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"Backup: {plan.backup}")
             if not plan.changed:
                 print("No collected publications; project state unchanged.")
+        return 0
+
+    if args.command == "render":
+        try:
+            plan = plan_project_render(config)
+            if args.dry_run:
+                if not args.quiet:
+                    print(f"Dry run: {plan.summary()}")
+                    for orphan in plan.orphan_bibtex:
+                        print(f"Unused BibTeX: {orphan}")
+                return 0
+            apply_project_render(plan)
+        except (OSError, StorageError, ValueError, TypeError) as error:
+            print(f"bibreview render: {error}", file=sys.stderr)
+            return 1
+        if not args.quiet:
+            print(plan.summary())
+            for orphan in plan.orphan_bibtex:
+                print(f"Unused BibTeX: {orphan}")
+            if not plan.changed:
+                print("Rendered site artifacts already up to date.")
         return 0
 
     raise AssertionError("unreachable")

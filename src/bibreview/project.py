@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 from types import MappingProxyType
 from typing import Mapping, Protocol
@@ -31,12 +32,15 @@ from .pipeline.discover import (
 from .pipeline.merge import MergeResult, merge_publications
 from .reporting import Reporter
 from .storage import (
+    BibliographyDocument,
+    BibliographyMetadata,
     StorageError,
     atomic_write_batch,
     backup_path,
-    bibliography_data,
+    bibliography_document_data,
     json_bytes,
     read_bibliography,
+    read_bibliography_document,
     read_json,
 )
 
@@ -253,7 +257,9 @@ def plan_project_collection(
     )
 
     outputs: dict[Path, bytes] = {}
-    collected_bytes = json_bytes(bibliography_data(result.publications))
+    collected_bytes = json_bytes(
+        bibliography_document_data(result.publications)
+    )
     pending_bytes = _lines_bytes(list(result.candidates))
 
     if result.candidates or paths.collected.exists():
@@ -416,7 +422,15 @@ def plan_project_merge(config: BibReviewConfig) -> ProjectMergePlan:
     they remain migration compatibility concerns.
     """
     paths = config.paths
-    existing = _optional_bibliography(paths.bibliography)
+    existing_document = (
+        read_bibliography_document(paths.bibliography)
+        if paths.bibliography.exists()
+        else BibliographyDocument(
+            metadata=BibliographyMetadata(),
+            publications=(),
+        )
+    )
+    existing = existing_document.publications
     incoming = _optional_bibliography(paths.collected)
     known = list(_doi_lines(paths.known))
     pending = list(_doi_lines(paths.pending))
@@ -456,8 +470,22 @@ def plan_project_merge(config: BibReviewConfig) -> ProjectMergePlan:
         backup = backup_path(paths.archive, "bibliography", ".json")
         outputs[backup] = paths.bibliography.read_bytes()
 
-    outputs[paths.bibliography] = json_bytes(bibliography_data(result.publications))
-    outputs[paths.collected] = json_bytes([])
+    metadata = existing_document.metadata
+    if result.added_ids or result.updated_ids:
+        metadata = BibliographyMetadata(
+            schema_version=metadata.schema_version,
+            last_update=date.today(),
+        )
+
+    outputs[paths.bibliography] = json_bytes(
+        bibliography_document_data(
+            result.publications,
+            metadata=metadata,
+        )
+    )
+    outputs[paths.collected] = json_bytes(
+        bibliography_document_data(())
+    )
     outputs[paths.known] = _lines_bytes(known)
     outputs[paths.pending] = _lines_bytes(pending)
     outputs[paths.review] = _lines_bytes(review)

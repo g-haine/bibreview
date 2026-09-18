@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 import re
 from types import MappingProxyType
@@ -95,6 +95,56 @@ def _integer(value: Any, name: str, default: int, *, minimum: int = 1) -> int:
     return value
 
 
+def _text(value: Any, name: str, default: str = "") -> str:
+    if value is None:
+        return default
+    if not isinstance(value, str):
+        raise ConfigError(f"{name} must be a string")
+    return value
+
+
+def _string_mapping(value: Any, name: str) -> Mapping[str, str]:
+    raw = _mapping(value, name)
+    result: dict[str, str] = {}
+    for key, item in raw.items():
+        if not isinstance(key, str) or not key.strip():
+            raise ConfigError(f"{name} keys must be non-empty strings")
+        if not isinstance(item, str) or not item.strip():
+            raise ConfigError(f"{name}.{key} must be a non-empty string")
+        result[key.strip()] = item.strip()
+    return MappingProxyType(result)
+
+
+def _event_category_rules(value: Any, name: str) -> tuple[tuple[str, str], ...]:
+    if value is None:
+        return ()
+    if not isinstance(value, list):
+        raise ConfigError(f"{name} must be a list")
+    result: list[tuple[str, str]] = []
+    for index, raw_rule in enumerate(value, 1):
+        rule = _mapping(raw_rule, f"{name}[{index}]")
+        unknown = set(rule) - {"pattern", "category"}
+        if unknown:
+            raise ConfigError(
+                f"{name}[{index}] contains unsupported field(s): "
+                + ", ".join(sorted(unknown))
+            )
+        pattern = _string(rule.get("pattern"), f"{name}[{index}].pattern", required=True)
+        category = _string(
+            rule.get("category"),
+            f"{name}[{index}].category",
+            required=True,
+        )
+        try:
+            re.compile(pattern)
+        except re.error as error:
+            raise ConfigError(
+                f"invalid {name}[{index}].pattern: {error}"
+            ) from error
+        result.append((pattern, category))
+    return tuple(result)
+
+
 @dataclass(frozen=True)
 class EnvironmentConfig:
     """Optional runtime environment-file configuration."""
@@ -163,6 +213,26 @@ class SiteBrandingConfig:
 
 
 @dataclass(frozen=True)
+class JekyllSiteConfig:
+    """Project-specific presentation policy for BibReview's Jekyll renderer."""
+
+    baseurl_expression: str = "{{ site.baseurl }}"
+    count_posts_include: str = "{% include count-posts.html %}"
+    author_index_extra_html: str = ""
+    include_authorless_year_publications: bool = True
+    date_timezone: str = "+0100"
+    author_path_prefix: str = "authors"
+    bibtex_asset_prefix: str = "assets/bib"
+    category_by_type: Mapping[str, str] = field(
+        default_factory=lambda: MappingProxyType({})
+    )
+    event_category_rules: tuple[tuple[str, str], ...] = ()
+    isbn_types: tuple[str, ...] = ("book", "monograph")
+    keyword_joiner: str = ", "
+    tag_delimiter: str = ";"
+
+
+@dataclass(frozen=True)
 class SiteConfig:
     enabled: bool = True
     implementation: str = "jekyll"
@@ -172,6 +242,7 @@ class SiteConfig:
     baseurl: str = ""
     search: bool = True
     branding: SiteBrandingConfig = SiteBrandingConfig()
+    jekyll: JekyllSiteConfig = field(default_factory=JekyllSiteConfig)
 
 
 @dataclass(frozen=True)
@@ -318,6 +389,7 @@ def load_config(path: str | Path = "bibreview.yml") -> BibReviewConfig:
 
     site_raw = _mapping(raw.get("site"), "site")
     branding_raw = _mapping(site_raw.get("branding"), "site.branding")
+    jekyll_raw = _mapping(site_raw.get("jekyll"), "site.jekyll")
     site = SiteConfig(
         enabled=_boolean(site_raw.get("enabled"), "site.enabled", True),
         implementation=_string(site_raw.get("implementation"), "site.implementation") or "jekyll",
@@ -329,6 +401,65 @@ def load_config(path: str | Path = "bibreview.yml") -> BibReviewConfig:
         branding=SiteBrandingConfig(
             logo=_string(branding_raw.get("logo"), "site.branding.logo"),
             favicon=_string(branding_raw.get("favicon"), "site.branding.favicon"),
+        ),
+        jekyll=JekyllSiteConfig(
+            baseurl_expression=_text(
+                jekyll_raw.get("baseurl_expression"),
+                "site.jekyll.baseurl_expression",
+                "{{ site.baseurl }}",
+            ),
+            count_posts_include=_text(
+                jekyll_raw.get("count_posts_include"),
+                "site.jekyll.count_posts_include",
+                "{% include count-posts.html %}",
+            ),
+            author_index_extra_html=_text(
+                jekyll_raw.get("author_index_extra_html"),
+                "site.jekyll.author_index_extra_html",
+            ),
+            include_authorless_year_publications=_boolean(
+                jekyll_raw.get("include_authorless_year_publications"),
+                "site.jekyll.include_authorless_year_publications",
+                True,
+            ),
+            date_timezone=_string(
+                jekyll_raw.get("date_timezone"),
+                "site.jekyll.date_timezone",
+            )
+            or "+0100",
+            author_path_prefix=_string(
+                jekyll_raw.get("author_path_prefix"),
+                "site.jekyll.author_path_prefix",
+            )
+            or "authors",
+            bibtex_asset_prefix=_string(
+                jekyll_raw.get("bibtex_asset_prefix"),
+                "site.jekyll.bibtex_asset_prefix",
+            )
+            or "assets/bib",
+            category_by_type=_string_mapping(
+                jekyll_raw.get("category_by_type"),
+                "site.jekyll.category_by_type",
+            ),
+            event_category_rules=_event_category_rules(
+                jekyll_raw.get("event_category_rules"),
+                "site.jekyll.event_category_rules",
+            ),
+            isbn_types=_string_tuple(
+                jekyll_raw.get("isbn_types"),
+                "site.jekyll.isbn_types",
+                default=("book", "monograph"),
+            ),
+            keyword_joiner=_text(
+                jekyll_raw.get("keyword_joiner"),
+                "site.jekyll.keyword_joiner",
+                ", ",
+            ),
+            tag_delimiter=_text(
+                jekyll_raw.get("tag_delimiter"),
+                "site.jekyll.tag_delimiter",
+                ";",
+            ),
         ),
     )
 
