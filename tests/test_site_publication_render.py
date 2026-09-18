@@ -52,7 +52,7 @@ def publication(
         pages="10--20",
         publisher="Example Publisher",
         event=event,
-        keywords=("port-Hamiltonian", "energy"),
+        keywords=("fluid-structure", "energy"),
         identifiers=identifiers,
         references=references,
     )
@@ -120,7 +120,7 @@ year: 2025
 authors: Ada Lovelace
 category: articles
 tags:
-  - port-Hamiltonian, energy
+  - fluid-structure, energy
 ---
  
 ## Authors
@@ -130,7 +130,7 @@ tags:
 An \\\\( H \\\\) abstract.
  
 ## Keywords
-port-Hamiltonian, energy
+fluid-structure, energy
  
 ## Citation
 - **Journal:** Journal of Examples
