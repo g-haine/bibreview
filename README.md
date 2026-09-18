@@ -11,6 +11,8 @@ feed.
 BibReview is designed so that provider output remains inspectable and ambiguous
 decisions remain human decisions.
 
+Current stable release: **v1.0.0**.
+
 ## What BibReview provides
 
 - OpenAlex discovery with configurable relevance rules;
@@ -31,12 +33,10 @@ decisions remain human decisions.
 BibReview currently requires **Python 3.12 or newer**.
 
 ~~~bash
-git clone https://github.com/g-haine/bibreview.git
-cd bibreview
-
 python -m venv .venv
 source .venv/bin/activate
-python -m pip install -e .
+python -m pip install --upgrade pip
+python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.0.0"
 
 bibreview --version
 ~~~
@@ -191,6 +191,7 @@ See [GoatCounter analytics](docs/goatcounter.md).
 - [Author identities](docs/authors.md)
 - [GitHub Pages](docs/github-pages.md)
 - [GoatCounter](docs/goatcounter.md)
+- [Changelog](CHANGELOG.md)
 
 ## Showcase
 

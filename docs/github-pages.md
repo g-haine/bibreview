@@ -203,7 +203,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install pinned BibReview
-        run: python -m pip install "git+https://github.com/g-haine/bibreview.git@<PINNED-TAG-OR-COMMIT>"
+        run: python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.0.0"
 
       - name: Render bibliography
         run: bibreview --config bibreview.yml render
@@ -236,7 +236,9 @@ jobs:
         uses: actions/deploy-pages@v4
 ~~~
 
-Pin BibReview to a release tag or commit for reproducibility.
+The example above pins BibReview to **v1.0.0**. Keep an exact release tag or
+commit pin for reproducibility, and update it deliberately when adopting a newer
+BibReview release.
 
 GitHub's current Pages documentation uses configure-pages v5,
 upload-pages-artifact v4 and deploy-pages v4 for custom Pages workflows.
@@ -281,7 +283,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install pinned BibReview
-        run: python -m pip install "git+https://github.com/g-haine/bibreview.git@<PINNED-TAG-OR-COMMIT>"
+        run: python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.0.0"
 
       - name: Refresh arXiv cache
         run: bibreview --config bibreview.yml arxiv
