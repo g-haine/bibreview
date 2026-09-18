@@ -75,8 +75,6 @@ def format_bibtex(value: str) -> str:
     if len(lines) >= 2:
         lines[-2] = lines[-2].replace(",", "")
     result = "\n".join(lines).replace("&amp;", "\\&").rstrip("\n")
-    return (
-        result
-        if any(line.startswith("@") for line in result.split("\n"))
-        else ""
-    ) + ("\n" if result else "")
+    if not any(line.startswith("@") for line in result.split("\n")):
+        return ""
+    return result + "\n"
