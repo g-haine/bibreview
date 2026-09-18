@@ -17,7 +17,7 @@ The current M3 implementation includes:
 - `bibreview discover`, `collect`, `refresh`, `authors`, and `merge` commands;
 - `--dry-run` support for mutating CLI workflows.
 
-M4 site extraction has started with a renderer-independent transformation layer in `bibreview.site`. `build_site_model()` converts canonical publications plus reviewed author mappings into immutable publication, author, year, and reference-link data. It contains no Markdown, HTML, Liquid, Jekyll, filesystem, or project-branding logic. Rendering remains a separate later layer so another project can reuse the same bibliographic site model with a different presentation.
+M4 site extraction now has two explicit layers in `bibreview.site`. `build_site_model()` converts canonical publications plus reviewed author mappings into immutable publication, author, year, and reference-link data. `render_jekyll_index_pages()` then renders author/year pages as immutable `RenderedArtifact(path, content)` values. The renderer is pure: it performs no filesystem access. Project-specific editorial HTML can be supplied through `JekyllIndexRenderOptions` without hard-coding PHRAISE prose or branding into BibReview.
 
 ## Project-state handoff
 
@@ -80,6 +80,6 @@ Publication + author_mappings
  static-site files
 ```
 
-`SiteModel` preserves source-visible author names while linking them to reviewed author identities, prepares author/year membership, validates safe unique publication permalinks, and resolves DOI references to internal permalinks when the referenced work is present in the same bibliography. Project-specific category names, prose, CSS, templates, and branding do not belong in this transformation layer.
+`SiteModel` preserves source-visible author names while linking them to reviewed author identities, prepares author/year membership, validates safe unique publication permalinks, and resolves DOI references to internal permalinks when the referenced work is present in the same bibliography. Project-specific category names, prose, CSS, templates, and branding do not belong in this transformation layer. The first pure renderer covers Jekyll author/year indexes only; publication-post rendering and filesystem persistence remain later M4 steps.
 
 PHRAISE remains the integration and non-regression reference during extraction.
