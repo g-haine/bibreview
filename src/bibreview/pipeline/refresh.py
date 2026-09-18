@@ -107,6 +107,11 @@ def refresh(
         current = bibtex_lookup(doi)
         if not isinstance(current, str):
             raise TypeError("BibTeX lookup must return a string")
+        if not current.strip():
+            progress.detail(
+                f"{doi}: current BibTeX unavailable; existing publication and BibTeX retained"
+            )
+            continue
         if stored is not None and stored == current:
             continue
 
