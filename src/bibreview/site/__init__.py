@@ -2,9 +2,11 @@
 
 from .render import (
     JekyllIndexRenderOptions,
+    JekyllPublicationRenderOptions,
     RenderedArtifact,
     SiteRenderError,
     render_jekyll_index_pages,
+    render_jekyll_publication_posts,
 )
 from .transform import (
     SiteAuthor,
@@ -21,6 +23,7 @@ from .transform import (
 
 __all__ = [
     "JekyllIndexRenderOptions",
+    "JekyllPublicationRenderOptions",
     "RenderedArtifact",
     "SiteAuthor",
     "SiteAuthorPage",
@@ -33,5 +36,6 @@ __all__ = [
     "SiteYearPage",
     "build_site_model",
     "render_jekyll_index_pages",
+    "render_jekyll_publication_posts",
     "site_model_data",
 ]
