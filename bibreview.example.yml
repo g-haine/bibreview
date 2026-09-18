@@ -55,3 +55,20 @@ providers:
 
 site:
   enabled: false
+  implementation: jekyll
+  source: site
+  jekyll:
+    # Projects choose their own Jekyll category names explicitly.
+    category_by_type:
+      journal-article: articles
+      proceedings-article: proceedings
+      book-chapter: chapters
+      book: books
+      monograph: books
+    event_category_rules:
+      - pattern: 'Conference|Workshop|Symposium'
+        category: proceedings
+    isbn_types:
+      - book
+      - monograph
+    include_authorless_year_publications: true
