@@ -96,7 +96,48 @@ defaults:
 Adapt the theme, layouts, navigation and CSS to your project. BibReview only
 owns the bibliographic generated artifacts.
 
-## 3. Render and preview locally
+## 3. Complete the small Jekyll contract
+
+BibReview renders publication posts plus author/year index pages. Your Jekyll
+site still owns layouts, category landing pages and shared includes.
+
+By default, generated author/year pages include:
+
+~~~liquid
+{% include count-posts.html %}
+~~~
+
+Create site/_includes/count-posts.html, for example:
+
+~~~html
+<script>
+  const list = document.getElementsByClassName('post-list')[0];
+  const count = list ? list.getElementsByTagName('li').length : 0;
+  const target = document.getElementById('number-posts');
+  if (target) target.textContent = `There are ${count} items referenced.`;
+</script>
+~~~
+
+If you do not want this behavior, set **site.jekyll.count_posts_include** to an
+empty string in bibreview.yml.
+
+If you configure category names such as **articles**, **books**, **chapters** or
+**proceedings**, create matching Jekyll category landing pages yourself. A
+minimal page looks like:
+
+~~~markdown
+---
+layout: category
+title: Articles
+category: articles
+permalink: /categories/articles
+---
+~~~
+
+Your theme must provide the corresponding **category** layout, or you may choose
+another category-page implementation.
+
+## 4. Render and preview locally
 
 From the repository root:
 
@@ -114,7 +155,7 @@ bundle exec jekyll serve
 
 Open the local URL printed by Jekyll.
 
-## 4. Enable GitHub Pages
+## 5. Enable GitHub Pages
 
 In the GitHub repository:
 
@@ -124,7 +165,7 @@ In the GitHub repository:
 GitHub's current custom-workflow documentation is:
 <https://docs.github.com/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages>.
 
-## 5. Build and deploy with GitHub Actions
+## 6. Build and deploy with GitHub Actions
 
 Create .github/workflows/pages.yml:
 
@@ -154,10 +195,10 @@ jobs:
 
     steps:
       - name: Check out project
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
@@ -197,11 +238,13 @@ jobs:
 
 Pin BibReview to a release tag or commit for reproducibility.
 
-GitHub currently documents configure-pages v5, upload-pages-artifact v4 and
-deploy-pages v4 for custom Pages workflows. Recheck the official documentation
-when you create or substantially update the deployment workflow.
+GitHub's current Pages documentation uses configure-pages v5,
+upload-pages-artifact v4 and deploy-pages v4 for custom Pages workflows.
+checkout/setup-python are shown here at their current major versions. Recheck
+the official documentation when you create or substantially update the
+deployment workflow.
 
-## 6. Schedule the optional arXiv cache
+## 7. Schedule the optional arXiv cache
 
 If the arXiv module is enabled, it can be refreshed automatically because it is
 display-only and independent from the curated canonical bibliography.
@@ -230,10 +273,10 @@ jobs:
 
     steps:
       - name: Check out project
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
@@ -257,14 +300,15 @@ jobs:
           git push
 ~~~
 
-GitHub Actions cron expressions are evaluated in UTC. Scheduled jobs can also be
-delayed during periods of high GitHub Actions load, so do not use this mechanism
-for time-critical tasks.
+GitHub Actions schedules use POSIX cron. UTC is the default, and GitHub now
+also supports an optional IANA timezone on scheduled triggers. Scheduled jobs
+can be delayed during periods of high GitHub Actions load, especially near the
+start of an hour, so do not use this mechanism for time-critical tasks.
 
 A commit produced by this workflow can trigger the normal Pages deployment
 workflow.
 
-## 7. Optional scheduled discovery
+## 8. Optional scheduled discovery
 
 Discovery can also be scheduled, but use this more conservatively because it
 changes human-review queues.
@@ -280,7 +324,7 @@ Do not fully automate collect → merge → authors for a curated scholarly
 bibliography unless your project explicitly accepts provider output without
 human review.
 
-## 8. Generated files: committed or CI-only?
+## 9. Generated files: committed or CI-only?
 
 Both models are possible.
 
@@ -303,14 +347,14 @@ Choose one model and apply it consistently. For a human-reviewed bibliography,
 committing generated artifacts is often useful because the rendered diff becomes
 part of review.
 
-## 9. Privacy-friendly analytics
+## 10. Privacy-friendly analytics
 
 For optional traffic statistics, BibReview recommends considering GoatCounter.
 It is not required and is not injected automatically.
 
 See [GoatCounter analytics](goatcounter.md).
 
-## Showcase
+## 11. Showcase
 
 PHRAISE is a public BibReview-powered Jekyll site and can be used as an
 integration reference. Project-specific content and policy remain outside the
