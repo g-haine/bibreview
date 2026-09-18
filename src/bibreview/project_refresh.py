@@ -16,7 +16,7 @@ from .reporting import Reporter
 from .storage import (
     atomic_write_batch,
     backup_path,
-    bibliography_data,
+    bibliography_document_data,
     json_bytes,
     read_bibliography,
 )
@@ -131,7 +131,7 @@ def plan_project_refresh(
         _put_if_changed(
             outputs,
             paths.collected,
-            json_bytes(bibliography_data(result.publications)),
+            json_bytes(bibliography_document_data(result.publications)),
         )
         for item in result.items:
             slug = item.publication.permalink
