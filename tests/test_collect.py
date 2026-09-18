@@ -162,7 +162,7 @@ class CollectionTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "offline"):
             collect(["10.1/new"], provider=FailingProvider())
 
-    def test_collection_result_does_not_depend_on_legacy_record_shape(self):
+    def test_collection_result_uses_canonical_publication_fields(self):
         provider = FakeProvider({"10.1/new": message()})
         result = collect(["10.1/new"], provider=provider)
         publication = result.publications[0]
