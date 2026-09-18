@@ -95,16 +95,21 @@ def _publication_list(
     publications: dict[str, SitePublication],
     options: JekyllIndexRenderOptions,
 ) -> str:
-    rows: list[str] = []
+    rows: list[tuple[object, str]] = []
     for publication_id in publication_ids:
         publication = publications.get(publication_id)
         if publication is None:
             raise SiteRenderError(
                 f"site index references missing publication id {publication_id!r}"
             )
-        rows.append(_publication_row(publication, options))
+        row = _publication_row(publication, options)
+        # PHRAISE's historical Jekyll renderer sorted by creation date and then
+        # by the complete rendered row.  Keep that presentation-specific
+        # tie-break here rather than leaking HTML ordering into SiteModel.
+        rows.append((publication.created_date, row))
+    rows.sort(reverse=True)
     result = '<ul class="post-list">\n'
-    result += "\n".join(rows)
+    result += "\n".join(row for _, row in rows)
     return result + f"\n\n</ul>\n{options.count_posts_include}\n"
 
 
