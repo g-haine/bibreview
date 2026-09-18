@@ -113,9 +113,13 @@ def _page_header(title: str, permalink: str) -> str:
     )
 
 
-def _jekyll_text(value: str) -> str:
-    """Escape Liquid delimiters and translate dollar math to MathJax delimiters."""
+def _jekyll_text(value: str, *, mathjax_backslashes: int = 1) -> str:
+    """Escape Liquid delimiters and translate dollar math for a Jekyll context."""
+    if mathjax_backslashes < 1:
+        raise SiteRenderError("mathjax_backslashes must be positive")
     value = value.replace("{{", "{[[:space:]]{").replace("}}", "}[[:space:]]}")
+    opening = "\\" * mathjax_backslashes + "( "
+    closing = " " + "\\" * mathjax_backslashes + ")"
     rendered: list[str] = []
     for line in value.split("\n"):
         pieces = line.split("$")
@@ -123,7 +127,7 @@ def _jekyll_text(value: str) -> str:
             "".join(
                 piece
                 + (
-                    ("\\( " if index % 2 == 0 else " \\)")
+                    (opening if index % 2 == 0 else closing)
                     if index < len(pieces) - 1
                     else ""
                 )
@@ -203,7 +207,10 @@ def _publication_keyword_text(
     publication: SitePublication,
     options: JekyllPublicationRenderOptions,
 ) -> str:
-    return _jekyll_text(options.keyword_joiner.join(publication.keywords))
+    return _jekyll_text(
+        options.keyword_joiner.join(publication.keywords),
+        mathjax_backslashes=2,
+    )
 
 
 def _render_publication_reference(reference) -> str | None:
@@ -225,7 +232,7 @@ def _render_jekyll_publication_post(
             f"BibTeX for publication {publication.id!r} must be a string"
         )
 
-    title = _jekyll_text(publication.title)
+    title = _jekyll_text(publication.title, mathjax_backslashes=2)
     names = [author.name for author in publication.authors]
     keyword_text = _publication_keyword_text(publication, options)
     category = _publication_category(publication, options)
@@ -259,7 +266,7 @@ def _render_jekyll_publication_post(
             author_links,
             " ",
             "## Abstract",
-            _jekyll_text(publication.abstract),
+            _jekyll_text(publication.abstract, mathjax_backslashes=2),
             " ",
         ]
     )
