@@ -113,7 +113,7 @@ class JekyllPublicationRendererTests(unittest.TestCase):
         self.assertEqual(
             rendered[0].content,
             """---
-title: "A \\\\( x \\\\) title"
+title: "A \\\\\\\\( x \\\\\\\\) title"
 date: 2025-05-10 00:00:00 +0100
 permalink: example-publication
 year: 2025
@@ -127,7 +127,7 @@ tags:
 [Ada Lovelace](authors/ada-lovelace)
  
 ## Abstract
-An \\( H \\) abstract.
+An \\\\( H \\\\) abstract.
  
 ## Keywords
 port-Hamiltonian, energy
@@ -159,6 +159,15 @@ port-Hamiltonian, energy
 
 """,
         )
+
+    def test_publication_mathjax_uses_post_escaping(self) -> None:
+        content = render_jekyll_publication_posts(
+            model(publication()),
+            {"pub-id": "@article{x}\n"},
+            options=options(),
+        )[0].content
+        self.assertIn(r"An \\( H \\) abstract.", content)
+        self.assertIn(r'"A \\\\( x \\\\) title"', content)
 
     def test_event_rule_can_override_type_category(self) -> None:
         item = publication(event="Presented at Example Conference 2025")
