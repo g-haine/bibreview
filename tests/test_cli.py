@@ -22,10 +22,10 @@ project:
   slug: example-review
 discovery:
   provider: openalex
-  query: port-Hamiltonian
+  query: fluid-structure
 relevance:
   patterns:
-    - 'port[-\\s]+hamiltonian'
+    - 'fluid[-\\s]+structure'
 site:
   enabled: false
 """
@@ -52,11 +52,11 @@ class FakeDiscoveryProvider:
 class FakeDiscoveryWorkProvider:
     def work(self, doi):
         if doi == "10.1/relevant":
-            return {"type": "journal-article", "title": ["Port-Hamiltonian model"]}
+            return {"type": "journal-article", "title": ["Fluid-structure model"]}
         if doi == "10.1/review":
             return {"type": "journal-article", "title": ["Generic model"]}
         if doi == "10.1/unsupported":
-            return {"type": "dataset", "title": ["Port-Hamiltonian data"]}
+            return {"type": "dataset", "title": ["Fluid-structure data"]}
         return None
 
 
