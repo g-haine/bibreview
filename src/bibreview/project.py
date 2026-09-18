@@ -418,7 +418,7 @@ def plan_project_merge(config: BibReviewConfig) -> ProjectMergePlan:
     the staging bibliography is emptied. DOI values present in ``rejected`` are
     discarded from the staged batch and removed from ``pending``/``review``.
 
-    Historical PHRAISE queue byte conventions deliberately do not live here;
+    Historical project-specific queue byte conventions deliberately do not live here;
     they remain migration compatibility concerns.
     """
     paths = config.paths
