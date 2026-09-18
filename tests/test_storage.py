@@ -10,12 +10,14 @@ from unittest.mock import patch
 from bibreview.identity import new_publication_id
 from bibreview.model import Author, Publication, Reference
 from bibreview.storage import (
+    BibliographyMetadata,
     StorageError,
     atomic_write,
     atomic_write_batch,
     bibliography_data,
     json_bytes,
     read_bibliography,
+    read_bibliography_document,
     read_json,
     write_bibliography,
     write_json,
@@ -112,10 +114,25 @@ class StorageTests(unittest.TestCase):
         )
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "bibliography.json"
-            write_bibliography(path, [publication])
+            write_bibliography(
+                path,
+                [publication],
+                metadata=BibliographyMetadata(
+                    last_update=date(2026, 9, 18),
+                ),
+            )
             loaded = read_bibliography(path)
+            document = read_bibliography_document(path)
+            raw = json.loads(path.read_text(encoding="utf-8"))
 
         self.assertEqual(loaded, (publication,))
+        self.assertEqual(
+            document.metadata.last_update,
+            date(2026, 9, 18),
+        )
+        self.assertEqual(raw["metadata"]["schema_version"], 1)
+        self.assertEqual(raw["metadata"]["last_update"], "2026-09-18")
+        self.assertEqual(len(raw["publications"]), 1)
         self.assertEqual(
             bibliography_data(loaded)[0]["authors"][0]["source_fields"]["ORCID"],
             "example-orcid",
@@ -123,13 +140,45 @@ class StorageTests(unittest.TestCase):
         self.assertEqual(loaded[0].authors[1].literal, "Example Research Consortium")
         self.assertEqual(loaded[0].identifiers["isbn"], "978-0-00-000000-0")
 
+    def test_canonical_reader_accepts_historical_bare_list(self) -> None:
+        publication = Publication(id=new_publication_id(), title="Example")
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "bibliography.json"
+            path.write_bytes(json_bytes(bibliography_data([publication])))
+            document = read_bibliography_document(path)
+
+        self.assertEqual(document.publications, (publication,))
+        self.assertIsNone(document.metadata.last_update)
+        self.assertEqual(document.metadata.schema_version, 1)
+
+    def test_canonical_reader_rejects_invalid_document_metadata(self) -> None:
+        publication = Publication(id=new_publication_id(), title="Example")
+        payload = {
+            "metadata": {
+                "schema_version": 1,
+                "last_update": "not-a-date",
+            },
+            "publications": bibliography_data([publication]),
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "bibliography.json"
+            path.write_bytes(json_bytes(payload))
+            with self.assertRaisesRegex(StorageError, "last_update"):
+                read_bibliography_document(path)
+
     def test_canonical_reader_rejects_unknown_fields(self) -> None:
         publication = Publication(id=new_publication_id(), title="Example")
         record = bibliography_data([publication])[0]
         record["typo"] = "value"
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "bibliography.json"
-            path.write_bytes(json_bytes([record]))
+            path.write_bytes(json_bytes({
+                "metadata": {
+                    "schema_version": 1,
+                    "last_update": None,
+                },
+                "publications": [record],
+            }))
             with self.assertRaisesRegex(StorageError, "unknown fields"):
                 read_bibliography(path)
 
