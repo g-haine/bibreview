@@ -1,10 +1,10 @@
 # Installation
 
-BibReview currently targets **Python 3.12 or newer** and exposes the
+BibReview **v1.0.0** requires **Python 3.12 or newer** and exposes the
 **bibreview** command-line program.
 
-At this stage, installing from the Git repository is the reference installation
-method.
+For normal use, install an exact release tag. Pinning the version keeps local
+projects and automated websites reproducible.
 
 ## Prerequisites
 
@@ -26,35 +26,25 @@ On some systems use **python3** or the Windows **py** launcher instead.
 ## Linux
 
 ~~~bash
-git clone https://github.com/g-haine/bibreview.git
-cd bibreview
-
 python3 -m venv .venv
 source .venv/bin/activate
 
 python -m pip install --upgrade pip
-python -m pip install -e .
+python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.0.0"
 
 bibreview --version
 ~~~
 
-Run the test suite with:
-
-~~~bash
-python -m unittest discover -s tests -v
-~~~
+The final command should report **bibreview 1.0.0**.
 
 ## macOS
 
 ~~~bash
-git clone https://github.com/g-haine/bibreview.git
-cd bibreview
-
 python3 -m venv .venv
 source .venv/bin/activate
 
 python -m pip install --upgrade pip
-python -m pip install -e .
+python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.0.0"
 
 bibreview --version
 ~~~
@@ -67,14 +57,11 @@ then recreate the virtual environment.
 PowerShell:
 
 ~~~powershell
-git clone https://github.com/g-haine/bibreview.git
-cd bibreview
-
 py -3.12 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 
 python -m pip install --upgrade pip
-python -m pip install -e .
+python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.0.0"
 
 bibreview --version
 ~~~
@@ -87,35 +74,48 @@ Command Prompt:
 .venv\Scripts\activate.bat
 ~~~
 
-Run the tests with:
+## Install another pinned revision
 
-~~~powershell
-python -m unittest discover -s tests -v
-~~~
-
-## Install a pinned revision without cloning BibReview
-
-For CI or another project, install a known tag or commit:
+A different release tag or exact commit can be installed explicitly:
 
 ~~~bash
 python -m pip install "git+https://github.com/g-haine/bibreview.git@<TAG-OR-COMMIT>"
 ~~~
 
-Pinning a tag or commit is strongly recommended for reproducible websites.
-Avoid installing an unpinned **main** in production automation.
+For production automation, prefer an exact release such as **v1.0.0** or an
+exact commit. Avoid installing an unpinned **main**.
+
+## Development checkout
+
+Contributors or users intentionally following development can install an
+editable checkout:
+
+~~~bash
+git clone https://github.com/g-haine/bibreview.git
+cd bibreview
+
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -e .
+
+python -m unittest discover -s tests -v
+~~~
+
+On Windows, use the activation command shown above.
 
 ## Upgrading
 
-For an editable local checkout:
+For a project using a stable release, update the release pin deliberately. Then
+validate the project, render it, inspect the Git diff, and only then commit the
+new pin.
+
+For an editable development checkout:
 
 ~~~bash
 git pull
 python -m pip install -e .
 ~~~
-
-For a project that installs a pinned revision, update the pin deliberately,
-validate the project, render it, inspect the Git diff, and only then commit the
-new pin.
 
 ## Create a project
 
