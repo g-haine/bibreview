@@ -14,6 +14,7 @@ rendering bibliographic content into a static Jekyll site.
 - [Author identities](authors.md) — safe mappings and ambiguous names.
 - [GitHub Pages](github-pages.md) — build and deploy a Jekyll site with GitHub Actions.
 - [GoatCounter](goatcounter.md) — recommended optional privacy-friendly analytics.
+- [Changelog](../CHANGELOG.md) — released versions and notable changes.
 
 ## Design principle
 
