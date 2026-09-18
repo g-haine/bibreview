@@ -179,6 +179,53 @@ permalink: /years/2024
         self.assertIn("New &lt;work&gt;", artifacts["years/2025.md"])
         self.assertEqual(self.model().publications[1].title, "New <work>")
 
+    def test_authorless_year_publications_are_project_configurable(self) -> None:
+        model = self.model()
+        anonymous = SitePublication(
+            id="anonymous-id",
+            permalink="anonymous-work",
+            created_date=date(2025, 2, 1),
+            year="2025",
+            type="journal-article",
+            title="Anonymous work",
+            authors=(),
+            abstract="",
+            container_title="Journal",
+            volume="",
+            issue="",
+            pages="",
+            publisher="",
+            event="",
+            keywords=(),
+        )
+        extended = SiteModel(
+            publications=model.publications + (anonymous,),
+            authors=model.authors,
+            years={
+                "2024": model.years["2024"],
+                "2025": SiteYearPage(
+                    year="2025",
+                    publication_ids=("anonymous-id", "new-id"),
+                ),
+            },
+        )
+        default = {
+            item.path: item.content for item in render_jekyll_index_pages(extended)
+        }
+        self.assertIn("anonymous-work", default["years/2025.md"])
+
+        legacy = {
+            item.path: item.content
+            for item in render_jekyll_index_pages(
+                extended,
+                options=JekyllIndexRenderOptions(
+                    include_authorless_year_publications=False,
+                ),
+            )
+        }
+        self.assertNotIn("anonymous-work", legacy["years/2025.md"])
+        self.assertIn("new-work", legacy["years/2025.md"])
+
     def test_missing_publication_reference_is_rejected(self) -> None:
         model = self.model()
         bad = SiteModel(
