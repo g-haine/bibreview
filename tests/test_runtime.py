@@ -85,6 +85,65 @@ class RuntimeTests(unittest.TestCase):
         self.assertTrue(callable(services.enrichment_lookup))
         self.assertEqual(stream.getvalue(), "")
 
+    def test_configured_environment_file_supplies_provider_secrets(self):
+        config = self.config(CONFIG.replace(
+            "project:\n",
+            "environment:\n  file: .env\nproject:\n",
+        ))
+        (config.source.parent / ".env").write_text(
+            "OPENALEX_KEY=file-openalex\n"
+            "ELSEVIER_KEY=file-elsevier\n"
+            "IEEE_KEY=file-ieee\n"
+            "MENDELEY_TOKEN=file-mendeley\n",
+            encoding="utf-8",
+        )
+        stream = StringIO()
+        services = build_discovery_services(
+            config,
+            reporter=Reporter(stream=stream),
+            environ={},
+        )
+        self.assertEqual(services.discovery_provider.api_key, "file-openalex")
+        self.assertEqual(stream.getvalue(), "")
+
+    def test_explicit_environment_overrides_configured_environment_file(self):
+        config = self.config(CONFIG.replace(
+            "project:\n",
+            "environment:\n  file: .env\nproject:\n",
+        ))
+        (config.source.parent / ".env").write_text(
+            "OPENALEX_KEY=file-openalex\n"
+            "ELSEVIER_KEY=file-elsevier\n"
+            "IEEE_KEY=file-ieee\n"
+            "MENDELEY_TOKEN=file-mendeley\n",
+            encoding="utf-8",
+        )
+        services = build_discovery_services(
+            config,
+            reporter=Reporter(stream=StringIO()),
+            environ={
+                "OPENALEX_KEY": "shell-openalex",
+                "ELSEVIER_KEY": "shell-elsevier",
+                "IEEE_KEY": "shell-ieee",
+                "MENDELEY_TOKEN": "shell-mendeley",
+            },
+        )
+        self.assertEqual(services.discovery_provider.api_key, "shell-openalex")
+
+    def test_missing_configured_environment_file_warns_and_continues(self):
+        config = self.config(CONFIG.replace(
+            "project:\n",
+            "environment:\n  file: missing.env\nproject:\n",
+        ))
+        stream = StringIO()
+        services = build_collection_services(
+            config,
+            reporter=Reporter(stream=stream),
+            environ={},
+        )
+        self.assertIsInstance(services.provider, CrossRefProvider)
+        self.assertIn("Configured environment file does not exist", stream.getvalue())
+
     def test_missing_optional_secrets_warn_and_do_not_block_collection_wiring(self):
         stream = StringIO()
         services = build_collection_services(
