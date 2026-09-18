@@ -50,7 +50,7 @@ def _clean_enrichment(value: Enrichment) -> Enrichment:
 class EnrichmentService:
     """Apply BibReview's project-independent metadata enrichment policy.
 
-    Collection mode preserves PHRAISE's established precedence: a non-empty
+    Collection mode uses the configured enrichment precedence: a non-empty
     publisher field replaces the corresponding CrossRef field. Discovery mode
     accumulates CrossRef and publisher text so relevance checks see both sources.
     Optional abstract fallback is consulted only when the resulting abstract is
