@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 from pathlib import Path
 
 from .config import BibReviewConfig
@@ -17,7 +18,11 @@ from .site import (
     render_jekyll_index_pages,
     render_jekyll_publication_posts,
 )
-from .storage import read_bibliography, read_json
+from .storage import (
+    bibliography_metadata_data,
+    read_bibliography_document,
+    read_json,
+)
 
 
 class ProjectRenderError(ValueError):
@@ -125,12 +130,24 @@ def plan_project_render(config: BibReviewConfig) -> ProjectRenderPlan:
     if config.site.source is None:
         raise ProjectRenderError("site.source is required for site rendering")
 
-    publications = read_bibliography(config.paths.bibliography)
+    document = read_bibliography_document(config.paths.bibliography)
     author_mappings = read_json(config.paths.author_mappings, dict)
-    model = build_site_model(publications, author_mappings)
+    model = build_site_model(document.publications, author_mappings)
     bibtex_by_id, orphan_bibtex = _read_bibtex(config, model.publications)
 
+    metadata_artifact = RenderedArtifact(
+        path="_data/bibreview/metadata.json",
+        content=json.dumps(
+            bibliography_metadata_data(document.metadata),
+            ensure_ascii=False,
+            indent=2,
+            allow_nan=False,
+        )
+        + "\n",
+    )
+
     artifacts = (
+        metadata_artifact,
         *render_jekyll_publication_posts(
             model,
             bibtex_by_id,
@@ -145,7 +162,12 @@ def plan_project_render(config: BibReviewConfig) -> ProjectRenderPlan:
     persistence = plan_rendered_artifacts(
         config.site.source,
         artifacts,
-        managed_roots=("_posts", "authors", "years"),
+        managed_roots=(
+            "_posts",
+            "authors",
+            "years",
+            "_data/bibreview",
+        ),
     )
     return ProjectRenderPlan(
         artifacts=artifacts,
