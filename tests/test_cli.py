@@ -1,4 +1,5 @@
 from contextlib import redirect_stderr, redirect_stdout
+from datetime import date
 from io import StringIO
 from pathlib import Path
 import tempfile
@@ -9,8 +10,8 @@ from unittest.mock import patch
 from bibreview.cli import main
 from bibreview.config import load_config
 from bibreview.identity import new_publication_id
-from bibreview.model import Publication
-from bibreview.storage import read_bibliography, write_bibliography
+from bibreview.model import Author, Publication
+from bibreview.storage import read_bibliography, write_bibliography, write_json
 
 
 CONFIG = """\
@@ -195,6 +196,84 @@ class CliTests(unittest.TestCase):
         self.assertEqual(
             (self.config.paths.bibtex / "new-publication.bib").read_text(encoding="utf-8"),
             "@article{new}\n",
+        )
+
+    def test_render_dry_run_apply_and_noop(self):
+        self.config_path.write_text(
+            CONFIG.replace(
+                "site:\n  enabled: false\n",
+                "site:\n"
+                "  enabled: true\n"
+                "  implementation: jekyll\n"
+                "  source: site\n"
+                "  jekyll:\n"
+                "    category_by_type:\n"
+                "      journal-article: articles\n",
+            ),
+            encoding="utf-8",
+        )
+        config = load_config(self.config_path)
+        publication = Publication(
+            id=new_publication_id(),
+            identifiers={"doi": "10.1/render"},
+            type="journal-article",
+            title="Rendered publication",
+            authors=(Author(given="Ada", family="Lovelace"),),
+            abstract="Abstract",
+            container_title="Journal",
+            publication_year="2026",
+            volume="1",
+            issue="2",
+            pages="1--9",
+            publisher="Publisher",
+            created_date=date(2026, 9, 18),
+            permalink="rendered-publication",
+        )
+        write_bibliography(config.paths.bibliography, (publication,))
+        write_json(
+            config.paths.author_mappings,
+            {"ada-lovelace": ["Ada Lovelace"]},
+        )
+        config.paths.bibtex.mkdir(parents=True, exist_ok=True)
+        (config.paths.bibtex / "rendered-publication.bib").write_text(
+            "@article{render}\n",
+            encoding="utf-8",
+        )
+
+        before = self.snapshot()
+        stdout = StringIO()
+        stderr = StringIO()
+        with redirect_stdout(stdout), redirect_stderr(stderr):
+            code = main([
+                "--config", str(self.config_path),
+                "--dry-run",
+                "render",
+            ])
+        self.assertEqual(code, 0, stderr.getvalue())
+        self.assertIn("Dry run:", stdout.getvalue())
+        self.assertIn("expected: 5", stdout.getvalue())
+        self.assertEqual(before, self.snapshot())
+
+        stdout = StringIO()
+        stderr = StringIO()
+        with redirect_stdout(stdout), redirect_stderr(stderr):
+            code = main(["--config", str(self.config_path), "render"])
+        self.assertEqual(code, 0, stderr.getvalue())
+        self.assertTrue(
+            (
+                config.site.source
+                / "_posts/2026-09-18-rendered-publication.md"
+            ).is_file()
+        )
+
+        stdout = StringIO()
+        stderr = StringIO()
+        with redirect_stdout(stdout), redirect_stderr(stderr):
+            code = main(["--config", str(self.config_path), "render"])
+        self.assertEqual(code, 0, stderr.getvalue())
+        self.assertIn(
+            "Rendered site artifacts already up to date.",
+            stdout.getvalue(),
         )
 
     def test_merge_dry_run_does_not_mutate_state(self):
