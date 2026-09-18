@@ -160,6 +160,19 @@ class ProjectConfig:
     description: str = ""
     repository: str = ""
     contact_name: str = ""
+    contact_email: str = ""
+
+
+@dataclass(frozen=True)
+class ArxivConfig:
+    """Optional arXiv feed-cache configuration."""
+
+    enabled: bool = False
+    query: str = ""
+    max_results: int = 25
+    sort_by: str = "lastUpdatedDate"
+    sort_order: str = "descending"
+    output: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -251,6 +264,7 @@ class BibReviewConfig:
     schema_version: int
     environment: EnvironmentConfig
     project: ProjectConfig
+    arxiv: ArxivConfig
     paths: PathsConfig
     discovery: DiscoveryConfig
     refresh: RefreshConfig
@@ -312,7 +326,52 @@ def load_config(path: str | Path = "bibreview.yml") -> BibReviewConfig:
         description=_string(project_raw.get("description"), "project.description"),
         repository=_string(project_raw.get("repository"), "project.repository"),
         contact_name=_string(contact.get("name"), "project.contact.name"),
+        contact_email=_string(contact.get("email"), "project.contact.email"),
     )
+
+    arxiv_raw = _mapping(raw.get("arxiv"), "arxiv")
+    arxiv_sort_by = (
+        _string(arxiv_raw.get("sort_by"), "arxiv.sort_by")
+        or "lastUpdatedDate"
+    )
+    if arxiv_sort_by not in {"relevance", "lastUpdatedDate", "submittedDate"}:
+        raise ConfigError(
+            "arxiv.sort_by must be 'relevance', 'lastUpdatedDate', or "
+            "'submittedDate'"
+        )
+    arxiv_sort_order = (
+        _string(arxiv_raw.get("sort_order"), "arxiv.sort_order")
+        or "descending"
+    )
+    if arxiv_sort_order not in {"ascending", "descending"}:
+        raise ConfigError(
+            "arxiv.sort_order must be 'ascending' or 'descending'"
+        )
+    arxiv = ArxivConfig(
+        enabled=_boolean(arxiv_raw.get("enabled"), "arxiv.enabled", False),
+        query=_string(arxiv_raw.get("query"), "arxiv.query"),
+        max_results=_integer(
+            arxiv_raw.get("max_results"),
+            "arxiv.max_results",
+            25,
+        ),
+        sort_by=arxiv_sort_by,
+        sort_order=arxiv_sort_order,
+        output=_optional_path(
+            base,
+            arxiv_raw.get("output"),
+            "arxiv.output",
+        ),
+    )
+    if arxiv.enabled:
+        if not arxiv.query:
+            raise ConfigError("arxiv.query is required when arxiv is enabled")
+        if arxiv.output is None:
+            raise ConfigError("arxiv.output is required when arxiv is enabled")
+        if not project.contact_email:
+            raise ConfigError(
+                "project.contact.email is required when arxiv is enabled"
+            )
 
     paths_raw = _mapping(raw.get("paths"), "paths")
     paths = PathsConfig(
@@ -468,6 +527,7 @@ def load_config(path: str | Path = "bibreview.yml") -> BibReviewConfig:
         schema_version=schema_version,
         environment=environment,
         project=project,
+        arxiv=arxiv,
         paths=paths,
         discovery=discovery,
         refresh=refresh,

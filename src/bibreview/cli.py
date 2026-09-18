@@ -7,6 +7,7 @@ import json
 import sys
 
 from . import __version__
+from .arxiv import ArxivError, TemporaryArxivError
 from .config import ConfigError, load_config
 from .pipeline.authors import author_mapping_plan_data, format_author_mapping_plan
 from .pipeline.merge import MergeError
@@ -21,6 +22,7 @@ from .project import (
     plan_project_discovery,
     plan_project_merge,
 )
+from .project_arxiv import apply_project_arxiv, plan_project_arxiv
 from .project_refresh import apply_project_refresh, plan_project_refresh
 from .project_render import apply_project_render, plan_project_render
 from .reporting import Reporter
@@ -56,6 +58,7 @@ def _parser() -> argparse.ArgumentParser:
     )
     commands.add_parser("merge", help="Merge the collected staging bibliography into project state")
     commands.add_parser("render", help="Render and reconcile configured static-site artifacts")
+    commands.add_parser("arxiv", help="Refresh the optional configured arXiv cache")
     return parser
 
 
@@ -83,6 +86,12 @@ def main(argv: list[str] | None = None) -> int:
             print("Providers: " + (", ".join(enabled) if enabled else "none"))
             print(f"Bibliography: {config.paths.bibliography}")
             print(f"Collected staging: {config.paths.collected}")
+            arxiv_status = (
+                f"enabled → {config.arxiv.output}"
+                if config.arxiv.enabled
+                else "disabled"
+            )
+            print(f"arXiv: {arxiv_status}")
         return 0
 
     if args.command == "discover":
@@ -236,6 +245,29 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"Unused BibTeX: {orphan}")
             if not plan.changed:
                 print("Rendered site artifacts already up to date.")
+        return 0
+
+    if args.command == "arxiv":
+        reporter = Reporter(-1 if args.quiet else args.verbose)
+        try:
+            plan = plan_project_arxiv(config)
+            if args.dry_run:
+                if not args.quiet:
+                    print(f"Dry run: {plan.summary()}")
+                return 0
+            apply_project_arxiv(plan)
+        except TemporaryArxivError as error:
+            reporter.warning(
+                f"{error}; keeping the existing arXiv cache unchanged"
+            )
+            return 0
+        except (OSError, ArxivError, StorageError, ValueError, TypeError) as error:
+            print(f"bibreview arxiv: {error}", file=sys.stderr)
+            return 1
+        if not args.quiet:
+            print(plan.summary())
+            if not plan.changed:
+                print("arXiv cache already up to date.")
         return 0
 
     raise AssertionError("unreachable")

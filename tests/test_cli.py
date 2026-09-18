@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
+from bibreview.arxiv import ArxivError, TemporaryArxivError
 from bibreview.cli import main
 from bibreview.config import load_config
 from bibreview.identity import new_publication_id
@@ -275,6 +276,117 @@ class CliTests(unittest.TestCase):
             "Rendered site artifacts already up to date.",
             stdout.getvalue(),
         )
+
+    def test_arxiv_dry_run_and_apply(self):
+        self.config_path.write_text(
+            CONFIG.replace(
+                "  slug: example-review\n",
+                "  slug: example-review\n"
+                "  contact:\n"
+                "    email: ada@example.org\n"
+                "arxiv:\n"
+                "  enabled: true\n"
+                "  query: all:test\n"
+                "  output: arxiv.json\n",
+            ),
+            encoding="utf-8",
+        )
+        plan = SimpleNamespace(
+            changed=True,
+            summary=lambda: "arXiv entries: 1; cache changed: yes",
+        )
+
+        stdout = StringIO()
+        stderr = StringIO()
+        with patch(
+            "bibreview.cli.plan_project_arxiv",
+            return_value=plan,
+        ), patch(
+            "bibreview.cli.apply_project_arxiv",
+        ) as apply, redirect_stdout(stdout), redirect_stderr(stderr):
+            code = main([
+                "--config", str(self.config_path),
+                "--dry-run",
+                "arxiv",
+            ])
+        self.assertEqual(code, 0, stderr.getvalue())
+        self.assertIn("Dry run: arXiv entries: 1", stdout.getvalue())
+        apply.assert_not_called()
+
+        stdout = StringIO()
+        stderr = StringIO()
+        with patch(
+            "bibreview.cli.plan_project_arxiv",
+            return_value=plan,
+        ), patch(
+            "bibreview.cli.apply_project_arxiv",
+        ) as apply, redirect_stdout(stdout), redirect_stderr(stderr):
+            code = main([
+                "--config", str(self.config_path),
+                "arxiv",
+            ])
+        self.assertEqual(code, 0, stderr.getvalue())
+        self.assertIn("arXiv entries: 1", stdout.getvalue())
+        apply.assert_called_once_with(plan)
+
+    def test_arxiv_transient_failure_warns_and_keeps_success_exit(self):
+        self.config_path.write_text(
+            CONFIG.replace(
+                "  slug: example-review\n",
+                "  slug: example-review\n"
+                "  contact:\n"
+                "    email: ada@example.org\n"
+                "arxiv:\n"
+                "  enabled: true\n"
+                "  query: all:test\n"
+                "  output: arxiv.json\n",
+            ),
+            encoding="utf-8",
+        )
+        stdout = StringIO()
+        stderr = StringIO()
+        with patch(
+            "bibreview.cli.plan_project_arxiv",
+            side_effect=TemporaryArxivError("temporary failure"),
+        ), redirect_stdout(stdout), redirect_stderr(stderr):
+            code = main([
+                "--config", str(self.config_path),
+                "arxiv",
+            ])
+        self.assertEqual(code, 0)
+        self.assertEqual(stdout.getvalue(), "")
+        self.assertIn("warning", stderr.getvalue())
+        self.assertIn("keeping the existing arXiv cache unchanged", stderr.getvalue())
+        self.assertNotIn("Traceback", stderr.getvalue())
+
+    def test_arxiv_permanent_failure_is_reported(self):
+        self.config_path.write_text(
+            CONFIG.replace(
+                "  slug: example-review\n",
+                "  slug: example-review\n"
+                "  contact:\n"
+                "    email: ada@example.org\n"
+                "arxiv:\n"
+                "  enabled: true\n"
+                "  query: all:test\n"
+                "  output: arxiv.json\n",
+            ),
+            encoding="utf-8",
+        )
+        stdout = StringIO()
+        stderr = StringIO()
+        with patch(
+            "bibreview.cli.plan_project_arxiv",
+            side_effect=ArxivError("bad feed"),
+        ), redirect_stdout(stdout), redirect_stderr(stderr):
+            code = main([
+                "--config", str(self.config_path),
+                "arxiv",
+            ])
+        self.assertEqual(code, 1)
+        self.assertEqual(stdout.getvalue(), "")
+        self.assertIn("bibreview arxiv: bad feed", stderr.getvalue())
+        self.assertNotIn("Traceback", stderr.getvalue())
 
     def test_merge_dry_run_does_not_mutate_state(self):
         write_bibliography(

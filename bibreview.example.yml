@@ -4,6 +4,20 @@ project:
   name: Example Review
   slug: example-review
   title: Example bibliographic review
+  repository: https://example.org/example-review
+  contact:
+    name: Example Maintainer
+    email: maintainer@example.org
+
+# Optional display-only arXiv feed cache. This is deliberately separate from
+# the DOI-backed canonical bibliography and Publication model.
+arxiv:
+  enabled: false
+  query: all:fluid AND all:structure
+  max_results: 25
+  sort_by: lastUpdatedDate
+  sort_order: descending
+  output: site/data/arxiv.json
 
 paths:
   bibliography: data/bibliography.json
