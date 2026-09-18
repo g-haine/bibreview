@@ -76,6 +76,61 @@ class ConfigTests(unittest.TestCase):
         )
         self.assertEqual(config.discovery.exclude_doi_substrings, ("zenodo", "arxiv"))
 
+    def test_loads_jekyll_render_policy(self):
+        _, path = self.write(BASE.replace(
+            "site:\n  enabled: false\n",
+            "site:\n"
+            "  enabled: true\n"
+            "  implementation: jekyll\n"
+            "  jekyll:\n"
+            "    include_authorless_year_publications: false\n"
+            "    author_index_extra_html: |\n"
+            "      <p>Project note.</p>\n"
+            "      <hr />\n"
+            "    category_by_type:\n"
+            "      journal-article: articles\n"
+            "      book: books\n"
+            "    event_category_rules:\n"
+            "      - pattern: 'Conference|Workshop'\n"
+            "        category: proceedings\n"
+            "    isbn_types:\n"
+            "      - book\n"
+            "      - book-chapter\n",
+        ))
+        config = load_config(path)
+        self.assertFalse(
+            config.site.jekyll.include_authorless_year_publications
+        )
+        self.assertEqual(
+            config.site.jekyll.author_index_extra_html,
+            "<p>Project note.</p>\n<hr />\n",
+        )
+        self.assertEqual(
+            dict(config.site.jekyll.category_by_type),
+            {"journal-article": "articles", "book": "books"},
+        )
+        self.assertEqual(
+            config.site.jekyll.event_category_rules,
+            (("Conference|Workshop", "proceedings"),),
+        )
+        self.assertEqual(
+            config.site.jekyll.isbn_types,
+            ("book", "book-chapter"),
+        )
+
+    def test_rejects_invalid_jekyll_event_category_rule(self):
+        _, path = self.write(BASE.replace(
+            "site:\n  enabled: false\n",
+            "site:\n"
+            "  enabled: true\n"
+            "  jekyll:\n"
+            "    event_category_rules:\n"
+            "      - pattern: '['\n"
+            "        category: proceedings\n",
+        ))
+        with self.assertRaisesRegex(ConfigError, "event_category_rules"):
+            load_config(path)
+
     def test_rejects_unknown_schema_version(self):
         _, path = self.write(BASE.replace("schema_version: 1", "schema_version: 2"))
         with self.assertRaisesRegex(ConfigError, "unsupported schema_version"):
