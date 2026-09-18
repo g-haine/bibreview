@@ -14,7 +14,7 @@ The current M3 implementation includes:
 - an opt-in refresh/recollect pipeline for stale existing publications;
 - canonical author-mapping analysis, bibliography merge, and JSON storage;
 - staged multi-file writes with atomic replacement per destination file;
-- `bibreview discover`, `collect`, `refresh`, `authors`, `merge`, and `render` commands;
+- `bibreview discover`, `collect`, `refresh`, `authors`, `merge`, `render`, and optional `arxiv` commands;
 - `--dry-run` support for mutating CLI workflows.
 
 M4 site extraction now has three explicit layers in `bibreview.site`. `build_site_model()` converts canonical publications plus reviewed author mappings into immutable publication, author, year, and reference-link data. Pure Jekyll renderers convert that model into immutable `RenderedArtifact(path, content)` values. `plan_rendered_artifacts()` then reconciles those artifacts with explicitly managed generated directories and returns a read-only persistence plan; `apply_rendered_artifacts()` performs atomic-per-file writes followed by deletion of obsolete generated files. The project-level `bibreview render` command composes those layers from `bibreview.yml`; the pure renderers themselves still perform no filesystem or network access.
@@ -109,6 +109,53 @@ Refresh is deliberately separate from discovery. It is opt-in through `refresh.t
 `data/collected.json` is a staging bibliography, not a backup. This separation keeps backups in `archive/` and avoids using an overwritten bibliography file as an implicit data-transfer mechanism. Collection and refresh both refuse to overwrite a non-empty staging batch.
 
 During `bibreview merge`, accepted staged publications are merged by persistent UUID and approved strong identifiers, accepted DOI values move from `pending` to `known`, rejected DOI values are discarded from the staged batch, the staging bibliography is emptied, and the previous bibliography is backed up before replacement. A dry run computes the same plan without mutating files.
+
+## Optional arXiv module
+
+arXiv is deliberately separate from the canonical DOI bibliography and from the
+`Publication` model. It is a display-oriented feed cache for projects that want
+to show recent arXiv links alongside their curated bibliography.
+
+Enable it explicitly:
+
+```yaml
+project:
+  name: Example Review
+  slug: example-review
+  repository: https://example.org/example-review
+  contact:
+    name: Example Maintainer
+    email: maintainer@example.org
+
+arxiv:
+  enabled: true
+  query: all:fluid AND all:structure
+  max_results: 25
+  sort_by: lastUpdatedDate
+  sort_order: descending
+  output: site/data/arxiv.json
+```
+
+Then refresh the cache with:
+
+```bash
+bibreview --config bibreview.yml arxiv
+```
+
+The cache keeps the compact PHRAISE-compatible shape
+`{"generated_at": ..., "papers": [...]}`. Each entry contains only display
+fields: title, summary, arXiv page URL, author names, and last-updated date.
+
+The module uses the arXiv Atom API with an identifiable project/BibReview user
+agent and the configured `project.contact.email`. Retryable HTTP/network
+failures use a bounded retry policy and honor `Retry-After`. If a transient
+failure still exhausts that policy, the CLI warns, returns successfully, and
+leaves the existing cache untouched so a scheduled website workflow does not
+destroy or replace good cached data. Permanent failures and empty feeds are
+reported as errors.
+
+The arXiv command does not discover, collect, merge, or create canonical
+`Publication` objects. It is an optional parallel module.
 
 ## Site-model boundary
 
