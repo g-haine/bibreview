@@ -214,7 +214,7 @@ permalink: /years/2024
         }
         self.assertIn("anonymous-work", default["years/2025.md"])
 
-        legacy = {
+        filtered = {
             item.path: item.content
             for item in render_jekyll_index_pages(
                 extended,
@@ -223,7 +223,7 @@ permalink: /years/2024
                 ),
             )
         }
-        self.assertNotIn("anonymous-work", legacy["years/2025.md"])
+        self.assertNotIn("anonymous-work", filtered["years/2025.md"])
         self.assertIn("new-work", legacy["years/2025.md"])
 
     def test_missing_publication_reference_is_rejected(self) -> None:
