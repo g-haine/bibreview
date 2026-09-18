@@ -4,7 +4,7 @@ BibReview is a generic bibliographic engine intended to support reproducible, hu
 
 The current M3 implementation includes:
 
-- versioned `bibreview.yml` loading and path resolution independent of PHRAISE;
+- versioned `bibreview.yml` loading, path resolution, and optional configured dotenv loading independent of PHRAISE;
 - a canonical publication model whose persistent internal identity is independent of DOI;
 - conservative exact strong-identifier matching, currently limited to DOI;
 - generic HTTP, OpenAlex, CrossRef, publisher enrichment, Semantic Scholar, and Mendeley provider layers;
@@ -18,6 +18,21 @@ The current M3 implementation includes:
 - `--dry-run` support for mutating CLI workflows.
 
 M4 site extraction now has three explicit layers in `bibreview.site`. `build_site_model()` converts canonical publications plus reviewed author mappings into immutable publication, author, year, and reference-link data. Pure Jekyll renderers convert that model into immutable `RenderedArtifact(path, content)` values. `plan_rendered_artifacts()` then reconciles those artifacts with explicitly managed generated directories and returns a read-only persistence plan; `apply_rendered_artifacts()` performs atomic-per-file writes followed by deletion of obsolete generated files. Rendering itself still performs no filesystem or network access.
+
+## Runtime secrets
+
+Projects may point BibReview at an optional dotenv file:
+
+```yaml
+environment:
+  file: .env
+```
+
+The path is resolved relative to `bibreview.yml`. Values loaded from that file
+act only as defaults: variables already present in the process environment take
+precedence. A missing configured file does not abort the command; BibReview
+warns and continues with the process environment, so optional providers retain
+their normal missing-secret behavior.
 
 ## Project-state handoff
 
