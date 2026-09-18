@@ -1,7 +1,6 @@
 """Collect DOI-backed publications without mutating project files.
 
-This module owns the bibliographic decisions that used to be embedded in
-PHRAISE's collection script. Network adapters are injected, and persistence is
+This module owns project-independent DOI collection decisions. Network adapters are injected, and persistence is
 left to later storage/merge stages so failures cannot leave a partial on-disk
 collection.
 """
