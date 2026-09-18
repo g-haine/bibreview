@@ -21,7 +21,6 @@ class IdentityTests(unittest.TestCase):
         with self.assertRaises(IdentityError):
             normalize_doi("not-a-doi")
 
-
     def test_new_id_is_uuid_and_not_deterministic(self):
         first = new_publication_id()
         second = new_publication_id()
