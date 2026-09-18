@@ -105,13 +105,45 @@ class SiteArtifactPersistenceTests(unittest.TestCase):
                     managed_roots=("_posts",),
                 )
 
-    def test_managed_roots_must_be_top_level_directories(self) -> None:
+    def test_nested_managed_root_is_supported_without_touching_siblings(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            with self.assertRaisesRegex(SitePersistenceError, "top-level"):
+            root = Path(tmp)
+            (root / "_data/bibreview").mkdir(parents=True)
+            (root / "_data/manual.json").write_text("manual", encoding="utf-8")
+            (root / "_data/bibreview/obsolete.json").write_text(
+                "obsolete",
+                encoding="utf-8",
+            )
+            artifact = RenderedArtifact(
+                path="_data/bibreview/metadata.json",
+                content="metadata",
+            )
+            plan = plan_rendered_artifacts(
+                root,
+                (artifact,),
+                managed_roots=("_data/bibreview",),
+            )
+            apply_rendered_artifacts(plan)
+
+            self.assertEqual(
+                (root / "_data/bibreview/metadata.json").read_text(),
+                "metadata",
+            )
+            self.assertFalse(
+                (root / "_data/bibreview/obsolete.json").exists()
+            )
+            self.assertEqual(
+                (root / "_data/manual.json").read_text(),
+                "manual",
+            )
+
+    def test_overlapping_managed_roots_are_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaisesRegex(SitePersistenceError, "must not overlap"):
                 plan_rendered_artifacts(
                     tmp,
                     (),
-                    managed_roots=("generated/posts",),
+                    managed_roots=("_data", "_data/bibreview"),
                 )
 
     @unittest.skipIf(os.name == "nt", "symlink semantics differ on Windows")
@@ -119,7 +151,7 @@ class SiteArtifactPersistenceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as outside:
             root = Path(tmp)
             (root / "_posts").symlink_to(Path(outside), target_is_directory=True)
-            with self.assertRaisesRegex(SitePersistenceError, "must not be a symlink"):
+            with self.assertRaisesRegex(SitePersistenceError, "symlink"):
                 plan_rendered_artifacts(
                     root,
                     (RenderedArtifact(path="_posts/a.md", content="x"),),
