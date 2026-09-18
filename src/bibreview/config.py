@@ -96,6 +96,13 @@ def _integer(value: Any, name: str, default: int, *, minimum: int = 1) -> int:
 
 
 @dataclass(frozen=True)
+class EnvironmentConfig:
+    """Optional runtime environment-file configuration."""
+
+    file: Path | None = None
+
+
+@dataclass(frozen=True)
 class ProjectConfig:
     name: str
     slug: str
@@ -171,6 +178,7 @@ class SiteConfig:
 class BibReviewConfig:
     source: Path
     schema_version: int
+    environment: EnvironmentConfig
     project: ProjectConfig
     paths: PathsConfig
     discovery: DiscoveryConfig
@@ -182,6 +190,14 @@ class BibReviewConfig:
 
 def _path(base: Path, value: Any, default: str, name: str) -> Path:
     raw = _string(value, name) or default
+    path = Path(raw).expanduser()
+    return path if path.is_absolute() else (base / path).resolve()
+
+
+def _optional_path(base: Path, value: Any, name: str) -> Path | None:
+    raw = _string(value, name)
+    if not raw:
+        return None
     path = Path(raw).expanduser()
     return path if path.is_absolute() else (base / path).resolve()
 
@@ -204,6 +220,12 @@ def load_config(path: str | Path = "bibreview.yml") -> BibReviewConfig:
             f"unsupported schema_version {schema_version!r}; expected {SCHEMA_VERSION}"
         )
 
+    base = source.parent
+    environment_raw = _mapping(raw.get("environment"), "environment")
+    environment = EnvironmentConfig(
+        file=_optional_path(base, environment_raw.get("file"), "environment.file"),
+    )
+
     project_raw = _mapping(raw.get("project"), "project")
     name = _string(project_raw.get("name"), "project.name", required=True)
     slug = _string(project_raw.get("slug"), "project.slug", required=True)
@@ -221,7 +243,6 @@ def load_config(path: str | Path = "bibreview.yml") -> BibReviewConfig:
         contact_name=_string(contact.get("name"), "project.contact.name"),
     )
 
-    base = source.parent
     paths_raw = _mapping(raw.get("paths"), "paths")
     paths = PathsConfig(
         bibliography=_path(base, paths_raw.get("bibliography"), "data/bibliography.json", "paths.bibliography"),
@@ -314,6 +335,7 @@ def load_config(path: str | Path = "bibreview.yml") -> BibReviewConfig:
     return BibReviewConfig(
         source=source,
         schema_version=schema_version,
+        environment=environment,
         project=project,
         paths=paths,
         discovery=discovery,

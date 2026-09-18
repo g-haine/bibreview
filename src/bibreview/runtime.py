@@ -11,6 +11,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 import os
 
+from dotenv import dotenv_values
+
 from . import __version__
 from .config import BibReviewConfig, ProviderConfig
 from .pipeline.collect import BibtexLookup, CitationLookup, EnrichmentLookup, WorkProvider
@@ -61,6 +63,45 @@ class _CoreServices:
 def _provider(config: BibReviewConfig, name: str) -> ProviderConfig | None:
     value = config.providers.get(name)
     return value if value is not None and value.enabled else None
+
+
+def _runtime_environment(
+    config: BibReviewConfig,
+    *,
+    environ: Mapping[str, str] | None,
+    reporter: Reporter,
+) -> Mapping[str, str]:
+    """Compose configured dotenv defaults with the process/caller environment.
+
+    Values supplied by the caller or exported in the process environment always
+    override values loaded from the optional configured environment file.
+    """
+    values: dict[str, str] = {}
+    path = config.environment.file
+    if path is not None:
+        if path.exists():
+            values.update(
+                {
+                    key: value
+                    for key, value in dotenv_values(path).items()
+                    if isinstance(key, str) and isinstance(value, str)
+                }
+            )
+        else:
+            reporter.warning(
+                f"Configured environment file does not exist: {path}; "
+                "continuing with the process environment."
+            )
+
+    override = os.environ if environ is None else environ
+    values.update(
+        {
+            str(key): str(value)
+            for key, value in override.items()
+            if value is not None
+        }
+    )
+    return values
 
 
 def _secret(
@@ -209,7 +250,11 @@ def build_collection_services(
 ) -> CollectionServices:
     """Compose configured network providers for one collection command run."""
     progress = reporter or Reporter()
-    environment = os.environ if environ is None else environ
+    environment = _runtime_environment(
+        config,
+        environ=environ,
+        reporter=progress,
+    )
     core = _build_core_services(config, reporter=progress, environ=environment)
     return CollectionServices(
         provider=core.crossref,
@@ -227,7 +272,11 @@ def build_discovery_services(
 ) -> DiscoveryServices:
     """Compose configured OpenAlex/CrossRef services for one discovery run."""
     progress = reporter or Reporter()
-    environment = os.environ if environ is None else environ
+    environment = _runtime_environment(
+        config,
+        environ=environ,
+        reporter=progress,
+    )
     if config.discovery.provider != "openalex":
         raise ValueError(f"unsupported discovery provider: {config.discovery.provider}")
 

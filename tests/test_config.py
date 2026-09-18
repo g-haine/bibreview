@@ -46,6 +46,18 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(config.discovery.accepted_types, DEFAULT_DISCOVERY_TYPES)
         self.assertEqual(config.discovery.exclude_doi_substrings, ())
 
+    def test_resolves_optional_environment_file_relative_to_config(self):
+        root, path = self.write(BASE.replace(
+            "project:\n",
+            "environment:\n  file: secrets/.env\nproject:\n",
+        ))
+        config = load_config(path)
+        self.assertEqual(config.environment.file, root / "secrets/.env")
+
+    def test_environment_file_defaults_to_none(self):
+        _, path = self.write()
+        self.assertIsNone(load_config(path).environment.file)
+
     def test_loads_configurable_discovery_type_and_doi_exclusions(self):
         _, path = self.write(BASE.replace(
             "  query: fluid-structure interaction\n",
