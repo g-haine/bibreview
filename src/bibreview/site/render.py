@@ -36,6 +36,7 @@ class JekyllIndexRenderOptions:
     baseurl_expression: str = "{{ site.baseurl }}"
     count_posts_include: str = "{% include count-posts.html %}"
     author_index_extra_html: str = ""
+    include_authorless_year_publications: bool = True
 
 
 def _yaml_scalar(value: str) -> str:
@@ -189,12 +190,26 @@ def render_jekyll_index_pages(
     for year, page in model.years.items():
         if not year.isdecimal():
             raise SiteRenderError(f"invalid site year {year!r}")
+        publication_ids = page.publication_ids
+        if not options.include_authorless_year_publications:
+            filtered: list[str] = []
+            for publication_id in publication_ids:
+                publication = publications.get(publication_id)
+                if publication is None:
+                    raise SiteRenderError(
+                        f"site index references missing publication id {publication_id!r}"
+                    )
+                if publication.authors:
+                    filtered.append(publication_id)
+            publication_ids = tuple(filtered)
+        if not publication_ids:
+            continue
         year_index += (
             f"<a href='{options.baseurl_expression}/years/{year}'>{year}</a>\n"
         )
         content = _page_header(f"Published in {year}", f"/years/{year}")
         content += '<h3 id="number-posts">There are ... items referenced.</h3>\n'
-        content += _publication_list(page.publication_ids, publications, options)
+        content += _publication_list(publication_ids, publications, options)
         artifacts[f"years/{year}.md"] = content
     artifacts["years/index.md"] = year_index + "</div>\n"
 
