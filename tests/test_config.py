@@ -58,6 +58,88 @@ class ConfigTests(unittest.TestCase):
         _, path = self.write()
         self.assertIsNone(load_config(path).environment.file)
 
+    def test_loads_optional_arxiv_configuration(self):
+        root, path = self.write(BASE.replace(
+            "  slug: example-review\n",
+            "  slug: example-review\n"
+            "  repository: https://example.org/review\n"
+            "  contact:\n"
+            "    name: Ada Lovelace\n"
+            "    email: ada@example.org\n"
+            "arxiv:\n"
+            "  enabled: true\n"
+            "  query: all:fluid AND all:structure\n"
+            "  max_results: 40\n"
+            "  sort_by: submittedDate\n"
+            "  sort_order: ascending\n"
+            "  output: public/arxiv.json\n",
+        ))
+        config = load_config(path)
+        self.assertTrue(config.arxiv.enabled)
+        self.assertEqual(config.arxiv.query, "all:fluid AND all:structure")
+        self.assertEqual(config.arxiv.max_results, 40)
+        self.assertEqual(config.arxiv.sort_by, "submittedDate")
+        self.assertEqual(config.arxiv.sort_order, "ascending")
+        self.assertEqual(config.arxiv.output, root / "public/arxiv.json")
+        self.assertEqual(config.project.contact_email, "ada@example.org")
+
+    def test_arxiv_defaults_to_disabled(self):
+        _, path = self.write()
+        config = load_config(path)
+        self.assertFalse(config.arxiv.enabled)
+        self.assertIsNone(config.arxiv.output)
+
+    def test_enabled_arxiv_requires_query_output_and_contact_email(self):
+        cases = (
+            (
+                "missing query",
+                "arxiv:\n  enabled: true\n  output: arxiv.json\n",
+                "arxiv.query",
+            ),
+            (
+                "missing output",
+                "arxiv:\n  enabled: true\n  query: all:test\n",
+                "arxiv.output",
+            ),
+            (
+                "missing contact",
+                "arxiv:\n  enabled: true\n  query: all:test\n  output: arxiv.json\n",
+                "project.contact.email",
+            ),
+        )
+        for label, arxiv, message in cases:
+            with self.subTest(label=label):
+                content = BASE.replace(
+                    "paths:\n",
+                    arxiv + "paths:\n",
+                )
+                if label != "missing contact":
+                    content = content.replace(
+                        "  slug: example-review\n",
+                        "  slug: example-review\n"
+                        "  contact:\n"
+                        "    email: ada@example.org\n",
+                    )
+                _, path = self.write(content)
+                with self.assertRaisesRegex(ConfigError, message):
+                    load_config(path)
+
+    def test_rejects_invalid_arxiv_sort_policy(self):
+        content = BASE.replace(
+            "  slug: example-review\n",
+            "  slug: example-review\n"
+            "  contact:\n"
+            "    email: ada@example.org\n"
+            "arxiv:\n"
+            "  enabled: true\n"
+            "  query: all:test\n"
+            "  output: arxiv.json\n"
+            "  sort_by: unknown\n",
+        )
+        _, path = self.write(content)
+        with self.assertRaisesRegex(ConfigError, "arxiv.sort_by"):
+            load_config(path)
+
     def test_loads_configurable_discovery_type_and_doi_exclusions(self):
         _, path = self.write(BASE.replace(
             "  query: fluid-structure interaction\n",
