@@ -13,7 +13,7 @@ from bibreview.project_render import (
     apply_project_render,
     plan_project_render,
 )
-from bibreview.storage import write_bibliography, write_json
+from bibreview.storage import BibliographyMetadata, write_bibliography, write_json
 
 
 CONFIG = """\
@@ -79,7 +79,13 @@ class ProjectRenderTests(unittest.TestCase):
         )
         self.publication = publication
         self.config.paths.bibliography.parent.mkdir(parents=True, exist_ok=True)
-        write_bibliography(self.config.paths.bibliography, (publication,))
+        write_bibliography(
+            self.config.paths.bibliography,
+            (publication,),
+            metadata=BibliographyMetadata(
+                last_update=date(2026, 9, 11),
+            ),
+        )
         write_json(
             self.config.paths.author_mappings,
             {"ada-lovelace": ["Ada Lovelace"]},
@@ -109,7 +115,7 @@ class ProjectRenderTests(unittest.TestCase):
         plan = plan_project_render(self.config)
 
         self.assertTrue(plan.changed)
-        self.assertEqual(plan.persistence.expected_count, 5)
+        self.assertEqual(plan.persistence.expected_count, 6)
         self.assertEqual(plan.orphan_bibtex, (orphan,))
         self.assertIn(site / "_posts/obsolete.md", plan.persistence.deletes)
 
@@ -125,13 +131,19 @@ class ProjectRenderTests(unittest.TestCase):
         self.assertTrue((site / "authors/index.md").is_file())
         self.assertTrue((site / "years/2026.md").is_file())
         self.assertTrue((site / "years/index.md").is_file())
+        self.assertEqual(
+            (site / "_data/bibreview/metadata.json").read_text(
+                encoding="utf-8"
+            ),
+            '{\n  "schema_version": 1,\n  "last_update": "2026-09-11"\n}\n',
+        )
         self.assertFalse((site / "_posts/obsolete.md").exists())
         self.assertEqual((site / "manual.md").read_text(), "manual")
         self.assertTrue(orphan.exists())
 
         final = plan_project_render(self.config)
         self.assertFalse(final.changed)
-        self.assertEqual(final.persistence.unchanged_count, 5)
+        self.assertEqual(final.persistence.unchanged_count, 6)
 
     def test_planning_is_read_only(self):
         before = self.snapshot()
