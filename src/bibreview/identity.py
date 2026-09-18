@@ -9,7 +9,7 @@ import uuid
 _DOI_PREFIX = re.compile(r"^(?:https?://(?:dx\.)?doi\.org/|doi:\s*)", re.IGNORECASE)
 
 # External identifiers are not automatically strong merely because they are
-# present in Publication.identifiers. M3 enables exact DOI matching only.
+# present in Publication.identifiers. BibReview currently enables exact DOI matching only.
 # Future identifiers (for example arXiv or PMID) must be added deliberately
 # once their normalization and identity semantics are defined.
 STRONG_IDENTIFIER_NAMES = frozenset({"doi"})
@@ -77,7 +77,7 @@ def shared_strong_identifier(
 ) -> tuple[str, str] | None:
     """Return an exact shared approved strong identifier, or ``None``.
 
-    M3 deliberately performs no fuzzy title/author merge and does not treat
+    BibReview deliberately performs no fuzzy title/author merge and does not treat
     arbitrary metadata identifiers such as ISBN as automatic identity keys.
     """
     right_values = dict(strong_identifiers(right))
