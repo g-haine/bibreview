@@ -78,5 +78,5 @@ def format_bibtex(value: str) -> str:
     return (
         result
         if any(line.startswith("@") for line in result.split("\n"))
-        else "No BibTeX found!"
-    ) + "\n"
+        else ""
+    ) + ("\n" if result else "")
