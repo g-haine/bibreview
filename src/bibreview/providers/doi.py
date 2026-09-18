@@ -55,7 +55,7 @@ class DoiProvider:
 
 
 def format_bibtex(value: str) -> str:
-    """Preserve PHRAISE's validated line-oriented BibTeX output format."""
+    """Normalize DOI-resolved BibTeX to BibReview's stable line-oriented format."""
     value = value.replace(" @", "@").replace("},", "},\n ")
     for field in ("series", "pages", "title"):
         value = value.replace(f", {field}", f",\n  {field}")
@@ -75,8 +75,6 @@ def format_bibtex(value: str) -> str:
     if len(lines) >= 2:
         lines[-2] = lines[-2].replace(",", "")
     result = "\n".join(lines).replace("&amp;", "\\&").rstrip("\n")
-    return (
-        result
-        if any(line.startswith("@") for line in result.split("\n"))
-        else "No BibTeX found!"
-    ) + "\n"
+    if not any(line.startswith("@") for line in result.split("\n")):
+        return ""
+    return result + "\n"

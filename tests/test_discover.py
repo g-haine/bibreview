@@ -20,17 +20,17 @@ class DiscoveryTests(unittest.TestCase):
     def test_relevance_normalizes_unicode_dash_punctuation(self):
         self.assertTrue(
             is_relevant(
-                "Port–Hamiltonian formulation",
-                (r"port[-\s]+hamiltonian",),
+                "Fluid–structure formulation",
+                (r"fluid[-\s]+structure",),
             )
         )
-        self.assertFalse(is_relevant("ordinary Hamiltonian system", (r"port-hamiltonian",)))
+        self.assertFalse(is_relevant("ordinary mechanics article", (r"fluid-structure",)))
 
     def test_screens_candidates_with_configured_policy(self):
         provider = FakeProvider({
             "10.1/relevant-title": {
                 "type": "journal-article",
-                "title": ["Port-Hamiltonian systems"],
+                "title": ["Fluid-structure systems"],
             },
             "10.1/relevant-extra": {
                 "type": "book-chapter",
@@ -42,13 +42,13 @@ class DiscoveryTests(unittest.TestCase):
             },
             "10.1/unsupported": {
                 "type": "dataset",
-                "title": ["Port-Hamiltonian data"],
+                "title": ["Fluid-structure data"],
             },
         })
 
         def enrichment(doi, message):
             if doi == "10.1/relevant-extra":
-                return Enrichment(abstract="A Dirac structure appears here")
+                return Enrichment(abstract="Interface coupling appears here")
             return Enrichment()
 
         result = discover(
@@ -66,7 +66,7 @@ class DiscoveryTests(unittest.TestCase):
             provider=provider,
             known=("10.1/known",),
             rejected=("10.1/rejected",),
-            patterns=(r"port[-\s]+hamiltonian", r"dirac structure"),
+            patterns=(r"fluid[-\s]+structure", r"interface coupling"),
             unmatched="manual-review",
             excluded_doi_substrings=("zenodo",),
             enrichment_lookup=enrichment,
@@ -122,13 +122,13 @@ class DiscoveryTests(unittest.TestCase):
             "10.1/abstract": {
                 "type": "journal-article",
                 "title": ["Generic title"],
-                "abstract": "<jats:p>Dirac structure formulation</jats:p>",
+                "abstract": "<jats:p>Interface coupling formulation</jats:p>",
             },
         })
         result = discover(
             ["10.1/subject", "10.1/abstract"],
             provider=provider,
-            patterns=(r"fluid[-\s]+structure", r"dirac structure"),
+            patterns=(r"fluid[-\s]+structure", r"interface coupling"),
         )
         self.assertEqual(result.queued, ("10.1/subject", "10.1/abstract"))
 

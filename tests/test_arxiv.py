@@ -13,7 +13,7 @@ ATOM = b"""<?xml version="1.0" encoding="UTF-8"?>
   <entry>
     <id>https://arxiv.org/abs/2609.12345v2</id>
     <updated>2026-09-18T09:00:00Z</updated>
-    <title> Port-Hamiltonian example </title>
+    <title> Fluid-structure example </title>
     <summary> A concise summary. </summary>
     <author><name>Ada Lovelace</name></author>
     <author><name>Emmy Noether</name></author>
@@ -56,7 +56,7 @@ class SequenceOpener:
 class ArxivProviderTests(unittest.TestCase):
     def provider(self, *, opener, sleeper=lambda _: None):
         return ArxivProvider(
-            query="all:port AND all:Hamiltonian",
+            query="all:fluid AND all:structure",
             max_results=25,
             sort_by="lastUpdatedDate",
             sort_order="descending",
@@ -74,7 +74,7 @@ class ArxivProviderTests(unittest.TestCase):
         request = provider.request()
         query = parse_qs(urlparse(request.full_url).query)
 
-        self.assertEqual(query["search_query"], ["all:port AND all:Hamiltonian"])
+        self.assertEqual(query["search_query"], ["all:fluid AND all:structure"])
         self.assertEqual(query["start"], ["0"])
         self.assertEqual(query["max_results"], ["25"])
         self.assertEqual(query["sortBy"], ["lastUpdatedDate"])
@@ -95,7 +95,7 @@ class ArxivProviderTests(unittest.TestCase):
 
         self.assertEqual(len(entries), 1)
         entry = entries[0]
-        self.assertEqual(entry.title, "Port-Hamiltonian example")
+        self.assertEqual(entry.title, "Fluid-structure example")
         self.assertEqual(entry.summary, "A concise summary.")
         self.assertEqual(entry.url, "https://arxiv.org/abs/2609.12345v2")
         self.assertEqual(entry.authors, ("Ada Lovelace", "Emmy Noether"))

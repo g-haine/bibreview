@@ -16,7 +16,7 @@ class FakeProvider:
         return self.works.get(doi)
 
 
-def message(title="Port-Hamiltonian systems"):
+def message(title="Fluid-structure systems"):
     return {
         "title": [title],
         "type": "journal-article",
@@ -55,7 +55,7 @@ class PrepareDoisTests(unittest.TestCase):
 
 class BuildPublicationTests(unittest.TestCase):
     def test_builds_canonical_publication_from_crossref(self):
-        data = message("Port <mml:math>x</mml:math> Hamiltonian")
+        data = message("Fluid <mml:math>x</mml:math> structure")
         data["reference"] = [
             {"DOI": "10.2/REF"},
             {"author": "A", "article-title": "Title", "year": 2020},
@@ -64,7 +64,7 @@ class BuildPublicationTests(unittest.TestCase):
         publication = build_publication(
             "10.1/TEST",
             data,
-            "port-hamiltonian",
+            "fluid-structure",
             enrichment_lookup=lambda doi, work: Enrichment(
                 abstract="Abstract Enriched text",
                 keywords=("control", "energy"),
@@ -75,8 +75,8 @@ class BuildPublicationTests(unittest.TestCase):
 
         self.assertEqual(publication.doi, "10.1/test")
         self.assertEqual(publication.identifiers["isbn"], "978-1-234")
-        # Match the established PHRAISE behavior: strip MathML tags, retain text content.
-        self.assertEqual(publication.title, "Port x Hamiltonian")
+        # Verify generic metadata normalization: strip MathML tags, retain text content.
+        self.assertEqual(publication.title, "Fluid x structure")
         self.assertEqual([(a.given, a.family) for a in publication.authors], [("Ada", "Lovelace")])
         self.assertEqual(publication.abstract, "Enriched text")
         self.assertEqual(publication.publication_year, "2025")
@@ -90,7 +90,7 @@ class BuildPublicationTests(unittest.TestCase):
         self.assertEqual(publication.references[1].citation, "A, Title. (2020)")
 
     def test_default_enrichment_uses_crossref_fields(self):
-        publication = build_publication("10.1/test", message(), "port-hamiltonian")
+        publication = build_publication("10.1/test", message(), "fluid-structure")
         # Canonical in-memory data does not preserve incidental leading whitespace.
         self.assertEqual(publication.abstract, "CrossRef text")
         self.assertEqual(publication.keywords, ("Control", "Energy"))
@@ -100,16 +100,16 @@ class BuildPublicationTests(unittest.TestCase):
         data = message()
         data["created"] = {"date-parts": [[2024, 3]]}
         with self.assertRaisesRegex(ValueError, "missing CrossRef creation date"):
-            build_publication("10.1/test", data, "port-hamiltonian")
+            build_publication("10.1/test", data, "fluid-structure")
 
     def test_invalid_reference_doi_is_not_promoted(self):
         data = message()
         data["reference"] = [
-            {"DOI": "10.1016/j.geomphys. 2021.104201", "unstructured": "Legacy citation"}
+            {"DOI": "10.1016/j.geomphys. 2021.104201", "unstructured": "Malformed-source citation"}
         ]
-        publication = build_publication("10.1/test", data, "port-hamiltonian")
+        publication = build_publication("10.1/test", data, "fluid-structure")
         self.assertEqual(publication.references[0].identifiers, {})
-        self.assertEqual(publication.references[0].citation, "Legacy citation")
+        self.assertEqual(publication.references[0].citation, "Malformed-source citation")
 
 
 class CollectionTests(unittest.TestCase):
@@ -124,7 +124,7 @@ class CollectionTests(unittest.TestCase):
             ["10.1/KNOWN", "10.1/NEW", "10.1/missing", "10.1/OTHER"],
             provider=provider,
             known=["10.1/known"],
-            used_slugs=["port-hamiltonian-systems"],
+            used_slugs=["fluid-structure-systems"],
         )
 
         self.assertEqual(result.candidates, ("10.1/new", "10.1/missing", "10.1/other"))
@@ -132,7 +132,7 @@ class CollectionTests(unittest.TestCase):
         self.assertEqual(provider.calls, list(result.candidates))
         self.assertEqual(
             [item.publication.permalink for item in result.items],
-            ["port-hamiltonian-systems0", "port-hamiltonian-systems00"],
+            ["fluid-structure-systems0", "fluid-structure-systems00"],
         )
         self.assertEqual(len({publication.id for publication in result.publications}), 2)
 
@@ -145,6 +145,15 @@ class CollectionTests(unittest.TestCase):
         )
         self.assertEqual(result.items[0].bibtex, "@article{10.1/new}\n")
 
+    def test_empty_bibtex_is_treated_as_unavailable(self):
+        provider = FakeProvider({"10.1/new": message()})
+        result = collect(
+            ["10.1/new"],
+            provider=provider,
+            bibtex_lookup=lambda doi: "",
+        )
+        self.assertIsNone(result.items[0].bibtex)
+
     def test_provider_failure_propagates_before_any_persistence_layer(self):
         class FailingProvider:
             def work(self, doi):
@@ -153,7 +162,7 @@ class CollectionTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "offline"):
             collect(["10.1/new"], provider=FailingProvider())
 
-    def test_collection_result_does_not_depend_on_legacy_record_shape(self):
+    def test_collection_result_uses_canonical_publication_fields(self):
         provider = FakeProvider({"10.1/new": message()})
         result = collect(["10.1/new"], provider=provider)
         publication = result.publications[0]

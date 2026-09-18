@@ -144,6 +144,23 @@ class RuntimeTests(unittest.TestCase):
         self.assertIsInstance(services.provider, CrossRefProvider)
         self.assertIn("Configured environment file does not exist", stream.getvalue())
 
+    def test_project_contact_email_is_forwarded_to_crossref(self):
+        config = self.config(CONFIG.replace(
+            "  slug: example-review\n",
+            "  slug: example-review\n"
+            "  contact:\n"
+            "    email: maintainer@example.org\n",
+        ))
+        services = build_collection_services(
+            config,
+            reporter=Reporter(stream=StringIO()),
+            environ={},
+        )
+        self.assertEqual(
+            services.provider.mailto,
+            "maintainer@example.org",
+        )
+
     def test_missing_optional_secrets_warn_and_do_not_block_collection_wiring(self):
         stream = StringIO()
         services = build_collection_services(

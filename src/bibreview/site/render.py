@@ -1,7 +1,7 @@
 """Pure Jekyll rendering of author/year index pages from a SiteModel.
 
 This module returns text artifacts only.  It performs no filesystem access and
-contains no PHRAISE-specific prose or branding.  Projects may inject optional
+contains no project-specific prose or branding.  Projects may inject optional
 editorial HTML around the generic author index without changing renderer code.
 """
 
@@ -161,7 +161,7 @@ def _publication_list(
                 f"site index references missing publication id {publication_id!r}"
             )
         row = _publication_row(publication, options)
-        # PHRAISE's historical Jekyll renderer sorted by creation date and then
+        # The established Jekyll ordering sorts by creation date and then
         # by the complete rendered row.  Keep that presentation-specific
         # tie-break here rather than leaking HTML ordering into SiteModel.
         rows.append((publication.created_date, row))

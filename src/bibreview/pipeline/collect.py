@@ -1,7 +1,6 @@
 """Collect DOI-backed publications without mutating project files.
 
-This module owns the bibliographic decisions that used to be embedded in
-PHRAISE's collection script. Network adapters are injected, and persistence is
+This module owns project-independent DOI collection decisions. Network adapters are injected, and persistence is
 left to later storage/merge stages so failures cannot leave a partial on-disk
 collection.
 """
@@ -298,6 +297,11 @@ def collect(
         bibtex = bibtex_lookup(doi) if bibtex_lookup is not None else None
         if bibtex is not None and not isinstance(bibtex, str):
             raise TypeError("BibTeX lookup must return a string")
+        if bibtex is not None and not bibtex.strip():
+            bibtex = None
+            progress.detail(
+                f"{doi}: BibTeX unavailable; publication collected without a BibTeX file"
+            )
         items.append(CollectedItem(publication=publication, bibtex=bibtex))
 
     return CollectionResult(

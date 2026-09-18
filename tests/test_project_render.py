@@ -64,7 +64,7 @@ class ProjectRenderTests(unittest.TestCase):
             id=new_publication_id(),
             identifiers={"doi": "10.1/example"},
             type="journal-article",
-            title="Port-Hamiltonian example",
+            title="Fluid-structure example",
             authors=(Author(given="Ada", family="Lovelace"),),
             abstract="An abstract.",
             container_title="Journal",
@@ -75,7 +75,7 @@ class ProjectRenderTests(unittest.TestCase):
             publisher="Publisher",
             keywords=("control", "energy"),
             created_date=date(2026, 9, 18),
-            permalink="port-hamiltonian-example",
+            permalink="fluid-structure-example",
         )
         self.publication = publication
         self.config.paths.bibliography.parent.mkdir(parents=True, exist_ok=True)
@@ -92,7 +92,7 @@ class ProjectRenderTests(unittest.TestCase):
         )
         self.config.paths.bibtex.mkdir(parents=True, exist_ok=True)
         (
-            self.config.paths.bibtex / "port-hamiltonian-example.bib"
+            self.config.paths.bibtex / "fluid-structure-example.bib"
         ).write_text("@article{example}\n", encoding="utf-8")
 
     def snapshot(self) -> dict[str, bytes]:
@@ -124,7 +124,7 @@ class ProjectRenderTests(unittest.TestCase):
         self.assertTrue(
             (
                 site
-                / "_posts/2026-09-18-port-hamiltonian-example.md"
+                / "_posts/2026-09-18-fluid-structure-example.md"
             ).is_file()
         )
         self.assertTrue((site / "authors/ada-lovelace.md").is_file())
@@ -153,7 +153,7 @@ class ProjectRenderTests(unittest.TestCase):
 
     def test_missing_bibtex_is_rejected_before_site_mutation(self):
         (
-            self.config.paths.bibtex / "port-hamiltonian-example.bib"
+            self.config.paths.bibtex / "fluid-structure-example.bib"
         ).unlink()
         before = self.snapshot()
         with self.assertRaisesRegex(ProjectRenderError, "missing:"):

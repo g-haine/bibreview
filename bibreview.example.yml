@@ -1,5 +1,8 @@
 schema_version: 1
 
+environment:
+  file: .env
+
 project:
   name: Example Review
   slug: example-review
@@ -62,10 +65,31 @@ relevance:
 providers:
   crossref:
     enabled: true
+
   openalex:
     enabled: true
     # Optional: discovery also works without an OpenAlex API key.
     api_key_env: OPENALEX_API_KEY
+
+  # Optional enrichment providers. Enable only the services you use.
+  elsevier:
+    enabled: false
+    api_key_env: ELSEVIER_API_KEY
+
+  springer:
+    enabled: false
+    api_key_env: SPRINGER_API_KEY
+
+  ieee:
+    enabled: false
+    api_key_env: IEEE_API_KEY
+
+  semantic_scholar:
+    enabled: false
+
+  mendeley:
+    enabled: false
+    token_env: MENDELEY_TOKEN
 
 site:
   enabled: false

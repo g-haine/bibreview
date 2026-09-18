@@ -81,7 +81,7 @@ class StorageTests(unittest.TestCase):
             id=new_publication_id(),
             identifiers={"doi": "10.1234/Example", "isbn": "978-0-00-000000-0"},
             type="journal-article",
-            title="Port-Hamiltonian example",
+            title="Fluid-structure example",
             authors=(
                 Author(
                     given="Ada",
@@ -106,7 +106,7 @@ class StorageTests(unittest.TestCase):
             event="Conference",
             keywords=("control", "energy"),
             created_date=date(2026, 9, 17),
-            permalink="port-hamiltonian-example",
+            permalink="fluid-structure-example",
             references=(
                 Reference(identifiers={"doi": "10.1234/ref"}, citation="Reference"),
                 Reference(citation="Reference without DOI"),
@@ -140,7 +140,7 @@ class StorageTests(unittest.TestCase):
         self.assertEqual(loaded[0].authors[1].literal, "Example Research Consortium")
         self.assertEqual(loaded[0].identifiers["isbn"], "978-0-00-000000-0")
 
-    def test_canonical_reader_accepts_historical_bare_list(self) -> None:
+    def test_canonical_reader_accepts_earlier_bare_list_format(self) -> None:
         publication = Publication(id=new_publication_id(), title="Example")
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "bibliography.json"

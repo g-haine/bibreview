@@ -384,9 +384,9 @@ def _publications_from_records(
 def read_bibliography_document(path: Path | str) -> BibliographyDocument:
     """Read a canonical bibliography document.
 
-    The historical bare-list representation is accepted as a migration input
-    and interpreted as a document with empty metadata. Writers always emit the
-    document representation.
+    The earlier bare-list representation remains readable for backward data
+    compatibility and is interpreted as a document with empty metadata. Writers
+    always emit the document representation.
     """
     source = Path(path)
     try:
