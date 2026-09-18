@@ -118,6 +118,47 @@ permalink: /years/2024
             artifacts["authors/ada-lovelace.md"].index("old-work"),
         )
 
+    def test_same_date_tie_break_uses_rendered_row(self) -> None:
+        model = self.model()
+        first = model.publications[0]
+        second = SitePublication(
+            id="same-date-id",
+            permalink="z-work",
+            created_date=first.created_date,
+            year=first.year,
+            type=first.type,
+            title="A title that would sort first by title",
+            authors=first.authors,
+            abstract="",
+            container_title=first.container_title,
+            volume="",
+            issue="",
+            pages="",
+            publisher="",
+            event="",
+            keywords=(),
+        )
+        tied = SiteModel(
+            publications=(first, second),
+            authors={
+                "ada-lovelace": SiteAuthorPage(
+                    author=model.authors["ada-lovelace"].author,
+                    publication_ids=("old-id", "same-date-id"),
+                )
+            },
+            years={
+                "2024": SiteYearPage(
+                    year="2024",
+                    publication_ids=("old-id", "same-date-id"),
+                )
+            },
+        )
+        artifacts = {
+            item.path: item.content for item in render_jekyll_index_pages(tied)
+        }
+        content = artifacts["years/2024.md"]
+        self.assertLess(content.index("z-work"), content.index("old-work"))
+
     def test_author_index_accepts_project_editorial_html(self) -> None:
         default = self.artifacts()["authors/index.md"]
         self.assertNotIn("Project-specific note", default)
