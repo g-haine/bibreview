@@ -92,6 +92,21 @@ class RefreshTests(unittest.TestCase):
         self.assertEqual(tuple(item.publication.volume for item in result.items), ("12", "12"))
         self.assertEqual(provider.calls, ["10.1/missing", "10.1/changed"])
 
+    def test_empty_current_bibtex_keeps_existing_state(self):
+        item = publication("10.1/empty-current")
+        provider = FakeProvider({"10.1/empty-current": message()})
+        result = refresh(
+            [item],
+            provider=provider,
+            stored_bibtex_lookup=lambda publication: "@article{manual}\n",
+            bibtex_lookup=lambda doi: "",
+            types=("journal-article",),
+            when_missing_any=("volume",),
+        )
+        self.assertEqual(result.candidates, ())
+        self.assertEqual(result.items, ())
+        self.assertEqual(provider.calls, [])
+
     def test_unavailable_refresh_candidate_keeps_retry_information(self):
         item = publication("10.1/unavailable")
         provider = FakeProvider({})
