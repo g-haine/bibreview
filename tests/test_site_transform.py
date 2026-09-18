@@ -34,7 +34,7 @@ class SiteTransformTests(unittest.TestCase):
             issue="2",
             pages="3--4",
             publisher="Publisher",
-            keywords=("port-Hamiltonian",),
+            keywords=("fluid-structure",),
             created_date=created,
             permalink=permalink,
             references=references,
