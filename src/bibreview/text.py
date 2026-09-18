@@ -8,7 +8,7 @@ from unidecode import unidecode
 
 
 def slugify(value: str) -> str:
-    """Return the established portable ASCII slug with the legacy 240-char limit."""
+    """Return a portable ASCII slug using the established 240-character input limit."""
     if not isinstance(value, str):
         raise TypeError("slug value must be a string")
     return re.sub(r"[^a-z0-9]+", "-", unidecode(value[:240]).lower()).strip("-")
