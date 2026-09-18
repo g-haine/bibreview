@@ -86,6 +86,12 @@ def main(argv: list[str] | None = None) -> int:
             print("Providers: " + (", ".join(enabled) if enabled else "none"))
             print(f"Bibliography: {config.paths.bibliography}")
             print(f"Collected staging: {config.paths.collected}")
+            arxiv_status = (
+                f"enabled → {config.arxiv.output}"
+                if config.arxiv.enabled
+                else "disabled"
+            )
+            print(f"arXiv: {arxiv_status}")
         return 0
 
     if args.command == "discover":
