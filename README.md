@@ -34,6 +34,37 @@ precedence. A missing configured file does not abort the command; BibReview
 warns and continues with the process environment, so optional providers retain
 their normal missing-secret behavior.
 
+## Canonical bibliography document
+
+BibReview persists bibliographies as a document rather than a bare publication
+array:
+
+```json
+{
+  "metadata": {
+    "schema_version": 1,
+    "last_update": "2026-09-18"
+  },
+  "publications": [
+    {
+      "id": "...",
+      "identifiers": {"doi": "..."},
+      "title": "..."
+    }
+  ]
+}
+```
+
+`metadata.last_update` belongs to the canonical bibliography state. The merge
+operation updates it only when publications are actually added or updated; a
+merge that merely clears staging or processes an unchanged publication preserves
+the previous date. Collection/refresh staging uses the same document envelope
+with `last_update: null`.
+
+For migration safety, readers still accept the historical bare-array shape and
+interpret it as a document with empty metadata. Writers always emit the document
+shape.
+
 ## Project-state handoff
 
 Discovery, collection, refresh, and merge use explicit persisted states:
