@@ -145,6 +145,15 @@ class CollectionTests(unittest.TestCase):
         )
         self.assertEqual(result.items[0].bibtex, "@article{10.1/new}\n")
 
+    def test_empty_bibtex_is_treated_as_unavailable(self):
+        provider = FakeProvider({"10.1/new": message()})
+        result = collect(
+            ["10.1/new"],
+            provider=provider,
+            bibtex_lookup=lambda doi: "",
+        )
+        self.assertIsNone(result.items[0].bibtex)
+
     def test_provider_failure_propagates_before_any_persistence_layer(self):
         class FailingProvider:
             def work(self, doi):
