@@ -109,6 +109,17 @@ def plan_rendered_artifacts(
     if len({item.parts[0] for item in managed}) != len(managed):
         raise SitePersistenceError("managed_roots contains duplicates")
 
+    for managed_root in managed:
+        directory = site_root / managed_root.parts[0]
+        if directory.is_symlink():
+            raise SitePersistenceError(
+                f"managed root must not be a symlink: {directory}"
+            )
+        if directory.exists() and not directory.is_dir():
+            raise SitePersistenceError(
+                f"managed root is not a directory: {directory}"
+            )
+
     expected: dict[PurePosixPath, bytes] = {}
     for artifact in artifacts:
         if not isinstance(artifact, RenderedArtifact):
