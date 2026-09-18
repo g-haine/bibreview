@@ -1,4 +1,4 @@
-"""Reusable text normalization extracted from the PHRAISE maintenance code."""
+"""Reusable text normalization for bibliographic metadata."""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ def safe_component(value: str) -> str:
 
 
 def clean_metadata(value: str, *, abstract: bool = False) -> str:
-    """Remove control/JATS markup while preserving the current PHRAISE contract."""
+    """Remove control/JATS markup while preserving the established normalization contract."""
     if not isinstance(value, str):
         raise TypeError("metadata value must be a string")
     result = re.sub(r"[\x00-\x19]", "", value).strip()
