@@ -1,182 +1,208 @@
 # BibReview
 
-BibReview is a generic bibliographic engine intended to support reproducible, human-reviewed literature databases and static scholarly websites.
+**BibReview is a generic, human-reviewed bibliographic engine for reproducible
+literature databases and static scholarly websites.**
 
-The current M3 implementation includes:
+It discovers DOI-backed publications, collects and enriches metadata, keeps
+reviewable canonical project state, helps resolve author identities, renders
+Jekyll bibliography pages, and can optionally maintain a display-only arXiv
+feed.
 
-- versioned `bibreview.yml` loading, path resolution, and optional configured dotenv loading independent of PHRAISE;
-- a canonical publication model whose persistent internal identity is independent of DOI;
-- conservative exact strong-identifier matching, currently limited to DOI;
-- generic HTTP, OpenAlex, CrossRef, publisher enrichment, Semantic Scholar, and Mendeley provider layers;
-- configurable discovery queries, accepted publication types, DOI exclusions, and relevance patterns;
-- a side-effect-free discovery/relevance pipeline that classifies DOI candidates into collection, manual-review, or rejected state;
-- a side-effect-free collection pipeline producing canonical `Publication` objects;
-- an opt-in refresh/recollect pipeline for stale existing publications;
-- canonical author-mapping analysis, bibliography merge, and JSON storage;
-- staged multi-file writes with atomic replacement per destination file;
-- `bibreview discover`, `collect`, `refresh`, `authors`, `merge`, `render`, and optional `arxiv` commands;
-- `--dry-run` support for mutating CLI workflows.
+BibReview is designed so that provider output remains inspectable and ambiguous
+decisions remain human decisions.
 
-M4 site extraction now has three explicit layers in `bibreview.site`. `build_site_model()` converts canonical publications plus reviewed author mappings into immutable publication, author, year, and reference-link data. Pure Jekyll renderers convert that model into immutable `RenderedArtifact(path, content)` values. `plan_rendered_artifacts()` then reconciles those artifacts with explicitly managed generated directories and returns a read-only persistence plan; `apply_rendered_artifacts()` performs atomic-per-file writes followed by deletion of obsolete generated files. The project-level `bibreview render` command composes those layers from `bibreview.yml`; the pure renderers themselves still perform no filesystem or network access.
+## What BibReview provides
 
-## Runtime secrets
+- OpenAlex discovery with configurable relevance rules;
+- CrossRef-backed DOI metadata collection;
+- optional publisher and abstract enrichment providers;
+- explicit pending, review, rejected and collected states;
+- persistent publication UUIDs independent from DOI representation;
+- reviewed author-name mapping with safe and ambiguous proposals;
+- BibTeX retrieval and tracked source files;
+- refresh/recollection of selected incomplete publications;
+- deterministic Jekyll publication, author and year rendering;
+- an optional arXiv feed-cache module, separate from the canonical bibliography;
+- dry-run planning for mutating workflows;
+- atomic-per-file persistence and explicit backups.
 
-Projects may point BibReview at an optional dotenv file:
+## Quick start
 
-```yaml
-environment:
-  file: .env
-```
+BibReview currently requires **Python 3.12 or newer**.
 
-The path is resolved relative to `bibreview.yml`. Values loaded from that file
-act only as defaults: variables already present in the process environment take
-precedence. A missing configured file does not abort the command; BibReview
-warns and continues with the process environment, so optional providers retain
-their normal missing-secret behavior.
+~~~bash
+git clone https://github.com/g-haine/bibreview.git
+cd bibreview
 
-## Canonical bibliography document
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -e .
 
-BibReview persists bibliographies as a document rather than a bare publication
-array:
+bibreview --version
+~~~
 
-```json
-{
-  "metadata": {
-    "schema_version": 1,
-    "last_update": "2026-09-18"
-  },
-  "publications": [
-    {
-      "id": "...",
-      "identifiers": {"doi": "..."},
-      "title": "..."
-    }
-  ]
-}
-```
+On Windows PowerShell, activate the environment with:
 
-`metadata.last_update` belongs to the canonical bibliography state. The merge
-operation updates it only when publications are actually added or updated; a
-merge that merely clears staging or processes an unchanged publication preserves
-the previous date. Collection/refresh staging uses the same document envelope
-with `last_update: null`.
+~~~powershell
+.\.venv\Scripts\Activate.ps1
+~~~
 
-For migration safety, readers still accept the historical bare-array shape and
-interpret it as a document with empty metadata. Writers always emit the document
-shape.
+Start a project from
+[bibreview.example.yml](bibreview.example.yml), then validate it:
 
-## Project-state handoff
+~~~bash
+bibreview --config bibreview.yml validate
+bibreview --config bibreview.yml status
+~~~
 
-Discovery, collection, refresh, and merge use explicit persisted states:
+See the complete [installation guide](docs/installation.md) for Linux, macOS and
+Windows.
 
-```text
-configured discovery source
-      ↓
+## Typical maintenance cycle
+
+~~~text
 discover
-      ├── relevant ─────────────→ data/pending.txt
-      ├── uncertain ────────────→ data/review.txt
-      └── rejected/unavailable ─→ data/rejected.txt
-                                   ↓
-                              human review
-
-pending DOI state
-      ↓
-collect
-      ↓
-data/collected.json
-      ↓
+   ↓
+human review of uncertain DOI candidates
+   ↓
+refresh existing incomplete records
+   ↓
 merge
-      ↓
-data/bibliography.json
-
-existing bibliography + stored/current BibTeX
-      ↓
-refresh
-      ↓
-data/collected.json
-      ↓
+   ↓
+collect new pending DOI values
+   ↓
+inspect/correct staging + BibTeX
+   ↓
 merge
-      ↓
-updated bibliography with persisted UUID retained
-```
+   ↓
+authors
+   ↓
+human resolution of ambiguous identities
+   ↓
+render
+~~~
 
-`bibreview discover` retrieves candidates from the configured discovery provider (currently OpenAlex), verifies DOI-backed works through CrossRef, composes discovery enrichment, and applies the project's regular-expression relevance rules. Unicode dash punctuation is normalized before matching. `relevance.unmatched` controls whether unmatched supported works go to manual review or directly to rejected state.
+The optional arXiv feed runs independently:
 
-Discovery policy belongs to configuration rather than engine source code. `discovery.accepted_types` controls supported metadata work types, while `discovery.exclude_doi_substrings` can skip project-specific DOI families without adding hard-coded domain assumptions to BibReview. OpenAlex can be used without an API key; a project may optionally name an API-key environment variable in its provider configuration.
+~~~text
+arxiv → display-only JSON cache
+~~~
 
-Refresh is deliberately separate from discovery. It is opt-in through `refresh.types` and `refresh.when_missing_any`. For matching existing DOI-backed publications, BibReview compares the stored BibTeX with the current DOI BibTeX. Missing or changed BibTeX triggers recollection into `data/collected.json`; the authoritative bibliography is not deleted or modified until the later merge. Existing permalinks are retained during recollection, and exact DOI merge preserves the persisted publication UUID. Changed stored BibTeX is backed up in the configured archive before replacement. DOI values recorded as known but absent from the canonical bibliography are moved back to pending state for normal collection recovery.
+A curated project should inspect staged metadata and BibTeX before merging.
 
-`data/collected.json` is a staging bibliography, not a backup. This separation keeps backups in `archive/` and avoids using an overwritten bibliography file as an implicit data-transfer mechanism. Collection and refresh both refuse to overwrite a non-empty staging batch.
+## Commands
 
-During `bibreview merge`, accepted staged publications are merged by persistent UUID and approved strong identifiers, accepted DOI values move from `pending` to `known`, rejected DOI values are discarded from the staged batch, the staging bibliography is emptied, and the previous bibliography is backed up before replacement. A dry run computes the same plan without mutating files.
+| Command | Purpose |
+|---|---|
+| **validate** | Validate project configuration. |
+| **status** | Show resolved project/provider status. |
+| **discover** | Discover and screen new DOI candidates. |
+| **collect** | Collect pending DOI metadata into canonical staging. |
+| **refresh** | Recollect selected incomplete existing publications. |
+| **merge** | Merge reviewed staging into the canonical bibliography. |
+| **authors** | Analyze and safely extend author identity mappings. |
+| **render** | Reconcile generated Jekyll bibliography artifacts. |
+| **arxiv** | Refresh the optional display-only arXiv cache. |
 
-## Optional arXiv module
+Use **--dry-run** with mutating workflows when you want to inspect the plan
+without writing project files.
 
-arXiv is deliberately separate from the canonical DOI bibliography and from the
-`Publication` model. It is a display-oriented feed cache for projects that want
-to show recent arXiv links alongside their curated bibliography.
+Full details: [command reference](docs/commands.md).
 
-Enable it explicitly:
+## Project state is explicit
 
-```yaml
-project:
-  name: Example Review
-  slug: example-review
-  repository: https://example.org/example-review
-  contact:
-    name: Example Maintainer
-    email: maintainer@example.org
+BibReview keeps canonical and intermediate state visible in ordinary files:
 
-arxiv:
-  enabled: true
-  query: all:fluid AND all:structure
-  max_results: 25
-  sort_by: lastUpdatedDate
-  sort_order: descending
-  output: site/data/arxiv.json
-```
+~~~text
+bibliography.json    canonical reviewed bibliography
+collected.json       current collection/refresh staging batch
+known.txt            accepted DOI state
+pending.txt          DOI values waiting for collection
+review.txt           DOI values requiring human relevance review
+rejected.txt         deliberately excluded DOI values
+authors.json         reviewed author-name mappings
+bib/                 tracked BibTeX sources
+archive/             backups created by refresh/merge
+~~~
 
-Then refresh the cache with:
+The canonical bibliography is a versioned JSON document with global metadata,
+including the bibliography update date.
 
-```bash
-bibreview --config bibreview.yml arxiv
-```
+See [Data and state files](docs/data-model.md).
 
-The cache keeps the compact PHRAISE-compatible shape
-`{"generated_at": ..., "papers": [...]}`. Each entry contains only display
-fields: title, summary, arXiv page URL, author names, and last-updated date.
+## Provider output can be corrected
 
-The module uses the arXiv Atom API with an identifiable project/BibReview user
-agent and the configured `project.contact.email`. Retryable HTTP/network
-failures use a bounded retry policy and honor `Retry-After`. If a transient
-failure still exhausts that policy, the CLI warns, returns successfully, and
-leaves the existing cache untouched so a scheduled website workflow does not
-destroy or replace good cached data. Permanent failures and empty feeds are
-reported as errors.
+Provider metadata is not treated as infallible.
 
-The arXiv command does not discover, collect, merge, or create canonical
-`Publication` objects. It is an optional parallel module.
+BibReview supports a review-first workflow where you can correct staged JSON or
+BibTeX before merge. Missing or invalid BibTeX is treated as missing data rather
+than replaced by a fake placeholder.
 
-## Site-model boundary
+For recovery procedures, persistent provider errors, manual corrections and
+post-merge repairs, see
+[Manual corrections and provider errors](docs/corrections.md).
 
-The M4 transformation boundary is intentionally one-way and side-effect free:
+## Ambiguous authors stay human-reviewed
 
-```text
-Publication + author_mappings
-          ↓
-  build_site_model
-          ↓
-       SiteModel
-          ↓
-     pure renderer
-          ↓
- RenderedArtifact[]
-          ↓
- persistence plan
-          ↓
- managed site files
-```
+BibReview can automatically apply only unambiguous author mappings:
 
-`SiteModel` preserves source-visible author names while linking them to reviewed author identities, prepares author/year membership, validates safe unique publication permalinks, and resolves DOI references to internal permalinks when the referenced work is present in the same bibliography. Project-specific category names and optional index prose live in `site.jekyll` configuration rather than engine source code. The Jekyll rendering layer covers author/year indexes and publication posts. `bibreview render` requires a tracked BibTeX file for every publication, performs no provider/network fallback, and reports unused BibTeX files without moving or deleting them. Site persistence owns only `_posts`, `authors`, and `years`: artifacts outside those roots are rejected, path traversal and symlinked managed roots are refused, unchanged files are left alone, and only obsolete files inside those generated roots may be deleted. Deployment, CSS, templates, branding, source BibTeX lifecycle, and non-generated project files remain outside the render command.
+~~~bash
+bibreview --config bibreview.yml authors --apply-safe
+~~~
 
-PHRAISE remains the integration and non-regression reference during extraction.
+Possible identity collisions remain under manual review.
+
+See [Author identities and ambiguous names](docs/authors.md).
+
+## Static sites and GitHub Pages
+
+BibReview renders bibliographic content into an existing Jekyll site; themes,
+layouts, CSS and deployment remain project-owned.
+
+The documentation includes a complete guide for:
+
+- local Jekyll preview;
+- GitHub Pages deployment with GitHub Actions;
+- a pinned BibReview installation in CI;
+- scheduled arXiv refresh;
+- optional scheduled discovery;
+- choosing whether generated artifacts are committed or CI-only.
+
+See [GitHub Pages with BibReview and Jekyll](docs/github-pages.md).
+
+## Optional GoatCounter analytics
+
+For public bibliography sites, BibReview recommends considering
+[GoatCounter](https://www.goatcounter.com/) as an optional lightweight,
+privacy-friendly analytics solution. BibReview does not inject analytics or make
+GoatCounter a dependency.
+
+See [GoatCounter analytics](docs/goatcounter.md).
+
+## Documentation
+
+- [Documentation index](docs/README.md)
+- [Installation](docs/installation.md)
+- [Configuration](docs/configuration.md)
+- [Local workflow](docs/workflow.md)
+- [Command reference](docs/commands.md)
+- [Data and state files](docs/data-model.md)
+- [Manual corrections](docs/corrections.md)
+- [Author identities](docs/authors.md)
+- [GitHub Pages](docs/github-pages.md)
+- [GoatCounter](docs/goatcounter.md)
+
+## Showcase
+
+[PHRAISE](https://github.com/g-haine/phraise) is a public site powered by
+BibReview and serves as a concrete integration showcase.
+
+## Development
+
+Run the test suite with:
+
+~~~bash
+python -m unittest discover -s tests -v
+~~~
+
+BibReview is licensed under the GNU GPLv3.
