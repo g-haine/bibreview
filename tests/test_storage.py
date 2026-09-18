@@ -140,7 +140,7 @@ class StorageTests(unittest.TestCase):
         self.assertEqual(loaded[0].authors[1].literal, "Example Research Consortium")
         self.assertEqual(loaded[0].identifiers["isbn"], "978-0-00-000000-0")
 
-    def test_canonical_reader_accepts_historical_bare_list(self) -> None:
+    def test_canonical_reader_accepts_earlier_bare_list_format(self) -> None:
         publication = Publication(id=new_publication_id(), title="Example")
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "bibliography.json"
