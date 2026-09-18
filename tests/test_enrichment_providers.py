@@ -81,8 +81,8 @@ class DoiProviderTests(unittest.TestCase):
         self.assertEqual(url, "https://citation.doi.org/format")
         self.assertEqual(kwargs["params"]["doi"], "10.1/test")
 
-    def test_formatter_returns_explicit_fallback_for_non_bibtex_text(self) -> None:
-        self.assertEqual(format_bibtex("not bibtex"), "No BibTeX found!\n")
+    def test_formatter_returns_empty_string_for_non_bibtex_text(self) -> None:
+        self.assertEqual(format_bibtex("not bibtex"), "")
 
 
 class PublisherProviderTests(unittest.TestCase):
