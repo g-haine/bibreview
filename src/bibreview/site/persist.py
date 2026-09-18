@@ -49,6 +49,8 @@ class SitePersistencePlan:
 def _relative_path(value: str, *, name: str) -> PurePosixPath:
     if not isinstance(value, str) or not value:
         raise SitePersistenceError(f"{name} must be a non-empty relative path")
+    if "\\" in value:
+        raise SitePersistenceError(f"{name} must use POSIX separators: {value!r}")
     path = PurePosixPath(value)
     if path.is_absolute():
         raise SitePersistenceError(f"{name} must be relative: {value!r}")
