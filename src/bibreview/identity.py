@@ -6,9 +6,6 @@ from collections.abc import Mapping
 import re
 import uuid
 
-# Fixed BibReview namespace used only to make the first legacy migration
-# reproducible. Persisted publication IDs remain stable afterwards.
-MIGRATION_NAMESPACE = uuid.UUID("4bd4f0d5-e1eb-5ff0-b4e7-f266c1609aac")
 _DOI_PREFIX = re.compile(r"^(?:https?://(?:dx\.)?doi\.org/|doi:\s*)", re.IGNORECASE)
 
 # External identifiers are not automatically strong merely because they are
@@ -37,11 +34,6 @@ def normalize_doi(value: str) -> str:
 def new_publication_id() -> str:
     """Generate a new opaque persistent BibReview publication identifier."""
     return str(uuid.uuid4())
-
-
-def migration_id_from_doi(doi: str) -> str:
-    """Generate the deterministic UUIDv5 used for first-time DOI-backed migration."""
-    return str(uuid.uuid5(MIGRATION_NAMESPACE, normalize_doi(doi)))
 
 
 def validate_publication_id(value: str) -> str:
