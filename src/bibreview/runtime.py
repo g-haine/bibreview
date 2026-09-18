@@ -165,7 +165,10 @@ def _build_core_services(
         reporter=reporter,
         default_headers={"User-Agent": user_agent},
     )
-    crossref = CrossRefProvider(transport)
+    crossref = CrossRefProvider(
+        transport,
+        mailto=config.project.contact_email,
+    )
     doi = DoiProvider(transport)
 
     elsevier_config = _provider(config, "elsevier")
