@@ -251,7 +251,7 @@ class CliTests(unittest.TestCase):
             ])
         self.assertEqual(code, 0, stderr.getvalue())
         self.assertIn("Dry run:", stdout.getvalue())
-        self.assertIn("expected: 5", stdout.getvalue())
+        self.assertIn("expected: 6", stdout.getvalue())
         self.assertEqual(before, self.snapshot())
 
         stdout = StringIO()
