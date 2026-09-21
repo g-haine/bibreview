@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from bibreview.model import Author
+from bibreview.model import Author, Editor
 from bibreview.pipeline.collect import build_publication
 
 
@@ -18,6 +18,18 @@ class AuthorSourceFieldTests(unittest.TestCase):
         self.assertEqual(author.source_fields["ORCID"], "example-orcid")
         with self.assertRaises(TypeError):
             author.source_fields["new"] = "value"  # type: ignore[index]
+
+    def test_editor_copies_and_exposes_source_fields_read_only(self) -> None:
+        source = {
+            "ORCID": "example-editor-orcid",
+            "affiliation": [{"name": "Example Institute"}],
+        }
+        editor = Editor(given="Grace", family="Hopper", source_fields=source)
+
+        source["ORCID"] = "changed"
+        self.assertEqual(editor.source_fields["ORCID"], "example-editor-orcid")
+        with self.assertRaises(TypeError):
+            editor.source_fields["new"] = "value"  # type: ignore[index]
 
     def test_collection_preserves_crossref_author_source_fields(self) -> None:
         message = {
@@ -45,6 +57,37 @@ class AuthorSourceFieldTests(unittest.TestCase):
             dict(author.source_fields),
             {
                 "ORCID": "example-orcid",
+                "sequence": "first",
+                "affiliation": [{"name": "Example Institute"}],
+            },
+        )
+
+    def test_collection_preserves_crossref_editor_source_fields(self) -> None:
+        message = {
+            "title": ["Edited systems"],
+            "type": "book",
+            "editor": [
+                {
+                    "given": "Grace",
+                    "family": "Hopper",
+                    "ORCID": "example-editor-orcid",
+                    "sequence": "first",
+                    "affiliation": [{"name": "Example Institute"}],
+                }
+            ],
+            "created": {"date-parts": [[2026, 9, 17]]},
+        }
+
+        publication = build_publication("10.1234/edited", message, "edited-systems")
+        editor = publication.editors[0]
+
+        self.assertEqual(editor.given, "Grace")
+        self.assertEqual(editor.family, "Hopper")
+        self.assertIsNone(editor.literal)
+        self.assertEqual(
+            dict(editor.source_fields),
+            {
+                "ORCID": "example-editor-orcid",
                 "sequence": "first",
                 "affiliation": [{"name": "Example Institute"}],
             },

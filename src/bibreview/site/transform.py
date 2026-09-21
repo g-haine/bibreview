@@ -69,8 +69,7 @@ class SitePublication:
     type: str
     title: str
     authors: tuple[SitePublicationAuthor, ...]
-    editors: tuple[SitePublicationEditor, ...] = ()
-    abstract: str = ""
+    abstract: str
     container_title: str
     volume: str
     issue: str
@@ -78,6 +77,7 @@ class SitePublication:
     publisher: str
     event: str
     keywords: tuple[str, ...]
+    editors: tuple[SitePublicationEditor, ...] = ()
     identifiers: Mapping[str, str] = field(default_factory=dict)
     references: tuple[SiteReference, ...] = ()
 

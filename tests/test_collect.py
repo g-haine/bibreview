@@ -56,6 +56,13 @@ class PrepareDoisTests(unittest.TestCase):
 class BuildPublicationTests(unittest.TestCase):
     def test_builds_canonical_publication_from_crossref(self):
         data = message("Fluid <mml:math>x</mml:math> structure")
+        data["editor"] = [
+            {
+                "given": "Grace",
+                "family": "Hopper",
+                "sequence": "first",
+            }
+        ]
         data["reference"] = [
             {"DOI": "10.2/REF"},
             {"author": "A", "article-title": "Title", "year": 2020},
@@ -78,6 +85,14 @@ class BuildPublicationTests(unittest.TestCase):
         # Verify generic metadata normalization: strip MathML tags, retain text content.
         self.assertEqual(publication.title, "Fluid x structure")
         self.assertEqual([(a.given, a.family) for a in publication.authors], [("Ada", "Lovelace")])
+        self.assertEqual(
+            [(editor.given, editor.family) for editor in publication.editors],
+            [("Grace", "Hopper")],
+        )
+        self.assertEqual(
+            dict(publication.editors[0].source_fields),
+            {"sequence": "first"},
+        )
         self.assertEqual(publication.abstract, "Enriched text")
         self.assertEqual(publication.publication_year, "2025")
         self.assertEqual(publication.created_date.isoformat(), "2024-03-08")
@@ -88,6 +103,24 @@ class BuildPublicationTests(unittest.TestCase):
         self.assertEqual(publication.references[0].citation, "Citation for 10.2/ref")
         self.assertEqual(publication.references[1].identifiers, {})
         self.assertEqual(publication.references[1].citation, "A, Title. (2020)")
+
+    def test_editor_only_crossref_record_is_supported(self):
+        data = message()
+        data["author"] = []
+        data["editor"] = [{"given": "Peter", "family": "Benner"}]
+        publication = build_publication("10.1/test", data, "edited-volume")
+        self.assertEqual(publication.authors, ())
+        self.assertEqual(
+            [(editor.given, editor.family) for editor in publication.editors],
+            [("Peter", "Benner")],
+        )
+
+    def test_missing_authors_and_editors_is_rejected(self):
+        data = message()
+        data["author"] = []
+        data["editor"] = []
+        with self.assertRaisesRegex(ValueError, "at least one author or editor"):
+            build_publication("10.1/test", data, "invalid-record")
 
     def test_default_enrichment_uses_crossref_fields(self):
         publication = build_publication("10.1/test", message(), "fluid-structure")

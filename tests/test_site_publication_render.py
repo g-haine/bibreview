@@ -8,6 +8,7 @@ from bibreview.site import (
     SiteModel,
     SitePublication,
     SitePublicationAuthor,
+    SitePublicationEditor,
     SiteReference,
     SiteRenderError,
     render_jekyll_publication_posts,
@@ -21,6 +22,7 @@ def publication(
     doi: str | None = "10.1234/example",
     event: str = "",
     authors: tuple[SitePublicationAuthor, ...] | None = None,
+    editors: tuple[SitePublicationEditor, ...] = (),
     references: tuple[SiteReference, ...] = (),
 ) -> SitePublication:
     identifiers = {}
@@ -45,6 +47,7 @@ def publication(
                 ),
             )
         ),
+        editors=editors,
         abstract="An $H$ abstract.",
         container_title="Journal of Examples",
         volume="12",
@@ -198,15 +201,23 @@ fluid-structure, energy
         )[0].content
         self.assertNotIn("**DOI:**", content)
 
-    def test_authorless_publication_is_supported(self) -> None:
-        item = publication(authors=())
+    def test_editor_only_publication_is_rendered_with_role(self) -> None:
+        item = publication(
+            authors=(),
+            editors=(
+                SitePublicationEditor(name="Peter Benner"),
+                SitePublicationEditor(name="Michael Hinze"),
+            ),
+        )
         content = render_jekyll_publication_posts(
             model(item),
-            {"pub-id": "@misc{x}\n"},
+            {"pub-id": "@book{x}\n"},
             options=options(),
         )[0].content
         self.assertIn('authors: ""', content)
-        self.assertIn("## Authors\n\n ", content)
+        self.assertIn("editors: Peter Benner, Michael Hinze", content)
+        self.assertNotIn("## Authors", content)
+        self.assertIn("## Editors\nPeter Benner, Michael Hinze", content)
 
     def test_missing_bibtex_is_rejected(self) -> None:
         with self.assertRaisesRegex(SiteRenderError, "missing BibTeX"):
