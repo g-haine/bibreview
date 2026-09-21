@@ -310,7 +310,7 @@ class ProjectAuditTests(unittest.TestCase):
     def test_batch_size_override_applies_only_to_newly_opened_batch(self):
         first = plan_project_audit_batch(self.config, batch_size=1)
         self.assertEqual(first.batch.keys, (self.publications[0].id,))
-        self.assertEqual(first.campaign.batch_size, 2)
+        self.assertEqual(first.campaign.default_batch_size, 2)
         apply_project_audit_plan(first)
 
         resumed = plan_project_audit_batch(self.config, batch_size=2)
