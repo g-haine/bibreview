@@ -207,6 +207,15 @@ class RefreshConfig:
 
 
 @dataclass(frozen=True)
+class AuditConfig:
+    """Persistent state and batching policy for non-destructive audits."""
+
+    campaign: Path
+    report: Path
+    batch_size: int = 50
+
+
+@dataclass(frozen=True)
 class RelevanceConfig:
     patterns: tuple[str, ...] = ()
     unmatched: str = "manual-review"
@@ -270,6 +279,7 @@ class BibReviewConfig:
     paths: PathsConfig
     discovery: DiscoveryConfig
     refresh: RefreshConfig
+    audit: AuditConfig
     relevance: RelevanceConfig
     providers: Mapping[str, ProviderConfig]
     site: SiteConfig
@@ -421,6 +431,29 @@ def load_config(path: str | Path = "bibreview.yml") -> BibReviewConfig:
         when_missing_any=refresh_fields,
     )
 
+    audit_raw = _mapping(raw.get("audit"), "audit")
+    audit = AuditConfig(
+        campaign=_path(
+            base,
+            audit_raw.get("campaign"),
+            "data/audit/campaign.json",
+            "audit.campaign",
+        ),
+        report=_path(
+            base,
+            audit_raw.get("report"),
+            "data/audit/report.json",
+            "audit.report",
+        ),
+        batch_size=_integer(
+            audit_raw.get("batch_size"),
+            "audit.batch_size",
+            50,
+        ),
+    )
+    if audit.campaign == audit.report:
+        raise ConfigError("audit.campaign and audit.report must be different paths")
+
     relevance_raw = _mapping(raw.get("relevance"), "relevance")
     patterns_raw = relevance_raw.get("patterns", [])
     if not isinstance(patterns_raw, list) or any(not isinstance(v, str) for v in patterns_raw):
@@ -541,6 +574,7 @@ def load_config(path: str | Path = "bibreview.yml") -> BibReviewConfig:
         paths=paths,
         discovery=discovery,
         refresh=refresh,
+        audit=audit,
         relevance=relevance,
         providers=MappingProxyType(providers),
         site=site,
