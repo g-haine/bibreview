@@ -36,6 +36,9 @@ from .providers.mendeley import MendeleyProvider
 from .providers.openalex import OpenAlexProvider
 from .providers.publisher import PublisherEnrichmentRouter
 from .providers.semantic_scholar import SemanticScholarProvider
+
+
+SEMANTIC_SCHOLAR_AUDIT_MIN_INTERVAL_SECONDS = 1.1
 from .providers.springer import SpringerProvider
 from .reporting import Reporter
 
@@ -411,7 +414,11 @@ def build_audit_services(
         )
         sources.append(
             SemanticScholarAuditSource(
-                SemanticScholarProvider(transport, api_key=semantic_key)
+                SemanticScholarProvider(
+                    transport,
+                    api_key=semantic_key,
+                    min_interval_seconds=SEMANTIC_SCHOLAR_AUDIT_MIN_INTERVAL_SECONDS,
+                )
             )
         )
 
