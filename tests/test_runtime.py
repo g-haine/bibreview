@@ -130,6 +130,10 @@ class RuntimeTests(unittest.TestCase):
             services.sources[2].provider.api_key,
             "semantic-secret",
         )
+        self.assertEqual(
+            services.sources[2].provider.min_interval_seconds,
+            1.1,
+        )
         warnings = stream.getvalue()
         self.assertNotIn("Elsevier", warnings)
         self.assertNotIn("IEEE", warnings)
