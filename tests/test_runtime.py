@@ -130,10 +130,28 @@ class RuntimeTests(unittest.TestCase):
             services.sources[2].provider.api_key,
             "semantic-secret",
         )
+        self.assertEqual(
+            services.sources[2].provider.min_interval_seconds,
+            1.1,
+        )
         warnings = stream.getvalue()
         self.assertNotIn("Elsevier", warnings)
         self.assertNotIn("IEEE", warnings)
         self.assertNotIn("Mendeley", warnings)
+
+    def test_unauthenticated_semantic_scholar_audit_is_not_artificially_throttled(self):
+        services = build_audit_services(
+            self.config(),
+            reporter=Reporter(stream=StringIO()),
+            environ={},
+        )
+        semantic = next(
+            source
+            for source in services.sources
+            if isinstance(source, SemanticScholarAuditSource)
+        )
+        self.assertEqual(semantic.provider.api_key, "")
+        self.assertEqual(semantic.provider.min_interval_seconds, 0.0)
 
     def test_configured_environment_file_supplies_provider_secrets(self):
         config = self.config(CONFIG.replace(

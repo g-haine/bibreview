@@ -34,6 +34,41 @@ class SemanticScholarProviderTests(unittest.TestCase):
         self.assertIn("DOI:10.1%2Fa%3Fb", call.args[0])
         self.assertEqual(call.kwargs["params"], {"fields": "abstract"})
 
+    def test_optional_request_throttle_enforces_minimum_interval(self):
+        transport = Mock()
+        transport.json.return_value = {"title": "Example"}
+        now = [10.0]
+        sleeps = []
+
+        def sleeper(delay):
+            sleeps.append(delay)
+            now[0] += delay
+
+        provider = SemanticScholarProvider(
+            transport,
+            api_key="secret-key",
+            min_interval_seconds=1.1,
+            clock=lambda: now[0],
+            sleeper=sleeper,
+        )
+
+        provider.paper("10.1/one")
+        now[0] += 0.4
+        provider.paper("10.1/two")
+        now[0] += 1.5
+        provider.paper("10.1/three")
+
+        self.assertEqual(len(sleeps), 1)
+        self.assertAlmostEqual(sleeps[0], 0.7)
+        self.assertEqual(transport.json.call_count, 3)
+
+    def test_negative_request_interval_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "non-negative"):
+            SemanticScholarProvider(
+                Mock(),
+                min_interval_seconds=-0.1,
+            )
+
     def test_optional_api_key_is_sent_in_header(self):
         transport = Mock()
         transport.json.return_value = {"abstract": "A useful abstract."}

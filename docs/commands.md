@@ -6,6 +6,17 @@ Global syntax:
 bibreview [--config PATH] [-v|-q] [--dry-run] COMMAND
 ~~~
 
+When the configuration file is named **bibreview.yml** and the command is run
+from the project root, `--config` may be omitted:
+
+~~~bash
+bibreview audit
+bibreview providers --check
+~~~
+
+Use `--config PATH` only when the project configuration has another name or is
+not in the current working directory.
+
 Global options:
 
 | Option | Meaning |
@@ -98,10 +109,12 @@ bibreview --config bibreview.yml audit --json
 ~~~
 
 The audit currently compares evidence from **CrossRef** and **OpenAlex**, plus
-**Semantic Scholar** when that provider is enabled. Provider failures are
-recorded separately from canonical metadata discrepancies. A failed/rate-limited
-provider makes that publication retryable; it does not modify the canonical
-record.
+**Semantic Scholar** when that provider is enabled. Authenticated Semantic
+Scholar audit requests are paced at a minimum interval of 1.1 seconds to stay
+below the provider's introductory one-request-per-second API-key limit. Provider
+failures are recorded separately from canonical metadata discrepancies. A
+failed/rate-limited provider makes that publication retryable; it does not
+modify the canonical record.
 
 Audit writes only the configured audit campaign/report files. It never writes
 to **bibliography.json**, **collected.json**, DOI queues, BibTeX, author
