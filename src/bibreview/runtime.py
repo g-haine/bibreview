@@ -80,7 +80,6 @@ class _CoreServices:
     crossref: CrossRefProvider
     doi: DoiProvider
     enrichment: EnrichmentService
-    semantic_scholar: SemanticScholarProvider | None
 
 
 def _provider(config: BibReviewConfig, name: str) -> ProviderConfig | None:
@@ -299,7 +298,6 @@ def _build_core_services(
         crossref=crossref,
         doi=doi,
         enrichment=EnrichmentService(publisher=publisher, fallback=fallback),
-        semantic_scholar=semantic,
     )
 
 
@@ -365,17 +363,28 @@ def build_audit_services(
     reporter: Reporter | None = None,
     environ: Mapping[str, str] | None = None,
 ) -> AuditServices:
-    """Compose configured provider evidence sources for one audit run."""
+    """Compose only the providers used by the non-destructive audit workflow."""
     progress = reporter or Reporter()
     environment = _runtime_environment(
         config,
         environ=environ,
         reporter=progress,
     )
-    core = _build_core_services(config, reporter=progress, environ=environment)
 
+    crossref_config = config.providers.get("crossref")
+    if crossref_config is not None and not crossref_config.enabled:
+        raise ValueError("CrossRef must be enabled for DOI-backed audit workflows")
+
+    transport = HttpTransport(
+        reporter=progress,
+        default_headers={"User-Agent": f"BibReview/{__version__}"},
+    )
+    crossref = CrossRefProvider(
+        transport,
+        mailto=config.project.contact_email,
+    )
     sources: list[AuditEvidenceSource] = [
-        CrossRefAuditSource(core.crossref),
+        CrossRefAuditSource(crossref),
     ]
 
     openalex_config = config.providers.get("openalex")
@@ -388,11 +397,22 @@ def build_audit_services(
         )
         sources.append(
             OpenAlexAuditSource(
-                OpenAlexProvider(core.transport, api_key=openalex_key)
+                OpenAlexProvider(transport, api_key=openalex_key)
             )
         )
 
-    if core.semantic_scholar is not None:
-        sources.append(SemanticScholarAuditSource(core.semantic_scholar))
+    semantic_config = _provider(config, "semantic_scholar")
+    if semantic_config is not None:
+        semantic_key = _optional_api_key(
+            semantic_config,
+            provider_name="Semantic Scholar",
+            environ=environment,
+            reporter=progress,
+        )
+        sources.append(
+            SemanticScholarAuditSource(
+                SemanticScholarProvider(transport, api_key=semantic_key)
+            )
+        )
 
     return AuditServices(sources=tuple(sources))
