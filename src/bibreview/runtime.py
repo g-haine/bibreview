@@ -20,6 +20,12 @@ from .pipeline.collect import BibtexLookup, CitationLookup, EnrichmentLookup, Wo
 from .pipeline.discover import EnrichmentLookup as DiscoveryEnrichmentLookup
 from .pipeline.discover import WorkProvider as DiscoveryWorkProvider
 from .pipeline.enrich import EnrichmentService
+from .providers.audit import (
+    AuditEvidenceSource,
+    CrossRefAuditSource,
+    OpenAlexAuditSource,
+    SemanticScholarAuditSource,
+)
 from .providers.crossref import CrossRefProvider
 from .providers.doi import DoiProvider
 from .providers.elsevier import ElsevierProvider
@@ -62,11 +68,19 @@ class DiscoveryServices:
 
 
 @dataclass(frozen=True)
+class AuditServices:
+    """Configured provider evidence sources for one audit command run."""
+
+    sources: tuple[AuditEvidenceSource, ...]
+
+
+@dataclass(frozen=True)
 class _CoreServices:
     transport: HttpTransport
     crossref: CrossRefProvider
     doi: DoiProvider
     enrichment: EnrichmentService
+    semantic_scholar: SemanticScholarProvider | None
 
 
 def _provider(config: BibReviewConfig, name: str) -> ProviderConfig | None:
@@ -285,6 +299,7 @@ def _build_core_services(
         crossref=crossref,
         doi=doi,
         enrichment=EnrichmentService(publisher=publisher, fallback=fallback),
+        semantic_scholar=semantic,
     )
 
 
@@ -342,3 +357,42 @@ def build_discovery_services(
         provider=core.crossref,
         enrichment_lookup=core.enrichment.for_discovery,
     )
+
+
+def build_audit_services(
+    config: BibReviewConfig,
+    *,
+    reporter: Reporter | None = None,
+    environ: Mapping[str, str] | None = None,
+) -> AuditServices:
+    """Compose configured provider evidence sources for one audit run."""
+    progress = reporter or Reporter()
+    environment = _runtime_environment(
+        config,
+        environ=environ,
+        reporter=progress,
+    )
+    core = _build_core_services(config, reporter=progress, environ=environment)
+
+    sources: list[AuditEvidenceSource] = [
+        CrossRefAuditSource(core.crossref),
+    ]
+
+    openalex_config = config.providers.get("openalex")
+    if openalex_config is None or openalex_config.enabled:
+        openalex_key = _optional_api_key(
+            openalex_config,
+            provider_name="OpenAlex",
+            environ=environment,
+            reporter=progress,
+        )
+        sources.append(
+            OpenAlexAuditSource(
+                OpenAlexProvider(core.transport, api_key=openalex_key)
+            )
+        )
+
+    if core.semantic_scholar is not None:
+        sources.append(SemanticScholarAuditSource(core.semantic_scholar))
+
+    return AuditServices(sources=tuple(sources))
