@@ -3,6 +3,7 @@ from __future__ import annotations
 from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
 import json
+import os
 from pathlib import Path
 import tempfile
 from types import SimpleNamespace
@@ -78,6 +79,20 @@ class AuditCliTests(unittest.TestCase):
             for path in self.root.rglob("*")
             if path.is_file()
         }
+
+    def test_default_config_path_is_bibreview_yml_in_current_directory(self):
+        stdout = StringIO()
+        stderr = StringIO()
+        previous = Path.cwd()
+        try:
+            os.chdir(self.root)
+            with redirect_stdout(stdout), redirect_stderr(stderr):
+                code = main(["validate"])
+        finally:
+            os.chdir(previous)
+
+        self.assertEqual(code, 0, stderr.getvalue())
+        self.assertIn("Configuration valid:", stdout.getvalue())
 
     def test_dry_run_selects_batch_without_provider_or_state_writes(self):
         before = self.snapshot()
