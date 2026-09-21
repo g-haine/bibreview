@@ -8,6 +8,7 @@ import sys
 
 from . import __version__
 from .arxiv import ArxivError, TemporaryArxivError
+from .campaign import campaign_progress
 from .config import ConfigError, load_config
 from .pipeline.authors import author_mapping_plan_data, format_author_mapping_plan
 from .provider_diagnostics import diagnose_providers, format_provider_diagnostics
@@ -24,10 +25,19 @@ from .project import (
     plan_project_merge,
 )
 from .project_arxiv import apply_project_arxiv, plan_project_arxiv
+from .project_audit import (
+    apply_project_audit_plan,
+    execute_project_audit_batch,
+    plan_project_audit_batch,
+)
 from .project_refresh import apply_project_refresh, plan_project_refresh
 from .project_render import apply_project_render, plan_project_render
 from .reporting import Reporter
-from .runtime import build_collection_services, build_discovery_services
+from .runtime import (
+    build_audit_services,
+    build_collection_services,
+    build_discovery_services,
+)
 from .storage import StorageError
 
 
@@ -56,6 +66,22 @@ def _parser() -> argparse.ArgumentParser:
         dest="json_output",
         action="store_true",
         help="Print diagnostics as JSON instead of a human report",
+    )
+    audit = commands.add_parser(
+        "audit",
+        help="Audit one stable batch of existing canonical publications",
+    )
+    audit.add_argument(
+        "--batch-size",
+        type=int,
+        default=None,
+        help="Batch size for a new audit campaign; fixed once the campaign starts",
+    )
+    audit.add_argument(
+        "--json",
+        dest="json_output",
+        action="store_true",
+        help="Print the batch result as JSON",
     )
     commands.add_parser("discover", help="Discover and screen new DOI candidates")
     commands.add_parser("collect", help="Collect pending DOI metadata into canonical staging state")
@@ -133,6 +159,79 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if not args.quiet:
             print(format_provider_diagnostics(diagnostics))
+        return 0
+
+    if args.command == "audit":
+        reporter = Reporter(-1 if args.quiet else args.verbose)
+        try:
+            plan = plan_project_audit_batch(
+                config,
+                batch_size=args.batch_size,
+            )
+            if args.dry_run:
+                payload = {
+                    "dry_run": True,
+                    "batch_id": plan.batch.id if plan.batch is not None else None,
+                    "keys": list(plan.batch.keys) if plan.batch is not None else [],
+                    "progress": campaign_progress(plan.campaign).data(),
+                    "campaign": str(config.audit.campaign),
+                    "report": str(config.audit.report),
+                }
+                if args.json_output:
+                    print(json.dumps(payload, ensure_ascii=False, indent=2))
+                elif not args.quiet:
+                    print(f"Dry run: {plan.summary()}")
+                    if plan.batch is not None:
+                        print(
+                            f"Would audit {len(plan.batch.keys)} publication(s) "
+                            f"in {plan.batch.id}."
+                        )
+                return 0
+
+            apply_project_audit_plan(plan)
+            if plan.batch is None:
+                progress = campaign_progress(plan.campaign)
+                payload = {
+                    "batch_id": None,
+                    "processed": 0,
+                    "progress": progress.data(),
+                    "campaign": str(config.audit.campaign),
+                    "report": str(config.audit.report),
+                }
+                if args.json_output:
+                    print(json.dumps(payload, ensure_ascii=False, indent=2))
+                elif not args.quiet:
+                    print("Audit campaign complete.")
+                    print(progress.summary())
+                    print(f"Report: {config.audit.report}")
+                return 0
+
+            services = build_audit_services(config, reporter=reporter)
+            execution = execute_project_audit_batch(
+                config,
+                batch_id=plan.batch.id,
+                sources=services.sources,
+                reporter=reporter,
+            )
+        except (OSError, StorageError, ProjectStateError, ValueError, TypeError) as error:
+            print(f"bibreview audit: {error}", file=sys.stderr)
+            return 1
+
+        payload = {
+            "batch_id": execution.batch_id,
+            "processed": execution.processed_count,
+            "completed": execution.completed_count,
+            "retryable": execution.retryable_count,
+            "failed": execution.failed_count,
+            "progress": campaign_progress(execution.campaign).data(),
+            "campaign": str(config.audit.campaign),
+            "report": str(config.audit.report),
+        }
+        if args.json_output:
+            print(json.dumps(payload, ensure_ascii=False, indent=2))
+        elif not args.quiet:
+            print(execution.summary())
+            print(f"Report: {config.audit.report}")
         return 0
 
     if args.command == "discover":
