@@ -36,7 +36,7 @@ BibReview currently requires **Python 3.12 or newer**.
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.0.0"
+python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.1.0"
 
 bibreview --version
 ~~~
