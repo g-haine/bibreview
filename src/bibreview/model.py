@@ -11,6 +11,38 @@ from typing import Mapping
 from .identity import normalize_identifiers, validate_publication_id
 
 
+def _validate_contributor(
+    role: str,
+    given: str | None,
+    family: str | None,
+    literal: str | None,
+    source_fields: Mapping[str, object],
+) -> MappingProxyType:
+    """Validate one source-provided bibliographic contributor."""
+    if given is not None and not isinstance(given, str):
+        raise ValueError(f"{role} given name must be a string or None")
+    if family is not None and not isinstance(family, str):
+        raise ValueError(f"{role} family name must be a string or None")
+    if literal is not None and not isinstance(literal, str):
+        raise ValueError(f"{role} literal name must be a string or None")
+    if not (
+        (given or "").strip()
+        or (family or "").strip()
+        or (literal or "").strip()
+    ):
+        raise ValueError(f"{role} must contain at least one non-empty name component")
+    if not isinstance(source_fields, Mapping):
+        raise ValueError(f"{role} source_fields must be a mapping")
+    extras = deepcopy(dict(source_fields))
+    if any(not isinstance(key, str) or not key for key in extras):
+        raise ValueError(f"{role} source_fields keys must be non-empty strings")
+    if {"given", "family", "literal"} & extras.keys():
+        raise ValueError(
+            f"{role} source_fields must not duplicate canonical name fields"
+        )
+    return MappingProxyType(extras)
+
+
 @dataclass(frozen=True)
 class Author:
     """A source-provided author name, not an inferred canonical person identity."""
@@ -21,26 +53,40 @@ class Author:
     source_fields: Mapping[str, object] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        if self.given is not None and not isinstance(self.given, str):
-            raise ValueError("author given name must be a string or None")
-        if self.family is not None and not isinstance(self.family, str):
-            raise ValueError("author family name must be a string or None")
-        if self.literal is not None and not isinstance(self.literal, str):
-            raise ValueError("author literal name must be a string or None")
-        if not (
-            (self.given or "").strip()
-            or (self.family or "").strip()
-            or (self.literal or "").strip()
-        ):
-            raise ValueError("author must contain at least one non-empty name component")
-        if not isinstance(self.source_fields, Mapping):
-            raise ValueError("author source_fields must be a mapping")
-        extras = deepcopy(dict(self.source_fields))
-        if any(not isinstance(key, str) or not key for key in extras):
-            raise ValueError("author source_fields keys must be non-empty strings")
-        if {"given", "family", "literal"} & extras.keys():
-            raise ValueError("author source_fields must not duplicate canonical name fields")
-        object.__setattr__(self, "source_fields", MappingProxyType(extras))
+        object.__setattr__(
+            self,
+            "source_fields",
+            _validate_contributor(
+                "author",
+                self.given,
+                self.family,
+                self.literal,
+                self.source_fields,
+            ),
+        )
+
+
+@dataclass(frozen=True)
+class Editor:
+    """A source-provided editor name, distinct from authorship."""
+
+    given: str | None = None
+    family: str | None = None
+    literal: str | None = None
+    source_fields: Mapping[str, object] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "source_fields",
+            _validate_contributor(
+                "editor",
+                self.given,
+                self.family,
+                self.literal,
+                self.source_fields,
+            ),
+        )
 
 
 @dataclass(frozen=True)
@@ -51,7 +97,11 @@ class Reference:
     citation: str = ""
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "identifiers", MappingProxyType(normalize_identifiers(self.identifiers)))
+        object.__setattr__(
+            self,
+            "identifiers",
+            MappingProxyType(normalize_identifiers(self.identifiers)),
+        )
         if not isinstance(self.citation, str):
             raise ValueError("reference citation must be a string")
 
@@ -65,6 +115,7 @@ class Publication:
     type: str = ""
     title: str = ""
     authors: tuple[Author, ...] = ()
+    editors: tuple[Editor, ...] = ()
     abstract: str = ""
     container_title: str = ""
     publication_year: str = ""
@@ -80,8 +131,13 @@ class Publication:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "id", validate_publication_id(self.id))
-        object.__setattr__(self, "identifiers", MappingProxyType(normalize_identifiers(self.identifiers)))
+        object.__setattr__(
+            self,
+            "identifiers",
+            MappingProxyType(normalize_identifiers(self.identifiers)),
+        )
         object.__setattr__(self, "authors", tuple(self.authors))
+        object.__setattr__(self, "editors", tuple(self.editors))
         object.__setattr__(self, "keywords", tuple(self.keywords))
         object.__setattr__(self, "references", tuple(self.references))
         for name in (
@@ -94,6 +150,10 @@ class Publication:
             raise ValueError("publication created_date must be a date or None")
         if any(not isinstance(author, Author) for author in self.authors):
             raise ValueError("publication authors must contain Author objects")
+        if any(not isinstance(editor, Editor) for editor in self.editors):
+            raise ValueError("publication editors must contain Editor objects")
+        if not self.authors and not self.editors:
+            raise ValueError("publication must contain at least one author or editor")
         if any(not isinstance(keyword, str) for keyword in self.keywords):
             raise ValueError("publication keywords must contain strings")
         if any(not isinstance(reference, Reference) for reference in self.references):

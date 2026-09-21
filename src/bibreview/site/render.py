@@ -138,7 +138,11 @@ def _jekyll_text(value: str, *, mathjax_backslashes: int = 1) -> str:
 
 
 def _publication_row(publication: SitePublication, options: JekyllIndexRenderOptions) -> str:
-    names = ", ".join(author.name for author in publication.authors)
+    if publication.authors:
+        names = ", ".join(author.name for author in publication.authors)
+    else:
+        label = "Ed." if len(publication.editors) == 1 else "Eds."
+        names = f"{label} " + ", ".join(editor.name for editor in publication.editors)
     title = html.escape(_jekyll_text(publication.title), quote=False)
     metadata = html.escape(f"{publication.year} -- {names}", quote=False)
     return (
@@ -234,6 +238,7 @@ def _render_jekyll_publication_post(
 
     title = _jekyll_text(publication.title, mathjax_backslashes=2)
     names = [author.name for author in publication.authors]
+    editor_names = [editor.name for editor in publication.editors]
     keyword_text = _publication_keyword_text(publication, options)
     category = _publication_category(publication, options)
     date_text = publication.created_date.isoformat()
@@ -245,8 +250,10 @@ def _render_jekyll_publication_post(
         f"permalink: {publication.permalink}",
         f"year: {publication.year}",
         f"authors: {_yaml_scalar(', '.join(names))}",
-        f"category: {category}",
     ]
+    if editor_names:
+        lines.append(f"editors: {_yaml_scalar(', '.join(editor_names))}")
+    lines.append(f"category: {category}")
     if keyword_text:
         lines.append("tags:")
         lines.extend(
@@ -258,13 +265,13 @@ def _render_jekyll_publication_post(
         f"[{author.name}]({options.author_path_prefix}/{author.slug})"
         for author in publication.authors
     )
+    lines.extend(["---", " "])
+    if publication.authors:
+        lines.extend(["## Authors", author_links, " "])
+    if publication.editors:
+        lines.extend(["## Editors", ", ".join(editor_names), " "])
     lines.extend(
         [
-            "---",
-            " ",
-            "## Authors",
-            author_links,
-            " ",
             "## Abstract",
             _jekyll_text(publication.abstract, mathjax_backslashes=2),
             " ",
@@ -426,7 +433,7 @@ def render_jekyll_index_pages(
                     raise SiteRenderError(
                         f"site index references missing publication id {publication_id!r}"
                     )
-                if publication.authors:
+                if publication.authors or publication.editors:
                     filtered.append(publication_id)
             publication_ids = tuple(filtered)
         if not publication_ids:

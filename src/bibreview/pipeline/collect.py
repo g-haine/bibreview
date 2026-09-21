@@ -15,7 +15,7 @@ import re
 from typing import Any, Protocol
 
 from ..identity import IdentityError, new_publication_id, normalize_doi
-from ..model import Author, Publication, Reference
+from ..model import Author, Editor, Publication, Reference
 from ..providers.base import Enrichment
 from ..reporting import Reporter
 from ..text import clean_metadata, safe_component, slugify
@@ -112,10 +112,10 @@ def _publication_year(message: Mapping[str, Any], created: date) -> str:
     return str(created.year)
 
 
-def _authors(value: Any) -> tuple[Author, ...]:
+def _contributors(value: Any, contributor_type):
     if not isinstance(value, list):
         return ()
-    result: list[Author] = []
+    result = []
     for item in value:
         if not isinstance(item, Mapping):
             continue
@@ -132,7 +132,7 @@ def _authors(value: Any) -> tuple[Author, ...]:
             }
         )
         result.append(
-            Author(
+            contributor_type(
                 given=given,
                 family=family,
                 literal=literal,
@@ -140,6 +140,14 @@ def _authors(value: Any) -> tuple[Author, ...]:
             )
         )
     return tuple(result)
+
+
+def _authors(value: Any) -> tuple[Author, ...]:
+    return _contributors(value, Author)
+
+
+def _editors(value: Any) -> tuple[Editor, ...]:
+    return _contributors(value, Editor)
 
 
 def _reference_citation(reference: Mapping[str, Any]) -> str:
@@ -228,6 +236,7 @@ def build_publication(
         type=_string(message.get("type")),
         title=title,
         authors=_authors(message.get("author")),
+        editors=_editors(message.get("editor")),
         abstract=clean_metadata(enrichment.abstract, abstract=True).strip(),
         container_title=_first(message.get("container-title")),
         publication_year=_publication_year(message, created),

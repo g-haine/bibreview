@@ -12,7 +12,7 @@ from datetime import date
 from types import MappingProxyType
 from typing import Any, Iterable, Mapping
 
-from ..model import Publication
+from ..model import Editor, Publication
 from ..pipeline.authors import (
     AuthorMappingError,
     author_name,
@@ -30,6 +30,13 @@ class SitePublicationAuthor:
     """One source-visible author name linked to a canonical author slug."""
 
     slug: str
+    name: str
+
+
+@dataclass(frozen=True)
+class SitePublicationEditor:
+    """One source-visible editor name, kept distinct from authorship."""
+
     name: str
 
 
@@ -62,7 +69,8 @@ class SitePublication:
     type: str
     title: str
     authors: tuple[SitePublicationAuthor, ...]
-    abstract: str
+    editors: tuple[SitePublicationEditor, ...] = ()
+    abstract: str = ""
     container_title: str
     volume: str
     issue: str
@@ -75,6 +83,7 @@ class SitePublication:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "authors", tuple(self.authors))
+        object.__setattr__(self, "editors", tuple(self.editors))
         object.__setattr__(self, "keywords", tuple(self.keywords))
         object.__setattr__(self, "references", tuple(self.references))
         object.__setattr__(self, "identifiers", MappingProxyType(dict(self.identifiers)))
@@ -110,12 +119,30 @@ class SiteModel:
         object.__setattr__(self, "years", MappingProxyType(dict(self.years)))
 
 
+def _editor_name(editor: Editor) -> str:
+    """Return an editor display name without inventing missing components."""
+    literal = (editor.literal or "").strip()
+    if literal:
+        return literal
+    parts = [
+        part.strip()
+        for part in (editor.given or "", editor.family or "")
+        if part.strip()
+    ]
+    if not parts:
+        raise SiteTransformError("editor has no displayable name")
+    return " ".join(parts)
+
+
 def _publication_sort_key(publication: SitePublication) -> tuple[date, str, tuple[str, ...], str, str]:
     """Return a deterministic newest-first index key independent of rendering."""
+    names = tuple(author.name for author in publication.authors)
+    if not names:
+        names = tuple(editor.name for editor in publication.editors)
     return (
         publication.created_date,
         publication.year,
-        tuple(author.name for author in publication.authors),
+        names,
         publication.title,
         publication.permalink,
     )
@@ -191,6 +218,11 @@ def build_site_model(
                 )
             site_authors.append(SitePublicationAuthor(slug=slug, name=name))
 
+        site_editors = tuple(
+            SitePublicationEditor(name=_editor_name(editor))
+            for editor in publication.editors
+        )
+
         references = tuple(
             SiteReference(
                 doi=reference.identifiers.get("doi"),
@@ -207,6 +239,7 @@ def build_site_model(
             type=publication.type,
             title=publication.title,
             authors=tuple(site_authors),
+            editors=site_editors,
             abstract=publication.abstract,
             container_title=publication.container_title,
             volume=publication.volume,
@@ -264,6 +297,10 @@ def site_model_data(model: SiteModel) -> dict[str, Any]:
                 "authors": [
                     {"slug": author.slug, "name": author.name}
                     for author in publication.authors
+                ],
+                "editors": [
+                    {"name": editor.name}
+                    for editor in publication.editors
                 ],
                 "abstract": publication.abstract,
                 "container_title": publication.container_title,
