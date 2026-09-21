@@ -276,7 +276,10 @@ class CampaignTests(unittest.TestCase):
 
         closed_active = deepcopy(payload)
         closed_active["batches"][0]["closed"] = True
-        with self.assertRaisesRegex(CampaignError, "active items without"):
+        with self.assertRaisesRegex(
+            CampaignError,
+            "active item must belong to the open batch",
+        ):
             campaign_from_data(closed_active)
 
     def test_progress_summary_is_compact_and_deterministic(self):
