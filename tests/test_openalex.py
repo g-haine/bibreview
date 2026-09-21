@@ -20,7 +20,7 @@ class OpenAlexProviderTests(unittest.TestCase):
 
         self.assertEqual(result, {"id": "https://openalex.org/W1"})
         call = self.transport.json.call_args
-        self.assertIn("https://doi.org/10.1000%2Fa%3Fb", call.args[0])
+        self.assertIn("https://doi.org/10.1000/a%3Fb", call.args[0])
         self.assertIn("authorships", call.kwargs["params"]["select"])
         self.assertEqual(call.kwargs["params"]["api_key"], "secret")
 
