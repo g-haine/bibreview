@@ -2,6 +2,20 @@
 
 All notable BibReview releases are documented here.
 
+## 1.3.1 — 2026-09-21
+
+### Campaign schema clarification
+
+- bump resumable campaign checkpoints to schema version 2;
+- rename persisted `batch_size` to `default_batch_size` to reflect that
+  per-invocation batch-size overrides do not change the campaign default;
+- retain read support for schema-version-1 campaign files and migrate them
+  losslessly on the next audit-state write;
+- preserve stable item snapshots, item states, batch membership, attempt counts,
+  and audit reports during migration;
+- document that configuration, canonical bibliography, campaign checkpoint, and
+  audit-report schemas are versioned independently.
+
 ## 1.3.0 — 2026-09-21
 
 ### Resumable audit workflow
