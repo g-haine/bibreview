@@ -140,10 +140,12 @@ providers:
 
   semantic_scholar:
     enabled: true
+    api_key_env: SEMANTIC_SCHOLAR_API_KEY
 
   mendeley:
     enabled: true
-    token_env: MENDELEY_TOKEN
+    client_id_env: MENDELEY_CLIENT_ID
+    client_secret_env: MENDELEY_CLIENT_SECRET
 ~~~
 
 A corresponding private **.env** may contain:
@@ -153,11 +155,52 @@ OPENALEX_API_KEY=...
 ELSEVIER_API_KEY=...
 SPRINGER_API_KEY=...
 IEEE_API_KEY=...
-MENDELEY_TOKEN=...
+SEMANTIC_SCHOLAR_API_KEY=...
+MENDELEY_CLIENT_ID=...
+MENDELEY_CLIENT_SECRET=...
 ~~~
 
-Optional providers whose configured secret is missing are skipped with a
-warning. OpenAlex may run without an API key.
+Optional providers whose required configured secret is missing are skipped with
+a warning. OpenAlex and Semantic Scholar can run without API keys, but supplying
+their optional keys may provide more predictable rate limits.
+
+For Mendeley, configure the **Application ID** and **Application Secret** from
+the Mendeley Developer Portal. BibReview uses the OAuth 2.0
+`client_credentials` flow to request a short-lived bearer access token from
+Mendeley, caches it for the current process, and automatically requests a new
+token before expiry. The application secret is never used directly as a bearer
+token and is never printed by diagnostics.
+
+### Provider diagnostics
+
+Inspect provider configuration and credential provenance without making network
+requests:
+
+~~~bash
+bibreview --config bibreview.yml providers
+~~~
+
+The report shows the configured environment-variable name and whether its value
+came from the configured dotenv file or the process environment. It never prints
+the secret value itself.
+
+To perform one sanitized live request per provider that is ready to use:
+
+~~~bash
+bibreview --config bibreview.yml providers --check
+~~~
+
+Live diagnostics classify common conditions such as authentication failure
+(HTTP 401), access/entitlement denial (HTTP 403), rate limiting (HTTP 429), and
+temporary provider/server unavailability. Provider URL paths, query parameters,
+headers, and credentials remain hidden from diagnostic errors.
+
+Machine-readable output is available with:
+
+~~~bash
+bibreview --config bibreview.yml providers --json
+bibreview --config bibreview.yml providers --check --json
+~~~
 
 If an enrichment provider is producing incorrect data, disable that provider
 temporarily and recollect the affected staging data. See

@@ -95,6 +95,31 @@ class HttpTransportTests(unittest.TestCase):
         self.assertIn("HTTP 200 from doi.org -> publisher.test", output)
         self.assertNotIn("secret", output)
 
+    def test_post_form_json_uses_basic_auth_and_sanitizes_errors(self) -> None:
+        session = Mock()
+        session.post.return_value = response(
+            401,
+            "https://api.example.test/oauth/token?secret=hidden",
+        )
+        transport = HttpTransport(session)
+
+        with self.assertRaises(HttpError) as caught:
+            transport.post_form_json(
+                "https://api.example.test/oauth/token",
+                data={"grant_type": "client_credentials"},
+                auth=("client-id", "client-secret"),
+                context="OAuth token exchange",
+            )
+
+        self.assertIn("OAuth token exchange", str(caught.exception))
+        self.assertIn("HTTP 401", str(caught.exception))
+        self.assertNotIn("client-secret", str(caught.exception))
+        self.assertNotIn("/oauth/token", str(caught.exception))
+        self.assertEqual(
+            session.post.call_args.kwargs["auth"],
+            ("client-id", "client-secret"),
+        )
+
     def test_timeout_and_redirect_arguments_are_explicit(self) -> None:
         session = Mock()
         session.get.return_value = response(200, "https://api.example.test/item")

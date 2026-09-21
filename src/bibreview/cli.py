@@ -10,6 +10,7 @@ from . import __version__
 from .arxiv import ArxivError, TemporaryArxivError
 from .config import ConfigError, load_config
 from .pipeline.authors import author_mapping_plan_data, format_author_mapping_plan
+from .provider_diagnostics import diagnose_providers, format_provider_diagnostics
 from .pipeline.merge import MergeError
 from .project import (
     ProjectStateError,
@@ -41,6 +42,21 @@ def _parser() -> argparse.ArgumentParser:
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("validate", help="Validate project configuration/state")
     commands.add_parser("status", help="Show the current project configuration summary")
+    providers = commands.add_parser(
+        "providers",
+        help="Inspect provider credentials/configuration and optionally perform live checks",
+    )
+    providers.add_argument(
+        "--check",
+        action="store_true",
+        help="Perform one sanitized live request per provider that is ready to use",
+    )
+    providers.add_argument(
+        "--json",
+        dest="json_output",
+        action="store_true",
+        help="Print diagnostics as JSON instead of a human report",
+    )
     commands.add_parser("discover", help="Discover and screen new DOI candidates")
     commands.add_parser("collect", help="Collect pending DOI metadata into canonical staging state")
     commands.add_parser("refresh", help="Recollect stale existing publications into canonical staging state")
@@ -92,6 +108,31 @@ def main(argv: list[str] | None = None) -> int:
                 else "disabled"
             )
             print(f"arXiv: {arxiv_status}")
+        return 0
+
+    if args.command == "providers":
+        reporter = Reporter(-1 if args.quiet else args.verbose)
+        try:
+            diagnostics = diagnose_providers(
+                config,
+                check=args.check,
+                reporter=reporter,
+            )
+        except (OSError, ValueError, TypeError) as error:
+            print(f"bibreview providers: {error}", file=sys.stderr)
+            return 1
+
+        if args.json_output:
+            print(
+                json.dumps(
+                    [item.data() for item in diagnostics],
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+            return 0
+        if not args.quiet:
+            print(format_provider_diagnostics(diagnostics))
         return 0
 
     if args.command == "discover":

@@ -140,6 +140,20 @@ class ConfigTests(unittest.TestCase):
         with self.assertRaisesRegex(ConfigError, "arxiv.sort_by"):
             load_config(path)
 
+    def test_loads_provider_oauth_environment_fields(self):
+        _, path = self.write(BASE.replace(
+            "providers:\n",
+            "providers:\n"
+            "  mendeley:\n"
+            "    enabled: true\n"
+            "    client_id_env: MENDELEY_CLIENT_ID\n"
+            "    client_secret_env: MENDELEY_CLIENT_SECRET\n",
+        ))
+        config = load_config(path)
+        mendeley = config.providers["mendeley"]
+        self.assertEqual(mendeley.client_id_env, "MENDELEY_CLIENT_ID")
+        self.assertEqual(mendeley.client_secret_env, "MENDELEY_CLIENT_SECRET")
+
     def test_loads_configurable_discovery_type_and_doi_exclusions(self):
         _, path = self.write(BASE.replace(
             "  query: fluid-structure interaction\n",

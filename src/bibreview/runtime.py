@@ -10,6 +10,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 import os
+from types import MappingProxyType
 
 from dotenv import dotenv_values
 
@@ -31,6 +32,14 @@ from .providers.publisher import PublisherEnrichmentRouter
 from .providers.semantic_scholar import SemanticScholarProvider
 from .providers.springer import SpringerProvider
 from .reporting import Reporter
+
+
+@dataclass(frozen=True)
+class RuntimeEnvironment:
+    """Resolved runtime values plus their non-secret provenance."""
+
+    values: Mapping[str, str]
+    sources: Mapping[str, str]
 
 
 @dataclass(frozen=True)
@@ -65,28 +74,26 @@ def _provider(config: BibReviewConfig, name: str) -> ProviderConfig | None:
     return value if value is not None and value.enabled else None
 
 
-def _runtime_environment(
+def resolve_runtime_environment(
     config: BibReviewConfig,
     *,
     environ: Mapping[str, str] | None,
     reporter: Reporter,
-) -> Mapping[str, str]:
-    """Compose configured dotenv defaults with the process/caller environment.
+) -> RuntimeEnvironment:
+    """Compose runtime values while recording whether each value came from dotenv or process environment.
 
-    Values supplied by the caller or exported in the process environment always
-    override values loaded from the optional configured environment file.
+    Secret values remain private; callers such as provider diagnostics use only
+    the source mapping when producing user-visible output.
     """
     values: dict[str, str] = {}
+    sources: dict[str, str] = {}
     path = config.environment.file
     if path is not None:
         if path.exists():
-            values.update(
-                {
-                    key: value
-                    for key, value in dotenv_values(path).items()
-                    if isinstance(key, str) and isinstance(value, str)
-                }
-            )
+            for key, value in dotenv_values(path).items():
+                if isinstance(key, str) and isinstance(value, str):
+                    values[key] = value
+                    sources[key] = "dotenv"
         else:
             reporter.warning(
                 f"Configured environment file does not exist: {path}; "
@@ -94,14 +101,31 @@ def _runtime_environment(
             )
 
     override = os.environ if environ is None else environ
-    values.update(
-        {
-            str(key): str(value)
-            for key, value in override.items()
-            if value is not None
-        }
+    for key, value in override.items():
+        if value is None:
+            continue
+        normalized_key = str(key)
+        values[normalized_key] = str(value)
+        sources[normalized_key] = "environment"
+
+    return RuntimeEnvironment(
+        values=MappingProxyType(values),
+        sources=MappingProxyType(sources),
     )
-    return values
+
+
+def _runtime_environment(
+    config: BibReviewConfig,
+    *,
+    environ: Mapping[str, str] | None,
+    reporter: Reporter,
+) -> Mapping[str, str]:
+    """Return only resolved runtime values for provider composition."""
+    return resolve_runtime_environment(
+        config,
+        environ=environ,
+        reporter=reporter,
+    ).values
 
 
 def _secret(
@@ -210,22 +234,41 @@ def _build_core_services(
             ieee=ieee,
         )
 
+    semantic_config = _provider(config, "semantic_scholar")
+    semantic_key = _optional_api_key(
+        semantic_config,
+        provider_name="Semantic Scholar",
+        environ=environ,
+        reporter=reporter,
+    )
     semantic = (
-        SemanticScholarProvider(transport)
-        if _provider(config, "semantic_scholar") is not None
+        SemanticScholarProvider(transport, api_key=semantic_key)
+        if semantic_config is not None
         else None
     )
     mendeley_config = _provider(config, "mendeley")
-    mendeley_token = _secret(
+    mendeley_client_id = _secret(
         mendeley_config,
-        field="token_env",
-        provider_name="Mendeley",
+        field="client_id_env",
+        provider_name="Mendeley client ID",
+        environ=environ,
+        reporter=reporter,
+    )
+    mendeley_client_secret = _secret(
+        mendeley_config,
+        field="client_secret_env",
+        provider_name="Mendeley client secret",
         environ=environ,
         reporter=reporter,
     )
     mendeley = (
-        MendeleyProvider(transport, token=mendeley_token, user_agent=user_agent)
-        if mendeley_token
+        MendeleyProvider(
+            transport,
+            client_id=mendeley_client_id,
+            client_secret=mendeley_client_secret,
+            user_agent=user_agent,
+        )
+        if mendeley_client_id and mendeley_client_secret
         else None
     )
 

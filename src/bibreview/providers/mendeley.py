@@ -4,44 +4,104 @@ from __future__ import annotations
 
 import html
 import re
+from time import monotonic
+from typing import Callable
 
 from bs4 import BeautifulSoup
 
 from ..identity import normalize_doi
-from .http import HttpTransport
+from .http import HttpError, HttpTransport
 
 
 class MendeleyProvider:
     """Retrieve optional abstracts from the authenticated Mendeley catalog."""
 
     CATALOG_URL = "https://api.mendeley.com/catalog"
+    TOKEN_URL = "https://api.mendeley.com/oauth/token"
 
     def __init__(
         self,
         transport: HttpTransport,
         *,
-        token: str,
+        client_id: str,
+        client_secret: str,
         user_agent: str = "BibReview abstract-fallback",
+        clock: Callable[[], float] = monotonic,
     ) -> None:
-        normalized_token = token.strip()
-        if not normalized_token:
-            raise ValueError("Mendeley token must not be empty")
+        normalized_id = client_id.strip()
+        normalized_secret = client_secret.strip()
+        if not normalized_id:
+            raise ValueError("Mendeley client ID must not be empty")
+        if not normalized_secret:
+            raise ValueError("Mendeley client secret must not be empty")
         self.transport = transport
-        self.token = normalized_token
+        self.client_id = normalized_id
+        self.client_secret = normalized_secret
         self.user_agent = user_agent.strip() or "BibReview abstract-fallback"
+        self._clock = clock
+        self._token = ""
+        self._expires_at = 0.0
+
+    def authenticate(self) -> None:
+        """Ensure that a valid client-credentials access token is cached."""
+        self._access_token()
+
+    def _access_token(self, *, force: bool = False) -> str:
+        now = self._clock()
+        if not force and self._token and now < self._expires_at:
+            return self._token
+
+        data = self.transport.post_form_json(
+            self.TOKEN_URL,
+            data={"grant_type": "client_credentials", "scope": "all"},
+            auth=(self.client_id, self.client_secret),
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            context="Mendeley OAuth token exchange",
+        )
+        if not isinstance(data, dict):
+            raise ValueError("Mendeley OAuth token response must be a JSON object")
+        token = data.get("access_token")
+        expires_in = data.get("expires_in")
+        if not isinstance(token, str) or not token.strip():
+            raise ValueError("Mendeley OAuth token response is missing access_token")
+        if not isinstance(expires_in, (int, float)) or isinstance(expires_in, bool):
+            raise ValueError("Mendeley OAuth token response is missing expires_in")
+        lifetime = max(0.0, float(expires_in))
+        self._token = token.strip()
+        self._expires_at = now + max(0.0, lifetime - min(30.0, lifetime * 0.1))
+        return self._token
+
+    def _catalog(self, doi: str):
+        """Fetch one catalog response, refreshing a rejected/expired token once."""
+        token = self._access_token()
+        try:
+            return self.transport.json(
+                self.CATALOG_URL,
+                params={"doi": doi, "view": "all"},
+                headers={
+                    "Accept": "application/vnd.mendeley-document.1+json",
+                    "Authorization": f"Bearer {token}",
+                },
+                context=f"Mendeley catalog for DOI {doi}",
+            )
+        except HttpError as error:
+            if error.status_code != 401:
+                raise
+            token = self._access_token(force=True)
+            return self.transport.json(
+                self.CATALOG_URL,
+                params={"doi": doi, "view": "all"},
+                headers={
+                    "Accept": "application/vnd.mendeley-document.1+json",
+                    "Authorization": f"Bearer {token}",
+                },
+                context=f"Mendeley catalog for DOI {doi}",
+            )
 
     def abstract(self, doi: str) -> str:
         """Return one Mendeley abstract, or an empty string when unavailable."""
         normalized = normalize_doi(doi)
-        data = self.transport.json(
-            self.CATALOG_URL,
-            params={"doi": normalized, "view": "all"},
-            headers={
-                "Accept": "application/vnd.mendeley-document.1+json",
-                "Authorization": f"Bearer {self.token}",
-            },
-            context=f"Mendeley catalog for DOI {normalized}",
-        )
+        data = self._catalog(normalized)
         if not isinstance(data, list) or not data or not isinstance(data[0], dict):
             return ""
         link = data[0].get("link")

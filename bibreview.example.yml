@@ -86,10 +86,15 @@ providers:
 
   semantic_scholar:
     enabled: false
+    # Optional; authenticated requests have dedicated rate limits.
+    api_key_env: SEMANTIC_SCHOLAR_API_KEY
 
   mendeley:
     enabled: false
-    token_env: MENDELEY_TOKEN
+    # Application ID + Secret from the Mendeley Developer Portal.
+    # BibReview obtains and refreshes short-lived OAuth access tokens itself.
+    client_id_env: MENDELEY_CLIENT_ID
+    client_secret_env: MENDELEY_CLIENT_SECRET
 
 site:
   enabled: false
