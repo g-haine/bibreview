@@ -13,7 +13,8 @@ from dataclasses import asdict, dataclass, replace
 from typing import Any, Iterable, Mapping
 
 
-CAMPAIGN_SCHEMA_VERSION = 1
+CAMPAIGN_SCHEMA_VERSION = 2
+_CAMPAIGN_READ_SCHEMA_VERSIONS = frozenset({1, 2})
 _ITEM_STATES = frozenset({"pending", "active", "completed", "retryable", "failed"})
 _RESULT_STATES = frozenset({"completed", "retryable", "failed"})
 
@@ -51,7 +52,7 @@ class Campaign:
     """
 
     kind: str
-    batch_size: int
+    default_batch_size: int
     items: tuple[CampaignItem, ...]
     batches: tuple[CampaignBatch, ...] = ()
 
@@ -151,7 +152,7 @@ def create_campaign(
 
     return Campaign(
         kind=normalized_kind,
-        batch_size=normalized_batch_size,
+        default_batch_size=normalized_batch_size,
         items=tuple(items),
     )
 
@@ -178,7 +179,7 @@ def open_next_batch(
 ) -> tuple[Campaign, CampaignBatch | None]:
     """Open the next stable batch, or return the existing open batch on resume.
 
-    campaign.batch_size is the default for newly opened batches. A caller may
+    campaign.default_batch_size is the default for newly opened batches. A caller may
     override the size of the next batch without changing the stable item
     snapshot or the campaign default. An already-open batch always resumes with
     its persisted membership.
@@ -194,7 +195,7 @@ def open_next_batch(
         return campaign, current
 
     effective_size = (
-        campaign.batch_size
+        campaign.default_batch_size
         if batch_size is None
         else _validate_batch_size(batch_size)
     )
@@ -338,7 +339,7 @@ def campaign_data(campaign: Campaign) -> dict[str, Any]:
     return {
         "schema_version": CAMPAIGN_SCHEMA_VERSION,
         "kind": campaign.kind,
-        "batch_size": campaign.batch_size,
+        "default_batch_size": campaign.default_batch_size,
         "items": [
             {
                 "key": item.key,
@@ -368,7 +369,22 @@ def _mapping(value: Any, name: str) -> Mapping[str, Any]:
 def campaign_from_data(value: Mapping[str, Any]) -> Campaign:
     """Build and strictly validate one campaign from persisted JSON data."""
     root = _mapping(value, "campaign")
-    required = {"schema_version", "kind", "batch_size", "items", "batches"}
+    schema_version = root.get("schema_version")
+    if (
+        not isinstance(schema_version, int)
+        or isinstance(schema_version, bool)
+        or schema_version not in _CAMPAIGN_READ_SCHEMA_VERSIONS
+    ):
+        supported = ", ".join(
+            str(version) for version in sorted(_CAMPAIGN_READ_SCHEMA_VERSIONS)
+        )
+        raise CampaignError(
+            "unsupported campaign schema version: "
+            f"{schema_version!r}; supported: {supported}"
+        )
+
+    size_field = "batch_size" if schema_version == 1 else "default_batch_size"
+    required = {"schema_version", "kind", size_field, "items", "batches"}
     missing = required - root.keys()
     unknown = root.keys() - required
     if missing:
@@ -380,19 +396,8 @@ def campaign_from_data(value: Mapping[str, Any]) -> Campaign:
             "campaign has unknown fields: " + ", ".join(sorted(unknown))
         )
 
-    schema_version = root["schema_version"]
-    if (
-        not isinstance(schema_version, int)
-        or isinstance(schema_version, bool)
-        or schema_version != CAMPAIGN_SCHEMA_VERSION
-    ):
-        raise CampaignError(
-            "unsupported campaign schema version: "
-            f"{schema_version!r}; expected {CAMPAIGN_SCHEMA_VERSION}"
-        )
-
     kind = _validate_kind(root["kind"])
-    batch_size = _validate_batch_size(root["batch_size"])
+    default_batch_size = _validate_batch_size(root[size_field])
 
     raw_items = root["items"]
     if not isinstance(raw_items, list):
@@ -474,7 +479,7 @@ def campaign_from_data(value: Mapping[str, Any]) -> Campaign:
 
     campaign = Campaign(
         kind=kind,
-        batch_size=batch_size,
+        default_batch_size=default_batch_size,
         items=tuple(items),
         batches=tuple(batches),
     )
@@ -487,7 +492,7 @@ def validate_campaign(campaign: Campaign) -> None:
     if not isinstance(campaign, Campaign):
         raise CampaignError("value must be a Campaign")
     _validate_kind(campaign.kind)
-    _validate_batch_size(campaign.batch_size)
+    _validate_batch_size(campaign.default_batch_size)
 
     item_keys: list[str] = []
     for index, item in enumerate(campaign.items, 1):

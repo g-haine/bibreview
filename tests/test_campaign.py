@@ -20,7 +20,7 @@ class CampaignTests(unittest.TestCase):
         campaign = create_campaign("audit", ["pub-c", "pub-a", "pub-b"])
 
         self.assertEqual(campaign.kind, "audit")
-        self.assertEqual(campaign.batch_size, 50)
+        self.assertEqual(campaign.default_batch_size, 50)
         self.assertEqual(
             tuple(item.key for item in campaign.items),
             ("pub-c", "pub-a", "pub-b"),
@@ -64,7 +64,7 @@ class CampaignTests(unittest.TestCase):
 
         campaign, first = open_next_batch(campaign, batch_size=1)
         self.assertEqual(first.keys, ("one",))
-        self.assertEqual(campaign.batch_size, 3)
+        self.assertEqual(campaign.default_batch_size, 3)
         campaign = record_item_result(
             campaign,
             batch_id=first.id,
@@ -75,7 +75,7 @@ class CampaignTests(unittest.TestCase):
 
         campaign, second = open_next_batch(campaign)
         self.assertEqual(second.keys, ("two", "three", "four"))
-        self.assertEqual(campaign.batch_size, 3)
+        self.assertEqual(campaign.default_batch_size, 3)
 
     def test_open_batch_ignores_new_size_override_on_resume(self):
         campaign, first = open_next_batch(
@@ -232,7 +232,9 @@ class CampaignTests(unittest.TestCase):
         restored = campaign_from_data(deepcopy(payload))
 
         self.assertEqual(restored, campaign)
-        self.assertEqual(payload["schema_version"], 1)
+        self.assertEqual(payload["schema_version"], 2)
+        self.assertEqual(payload["default_batch_size"], 2)
+        self.assertNotIn("batch_size", payload)
         self.assertEqual(
             campaign_progress(restored).data(),
             {
@@ -247,6 +249,49 @@ class CampaignTests(unittest.TestCase):
                 "open_batch": "batch-0001",
             },
         )
+
+    def test_schema_v1_campaign_migrates_losslessly_to_schema_v2(self):
+        campaign = create_campaign(
+            "audit",
+            ["one", "two", "three"],
+            batch_size=50,
+        )
+        campaign, first = open_next_batch(campaign, batch_size=2)
+        campaign = record_item_result(
+            campaign,
+            batch_id=first.id,
+            key="one",
+            state="completed",
+        )
+        campaign = record_item_result(
+            campaign,
+            batch_id=first.id,
+            key="two",
+            state="completed",
+        )
+        campaign = close_batch(campaign, batch_id=first.id)
+
+        current = campaign_data(campaign)
+        legacy = deepcopy(current)
+        legacy["schema_version"] = 1
+        legacy["batch_size"] = legacy.pop("default_batch_size")
+
+        restored = campaign_from_data(legacy)
+
+        self.assertEqual(restored, campaign)
+        self.assertEqual(restored.default_batch_size, 50)
+        self.assertEqual(restored.batches[0].keys, ("one", "two"))
+        self.assertEqual(
+            tuple(item.state for item in restored.items),
+            ("completed", "completed", "pending"),
+        )
+
+        migrated = campaign_data(restored)
+        self.assertEqual(migrated["schema_version"], 2)
+        self.assertEqual(migrated["default_batch_size"], 50)
+        self.assertNotIn("batch_size", migrated)
+        self.assertEqual(migrated["batches"], current["batches"])
+        self.assertEqual(migrated["items"], current["items"])
 
     def test_rejects_duplicate_keys_and_invalid_batch_size(self):
         with self.assertRaisesRegex(CampaignError, "duplicate"):
