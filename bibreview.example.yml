@@ -57,6 +57,13 @@ refresh:
     - issue
     - pages
 
+# Non-destructive historical audits keep their own resumable campaign state and
+# comparison report. These files are separate from collected.json staging.
+audit:
+  campaign: data/audit/campaign.json
+  report: data/audit/report.json
+  batch_size: 50
+
 relevance:
   patterns:
     - 'fluid[-\\s]+structure'
