@@ -21,12 +21,20 @@ from .campaign import (
 )
 from .config import BibReviewConfig
 from .pipeline.audit import (
+    AuditComparison,
     AuditError,
+    AuditProviderIssue,
     AuditResult,
+    ProviderEvidence,
     audit_result_data,
     audit_result_from_data,
+    compare_audit_record,
+    publication_audit_record,
 )
 from .project import ProjectStateError
+from .providers.audit import AuditEvidenceSource
+from .providers.http import HttpError
+from .reporting import Reporter
 from .storage import (
     atomic_write_batch,
     json_bytes,
@@ -99,6 +107,27 @@ class ProjectAuditClosePlan:
     @property
     def changed(self) -> bool:
         return bool(self.outputs)
+
+
+@dataclass(frozen=True)
+class ProjectAuditExecution:
+    """Summary of one fully processed and closed audit batch."""
+
+    batch_id: str
+    processed_count: int
+    completed_count: int
+    retryable_count: int
+    failed_count: int
+    campaign: Campaign
+    report: AuditReport
+
+    def summary(self) -> str:
+        progress = campaign_progress(self.campaign)
+        return (
+            f"batch: {self.batch_id}; processed: {self.processed_count}; "
+            f"completed: {self.completed_count}; retryable: {self.retryable_count}; "
+            f"failed: {self.failed_count}; {progress.summary()}"
+        )
 
 
 def _campaign_items(campaign: Campaign) -> tuple[str, ...]:
@@ -481,3 +510,164 @@ def apply_project_audit_plan(
         raise ProjectStateError("plan must be a project audit plan")
     if plan.outputs:
         atomic_write_batch(plan.outputs)
+
+
+
+def _provider_failure_evidence(
+    source: AuditEvidenceSource,
+    error: Exception,
+) -> ProviderEvidence:
+    """Convert one provider failure into sanitized audit evidence."""
+    if isinstance(error, HttpError):
+        status = (
+            "error"
+            if error.status_code in {400, 401, 403}
+            else "unavailable"
+        )
+        detail = str(error)
+    else:
+        status = "error"
+        detail = "provider response could not be normalized"
+    return ProviderEvidence(
+        provider=source.name,
+        status=status,
+        detail=detail,
+    )
+
+
+def _missing_canonical_result(publication_id: str) -> AuditResult:
+    """Represent an audit UUID that disappeared from current canonical state."""
+    return AuditResult(
+        publication_id=publication_id,
+        identifiers=MappingProxyType({}),
+        permalink="",
+        title="",
+        comparisons=(
+            AuditComparison(
+                provider="bibreview",
+                field="publication_id",
+                classification="identity-problem",
+                canonical_value=publication_id,
+                provider_value="missing-from-current-canonical-bibliography",
+            ),
+        ),
+        provider_issues=(),
+        disagreements=(),
+    )
+
+
+def execute_project_audit_batch(
+    config: BibReviewConfig,
+    *,
+    batch_id: str,
+    sources: tuple[AuditEvidenceSource, ...],
+    reporter: Reporter | None = None,
+) -> ProjectAuditExecution:
+    """Process only still-active items in one already persisted audit batch.
+
+    Every item is checkpointed immediately after comparison. If the process is
+    interrupted, already-checkpointed items remain completed/retryable/failed
+    while untouched items stay active in the same open batch.
+    """
+    progress_reporter = reporter or Reporter()
+    campaign, report = _read_state(config)
+    open_batches = [batch for batch in campaign.batches if not batch.closed]
+    if len(open_batches) != 1 or open_batches[0].id != batch_id:
+        raise ProjectStateError(
+            f"{batch_id}: is not the current open audit batch"
+        )
+    batch = open_batches[0]
+
+    if not isinstance(sources, tuple):
+        sources = tuple(sources)
+    if any(not hasattr(source, "name") or not hasattr(source, "evidence") for source in sources):
+        raise ProjectStateError("audit sources must provide name and evidence()")
+    names = [source.name for source in sources]
+    if len(set(names)) != len(names):
+        raise ProjectStateError("audit source names must be unique")
+
+    publications = {
+        publication.id: publication
+        for publication in read_bibliography(config.paths.bibliography)
+    }
+    states = {item.key: item.state for item in campaign.items}
+
+    processed = 0
+    completed = 0
+    retryable = 0
+    failed = 0
+
+    for key in batch.keys:
+        if states.get(key) != "active":
+            continue
+
+        publication = publications.get(key)
+        if publication is None:
+            result = _missing_canonical_result(key)
+            state = "failed"
+            progress_reporter.warning(
+                f"audit {key}: canonical publication no longer exists; "
+                "recorded as identity problem"
+            )
+        else:
+            progress_reporter.step(
+                f"Audit {publication.doi or publication.id}: {publication.title}"
+            )
+            record = publication_audit_record(publication)
+            evidences: list[ProviderEvidence] = []
+            had_provider_failure = False
+
+            if publication.doi is None:
+                evidences.extend(
+                    ProviderEvidence(
+                        provider=source.name,
+                        status="unavailable",
+                        detail="canonical publication has no DOI",
+                    )
+                    for source in sources
+                )
+            else:
+                for source in sources:
+                    try:
+                        evidence = source.evidence(publication.doi)
+                    except (HttpError, OSError, ValueError, TypeError) as error:
+                        evidence = _provider_failure_evidence(source, error)
+                        had_provider_failure = True
+                        progress_reporter.warning(
+                            f"{source.name}: {evidence.detail}"
+                        )
+                    evidences.append(evidence)
+
+            result = compare_audit_record(record, tuple(evidences))
+            state = "retryable" if had_provider_failure else "completed"
+
+        checkpoint = plan_project_audit_checkpoint(
+            config,
+            batch_id=batch_id,
+            result=result,
+            state=state,
+        )
+        apply_project_audit_plan(checkpoint)
+        campaign = checkpoint.campaign
+        report = checkpoint.report
+        states[key] = state
+        processed += 1
+        if state == "completed":
+            completed += 1
+        elif state == "retryable":
+            retryable += 1
+        else:
+            failed += 1
+
+    close = plan_project_audit_close(config, batch_id=batch_id)
+    apply_project_audit_plan(close)
+
+    return ProjectAuditExecution(
+        batch_id=batch_id,
+        processed_count=processed,
+        completed_count=completed,
+        retryable_count=retryable,
+        failed_count=failed,
+        campaign=close.campaign,
+        report=close.report,
+    )
