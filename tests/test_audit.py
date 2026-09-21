@@ -9,6 +9,7 @@ from bibreview.pipeline.audit import (
     AuditRecord,
     ProviderEvidence,
     audit_result_data,
+    audit_result_from_data,
     compare_audit_record,
     publication_audit_record,
 )
@@ -250,6 +251,32 @@ class AuditComparisonTests(unittest.TestCase):
         self.assertEqual(record.fields["editors"], ("Example Editor",))
         self.assertEqual(record.fields["created_date"], "2024-02-03")
         self.assertEqual(record.fields["keywords"], ("Energy", "Control"))
+
+    def test_machine_readable_result_round_trip_is_strict(self):
+        result = compare_audit_record(
+            self.record(publication_year="2020"),
+            (
+                ProviderEvidence(
+                    provider="crossref",
+                    fields={"publication_year": "2021"},
+                ),
+                ProviderEvidence(
+                    provider="semantic-scholar",
+                    status="unavailable",
+                    detail="HTTP 429",
+                ),
+            ),
+        )
+        payload = audit_result_data(result)
+
+        restored = audit_result_from_data(payload)
+
+        self.assertEqual(restored, result)
+
+        broken = dict(payload)
+        broken["classification_counts"] = {"substantive-difference": 999}
+        with self.assertRaisesRegex(AuditError, "classification_counts"):
+            audit_result_from_data(broken)
 
     def test_machine_readable_output_keeps_provenance_and_context(self):
         result = compare_audit_record(
