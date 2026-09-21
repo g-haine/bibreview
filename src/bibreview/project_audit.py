@@ -123,10 +123,17 @@ class ProjectAuditExecution:
 
     def summary(self) -> str:
         progress = campaign_progress(self.campaign)
+        campaign_processed = progress.completed + progress.retryable + progress.failed
         return (
-            f"batch: {self.batch_id}; processed: {self.processed_count}; "
-            f"completed: {self.completed_count}; retryable: {self.retryable_count}; "
-            f"failed: {self.failed_count}; {progress.summary()}"
+            f"Audit batch {self.batch_id} complete\n"
+            f"  This batch : {self.processed_count} processed "
+            f"({self.completed_count} completed, "
+            f"{self.retryable_count} retryable, {self.failed_count} failed)\n"
+            f"  Campaign   : {campaign_processed} / {progress.total} processed "
+            f"({progress.completed} completed, "
+            f"{progress.retryable} retryable, {progress.failed} failed)\n"
+            f"  Remaining  : {progress.pending} pending\n"
+            f"  Batches    : {progress.batches_closed} closed"
         )
 
 
