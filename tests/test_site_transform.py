@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date
 import unittest
 
-from bibreview.model import Author, Publication, Reference
+from bibreview.model import Author, Editor, Publication, Reference
 from bibreview.site.transform import SiteTransformError, build_site_model, site_model_data
 
 
@@ -18,15 +18,19 @@ class SiteTransformTests(unittest.TestCase):
         year: str,
         title: str,
         authors: tuple[Author, ...] = (),
+        editors: tuple[Editor, ...] | None = None,
         references: tuple[Reference, ...] = (),
     ) -> Publication:
         identifiers = {"doi": doi} if doi is not None else {}
+        if editors is None:
+            editors = () if authors else (Editor(literal="Example Editor"),)
         return Publication(
             id=identifier,
             identifiers=identifiers,
             type="journal-article",
             title=title,
             authors=authors,
+            editors=editors,
             abstract=f"Abstract for {title}",
             container_title="Journal",
             publication_year=year,
@@ -60,7 +64,7 @@ class SiteTransformTests(unittest.TestCase):
             title="New work",
             authors=(Author(literal="A. Lovelace"),),
         )
-        no_author = self.publication(
+        editor_only = self.publication(
             identifier="00000000-0000-4000-8000-000000000003",
             doi=None,
             permalink="editorial-overview",
@@ -70,14 +74,18 @@ class SiteTransformTests(unittest.TestCase):
         )
 
         model = build_site_model(
-            (old, new, no_author),
+            (old, new, editor_only),
             {
                 "ada-lovelace": ["Ada Lovelace", "A. Lovelace"],
                 "unused-person": ["Unused Person"],
             },
         )
 
-        self.assertEqual([item.id for item in model.publications], [old.id, new.id, no_author.id])
+        self.assertEqual([item.id for item in model.publications], [old.id, new.id, editor_only.id])
+        self.assertEqual(
+            [editor.name for editor in model.publications[2].editors],
+            ["Example Editor"],
+        )
         self.assertEqual(model.publications[0].references[0].permalink, "new-work")
         self.assertEqual(tuple(model.authors), ("ada-lovelace",))
         self.assertEqual(model.authors["ada-lovelace"].author.name, "Ada Lovelace")
@@ -90,11 +98,15 @@ class SiteTransformTests(unittest.TestCase):
             (new.id, old.id),
         )
         self.assertEqual(tuple(model.years), ("2024", "2025"))
-        self.assertEqual(model.years["2025"].publication_ids, (no_author.id, new.id))
+        self.assertEqual(model.years["2025"].publication_ids, (editor_only.id, new.id))
 
         payload = site_model_data(model)
         self.assertEqual(payload["publications"][0]["references"][0]["permalink"], "new-work")
         self.assertEqual(payload["authors"]["ada-lovelace"]["publication_ids"], [new.id, old.id])
+        self.assertEqual(
+            payload["publications"][2]["editors"],
+            [{"name": "Example Editor"}],
+        )
 
     def test_rejects_unmapped_publication_author(self) -> None:
         publication = self.publication(

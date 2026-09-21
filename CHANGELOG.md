@@ -2,6 +2,30 @@
 
 All notable BibReview releases are documented here.
 
+## 1.1.0 — 2026-09-21
+
+### Bibliographic contributors
+
+- add source-preserving `Editor` metadata alongside `Author`;
+- require every canonical publication to contain at least one author or editor;
+- collect CrossRef `editor` metadata without conflating editors with author identities;
+- bump the canonical bibliography schema to version 2 while retaining read support
+  for valid version-1 bibliographies.
+
+### Static-site rendering
+
+- carry editor metadata through the renderer-independent site model;
+- render editor-only publication rows with an explicit `Ed.` or `Eds.` role;
+- render an `Editors` section and optional `editors` front-matter field without
+  adding editors to author identity pages.
+
+### Identifier policy
+
+- keep DOI optional in the canonical publication model: stable internal UUIDs,
+  not DOI values, remain the publication identity;
+- keep automated collection DOI-backed for now, leaving non-DOI acquisition and
+  BibTeX provenance as an explicit future ingestion concern.
+
 ## 1.0.0 — 2026-09-18
 
 First stable public release of BibReview as a generic bibliographic engine.

@@ -9,8 +9,8 @@ The canonical bibliography is a JSON document:
 ~~~json
 {
   "metadata": {
-    "schema_version": 1,
-    "last_update": "2026-09-18"
+    "schema_version": 2,
+    "last_update": "2026-09-21"
   },
   "publications": [
     {
@@ -18,14 +18,40 @@ The canonical bibliography is a JSON document:
       "identifiers": {
         "doi": "10.xxxx/example"
       },
-      "title": "Example title"
+      "title": "Example title",
+      "authors": [],
+      "editors": [
+        {
+          "given": "Ada",
+          "family": "Lovelace",
+          "literal": null,
+          "source_fields": {}
+        }
+      ]
     }
   ]
 }
 ~~~
 
 The internal **id** is the persistent identity. Do not regenerate it during
-manual metadata corrections.
+manual metadata corrections. A DOI is an external identifier, not the canonical
+identity, and a publication may legitimately have no DOI.
+
+Every canonical publication must have at least one bibliographic responsibility
+entry:
+
+~~~text
+len(authors) + len(editors) >= 1
+~~~
+
+Authors and editors use the same source-preserving name shape but remain
+different roles. Editor names are not silently promoted to author identities.
+
+Schema version 2 adds the **editors** field and the contributor invariant.
+For compact canonical JSON, **editors** is omitted when the list is empty and is
+written only when at least one editor is present. BibReview still reads valid
+schema-version-1 bibliographies; an authorless version-1 record must be repaired
+before it can become a valid version-2 publication.
 
 **metadata.last_update** changes on an effective merge that adds or updates a
 publication.
@@ -40,7 +66,8 @@ resolve the current batch before starting another collection or refresh.
 
 ## DOI queues
 
-BibReview uses plain text files with one DOI per line:
+BibReview's current discovery and automated collection workflow is DOI-backed
+and uses plain text files with one DOI per line:
 
 - **known** — accepted DOI values already represented by the canonical bibliography;
 - **pending** — DOI values waiting for collection;
@@ -48,6 +75,11 @@ BibReview uses plain text files with one DOI per line:
 - **rejected** — DOI values deliberately excluded.
 
 Comments and blank lines are ignored when queue files are read.
+
+The canonical model itself is not DOI-dependent. Future non-DOI ingestion must
+define how records are acquired and matched, which external identifiers are
+trusted, and how a real BibTeX record is obtained or reviewed. It must not
+invent a fake DOI or silently fabricate unreliable citation metadata.
 
 ## Author mappings
 
@@ -65,6 +97,9 @@ The author mapping file is JSON:
 The key is the stable site slug; the list contains exact source-visible name
 variants assigned to that identity.
 
+Editor metadata is intentionally separate and does not participate in author
+identity mapping.
+
 See [Author identities](authors.md).
 
 ## BibTeX
@@ -81,8 +116,9 @@ A missing or invalid provider response is treated as unavailable BibTeX. The
 publication may still be collected, but **render** will refuse to render the site
 until a real BibTeX file exists.
 
-This makes missing source material visible instead of silently publishing a fake
-citation.
+For future non-DOI ingestion, this provenance rule still applies: either obtain
+a trustworthy BibTeX record or add a reviewed explicit mechanism for creating
+one. Do not generate a citation merely to satisfy the renderer.
 
 ## Archive
 
@@ -100,5 +136,11 @@ external backup.
 not the whole site. It reconciles publication posts, author pages, year pages
 and BibReview metadata used by the site.
 
+The renderer receives editors through the renderer-independent site model. It
+may label editor-only rows explicitly (for example **Ed.** or **Eds.**) and
+render a dedicated **Editors** section.
+
 Themes, layouts, CSS, hand-written pages, analytics and deployment remain
-project-owned.
+project-owned. BibReview therefore does not need a second project-specific
+"Jekyll template" module: the existing site-model/renderer boundary is the
+extension point.

@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 
 from bibreview.identity import new_publication_id
-from bibreview.model import Publication
+from bibreview.model import Author, Publication
 from bibreview.pipeline.merge import MergeError, merge_publications
 
 
@@ -18,6 +18,7 @@ def publication(*, identifier: str | None = None, doi: str | None = None,
         id=identifier or new_publication_id(),
         identifiers=identifiers,
         title=title,
+        authors=(Author(literal="Example Author"),),
     )
 
 
@@ -55,7 +56,12 @@ class MergeTests(unittest.TestCase):
 
     def test_identical_refresh_is_reported_unchanged(self) -> None:
         old = publication(doi="10.1/item")
-        same = Publication(id=new_publication_id(), identifiers={"doi": "10.1/item"}, title="Title")
+        same = Publication(
+            id=new_publication_id(),
+            identifiers={"doi": "10.1/item"},
+            title="Title",
+            authors=(Author(literal="Example Author"),),
+        )
         result = merge_publications([old], [same])
         self.assertEqual(result.unchanged_ids, (old.id,))
         self.assertEqual(result.updated_ids, ())
@@ -67,6 +73,7 @@ class MergeTests(unittest.TestCase):
             id=first.id,
             identifiers={"doi": "10.1/second"},
             title="Conflict",
+            authors=(Author(literal="Example Author"),),
         )
         with self.assertRaisesRegex(MergeError, "conflicts across existing records"):
             merge_publications([first, second], [incoming])

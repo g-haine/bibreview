@@ -10,7 +10,7 @@ from unittest.mock import patch
 from bibreview.cli import main
 from bibreview.config import load_config
 from bibreview.identity import new_publication_id
-from bibreview.model import Publication
+from bibreview.model import Author, Publication
 from bibreview.storage import read_bibliography, write_bibliography
 
 
@@ -36,6 +36,7 @@ class FakeProvider:
         return {
             "type": "journal-article",
             "title": ["Updated publication"],
+            "author": [{"given": "Ada", "family": "Lovelace"}],
             "container-title": ["Journal"],
             "created": {"date-parts": [[2026, 9, 17]]},
             "published-print": {"date-parts": [[2026]]},
@@ -59,6 +60,7 @@ class RefreshCliTests(unittest.TestCase):
             identifiers={"doi": "10.1/stale"},
             type="journal-article",
             title="Old publication",
+            authors=(Author(literal="Example Author"),),
             publication_year="2025",
             created_date=date(2025, 1, 2),
             permalink="stable-paper",

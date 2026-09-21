@@ -5,7 +5,7 @@ import unittest
 
 from bibreview.config import load_config
 from bibreview.identity import new_publication_id
-from bibreview.model import Publication
+from bibreview.model import Author, Publication
 from bibreview.project import apply_project_merge, plan_project_merge
 from bibreview.storage import (
     BibliographyMetadata,
@@ -37,7 +37,12 @@ class ProjectMergeTests(unittest.TestCase):
 
     def publication(self, doi: str | None, title: str) -> Publication:
         identifiers = {"doi": doi} if doi else {}
-        return Publication(id=new_publication_id(), identifiers=identifiers, title=title)
+        return Publication(
+            id=new_publication_id(),
+            identifiers=identifiers,
+            title=title,
+            authors=(Author(literal="Example Author"),),
+        )
 
     def snapshot(self):
         return {

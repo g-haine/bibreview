@@ -4,7 +4,7 @@ import unittest
 
 from bibreview.config import load_config
 from bibreview.identity import new_publication_id
-from bibreview.model import Publication
+from bibreview.model import Author, Publication
 from bibreview.project import (
     ProjectStateError,
     apply_project_collection,
@@ -59,6 +59,7 @@ class ProjectCollectionTests(unittest.TestCase):
             id=new_publication_id(),
             identifiers={"doi": doi},
             title=title,
+            authors=(Author(literal="Example Author"),),
             permalink=permalink,
         )
 

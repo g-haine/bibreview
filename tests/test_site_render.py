@@ -11,6 +11,7 @@ from bibreview.site import (
     SiteModel,
     SitePublication,
     SitePublicationAuthor,
+    SitePublicationEditor,
     SiteRenderError,
     SiteYearPage,
     render_jekyll_index_pages,
@@ -179,16 +180,17 @@ permalink: /years/2024
         self.assertIn("New &lt;work&gt;", artifacts["years/2025.md"])
         self.assertEqual(self.model().publications[1].title, "New <work>")
 
-    def test_authorless_year_publications_are_project_configurable(self) -> None:
+    def test_editor_only_year_publications_are_not_filtered_as_authorless(self) -> None:
         model = self.model()
-        anonymous = SitePublication(
-            id="anonymous-id",
-            permalink="anonymous-work",
+        edited = SitePublication(
+            id="edited-id",
+            permalink="edited-work",
             created_date=date(2025, 2, 1),
             year="2025",
             type="journal-article",
-            title="Anonymous work",
+            title="Edited work",
             authors=(),
+            editors=(SitePublicationEditor(name="Example Editor"),),
             abstract="",
             container_title="Journal",
             volume="",
@@ -199,20 +201,21 @@ permalink: /years/2024
             keywords=(),
         )
         extended = SiteModel(
-            publications=model.publications + (anonymous,),
+            publications=model.publications + (edited,),
             authors=model.authors,
             years={
                 "2024": model.years["2024"],
                 "2025": SiteYearPage(
                     year="2025",
-                    publication_ids=("anonymous-id", "new-id"),
+                    publication_ids=("edited-id", "new-id"),
                 ),
             },
         )
         default = {
             item.path: item.content for item in render_jekyll_index_pages(extended)
         }
-        self.assertIn("anonymous-work", default["years/2025.md"])
+        self.assertIn("edited-work", default["years/2025.md"])
+        self.assertIn("2025 -- Ed. Example Editor", default["years/2025.md"])
 
         filtered = {
             item.path: item.content
@@ -223,7 +226,7 @@ permalink: /years/2024
                 ),
             )
         }
-        self.assertNotIn("anonymous-work", filtered["years/2025.md"])
+        self.assertIn("edited-work", filtered["years/2025.md"])
         self.assertIn("new-work", filtered["years/2025.md"])
 
     def test_missing_publication_reference_is_rejected(self) -> None:

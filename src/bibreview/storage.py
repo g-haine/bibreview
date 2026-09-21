@@ -12,14 +12,15 @@ import stat
 import tempfile
 from typing import Any, Iterable, Mapping
 
-from .model import Author, Publication, Reference
+from .model import Author, Editor, Publication, Reference
 
 
 class StorageError(ValueError):
     """Raised when persisted project state cannot be read or represented safely."""
 
 
-BIBLIOGRAPHY_SCHEMA_VERSION = 1
+BIBLIOGRAPHY_SCHEMA_VERSION = 2
+_SUPPORTED_BIBLIOGRAPHY_SCHEMA_VERSIONS = frozenset({1, 2})
 
 
 @dataclass(frozen=True)
@@ -128,7 +129,7 @@ def publication_data(publication: Publication) -> dict[str, Any]:
     """Convert one canonical publication to the persisted BibReview JSON shape."""
     if not isinstance(publication, Publication):
         raise StorageError("bibliography entries must be Publication objects")
-    return {
+    result = {
         "id": publication.id,
         "identifiers": dict(publication.identifiers),
         "type": publication.type,
@@ -161,6 +162,17 @@ def publication_data(publication: Publication) -> dict[str, Any]:
             for reference in publication.references
         ],
     }
+    if publication.editors:
+        result["editors"] = [
+            {
+                "given": editor.given,
+                "family": editor.family,
+                "literal": editor.literal,
+                "source_fields": deepcopy(dict(editor.source_fields)),
+            }
+            for editor in publication.editors
+        ]
+    return result
 
 
 def _mapping(value: Any, name: str) -> Mapping[str, Any]:
@@ -177,16 +189,23 @@ def _string(value: Any, name: str, *, nullable: bool = False) -> str | None:
     return value
 
 
-def publication_from_data(value: Mapping[str, Any]) -> Publication:
+def publication_from_data(
+    value: Mapping[str, Any],
+    *,
+    schema_version: int = BIBLIOGRAPHY_SCHEMA_VERSION,
+) -> Publication:
     """Build and validate one Publication from canonical persisted JSON data."""
+    if schema_version not in _SUPPORTED_BIBLIOGRAPHY_SCHEMA_VERSIONS:
+        raise StorageError(f"unsupported bibliography schema version: {schema_version}")
     record = _mapping(value, "publication")
     required = {
         "id", "identifiers", "type", "title", "authors", "abstract",
         "container_title", "publication_year", "volume", "issue", "pages",
         "publisher", "event", "keywords", "created_date", "permalink", "references",
     }
+    allowed = required | ({"editors"} if schema_version >= 2 else set())
     missing = required - record.keys()
-    unknown = record.keys() - required
+    unknown = record.keys() - allowed
     if missing:
         raise StorageError(f"publication missing fields: {', '.join(sorted(missing))}")
     if unknown:
@@ -212,6 +231,41 @@ def publication_from_data(value: Mapping[str, Any]) -> Publication:
                 given=_string(author["given"], f"publication.authors[{index}].given", nullable=True),
                 family=_string(author["family"], f"publication.authors[{index}].family", nullable=True),
                 literal=_string(author["literal"], f"publication.authors[{index}].literal", nullable=True),
+                source_fields=deepcopy(dict(source_fields)),
+            )
+        )
+
+    raw_editors = record.get("editors", []) if schema_version >= 2 else []
+    if not isinstance(raw_editors, list):
+        raise StorageError("publication.editors must be a list")
+    editors: list[Editor] = []
+    for index, raw_editor in enumerate(raw_editors, 1):
+        editor = _mapping(raw_editor, f"publication.editors[{index}]")
+        if set(editor) != {"given", "family", "literal", "source_fields"}:
+            raise StorageError(
+                f"publication.editors[{index}] must contain given, family, literal, and source_fields"
+            )
+        source_fields = _mapping(
+            editor["source_fields"],
+            f"publication.editors[{index}].source_fields",
+        )
+        editors.append(
+            Editor(
+                given=_string(
+                    editor["given"],
+                    f"publication.editors[{index}].given",
+                    nullable=True,
+                ),
+                family=_string(
+                    editor["family"],
+                    f"publication.editors[{index}].family",
+                    nullable=True,
+                ),
+                literal=_string(
+                    editor["literal"],
+                    f"publication.editors[{index}].literal",
+                    nullable=True,
+                ),
                 source_fields=deepcopy(dict(source_fields)),
             )
         )
@@ -263,6 +317,7 @@ def publication_from_data(value: Mapping[str, Any]) -> Publication:
             type=_string(record["type"], "publication.type"),
             title=_string(record["title"], "publication.title"),
             authors=tuple(authors),
+            editors=tuple(editors),
             abstract=_string(record["abstract"], "publication.abstract"),
             container_title=_string(record["container_title"], "publication.container_title"),
             publication_year=_string(record["publication_year"], "publication.publication_year"),
@@ -337,11 +392,15 @@ def _bibliography_metadata_from_data(value: Any) -> BibliographyMetadata:
     if (
         not isinstance(schema_version, int)
         or isinstance(schema_version, bool)
-        or schema_version != BIBLIOGRAPHY_SCHEMA_VERSION
+        or schema_version not in _SUPPORTED_BIBLIOGRAPHY_SCHEMA_VERSIONS
     ):
+        supported = ", ".join(
+            str(value)
+            for value in sorted(_SUPPORTED_BIBLIOGRAPHY_SCHEMA_VERSIONS)
+        )
         raise StorageError(
-            "bibliography.metadata.schema_version must be "
-            f"{BIBLIOGRAPHY_SCHEMA_VERSION}"
+            "bibliography.metadata.schema_version must be one of "
+            f"{supported}"
         )
 
     raw_last_update = metadata["last_update"]
@@ -369,13 +428,16 @@ def _publications_from_records(
     records: Any,
     *,
     path: Path | str,
+    schema_version: int,
 ) -> tuple[Publication, ...]:
     if not isinstance(records, list):
         raise StorageError(f"{path}: bibliography.publications must be a list")
     result: list[Publication] = []
     for index, record in enumerate(records, 1):
         try:
-            result.append(publication_from_data(record))
+            result.append(
+                publication_from_data(record, schema_version=schema_version)
+            )
         except StorageError as error:
             raise StorageError(f"{path}: record {index}: {error}") from error
     return tuple(result)
@@ -399,7 +461,11 @@ def read_bibliography_document(path: Path | str) -> BibliographyDocument:
     if isinstance(value, list):
         return BibliographyDocument(
             metadata=BibliographyMetadata(),
-            publications=_publications_from_records(value, path=source),
+            publications=_publications_from_records(
+                value,
+                path=source,
+                schema_version=1,
+            ),
         )
     if not isinstance(value, Mapping):
         raise StorageError(f"{source}: expected bibliography document object")
@@ -416,12 +482,18 @@ def read_bibliography_document(path: Path | str) -> BibliographyDocument:
             f"{source}: bibliography document has unknown fields: "
             + ", ".join(sorted(unknown))
         )
+    source_metadata = _bibliography_metadata_from_data(value["metadata"])
+    publications = _publications_from_records(
+        value["publications"],
+        path=source,
+        schema_version=source_metadata.schema_version,
+    )
     return BibliographyDocument(
-        metadata=_bibliography_metadata_from_data(value["metadata"]),
-        publications=_publications_from_records(
-            value["publications"],
-            path=source,
+        metadata=BibliographyMetadata(
+            schema_version=BIBLIOGRAPHY_SCHEMA_VERSION,
+            last_update=source_metadata.last_update,
         ),
+        publications=publications,
     )
 
 

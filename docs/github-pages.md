@@ -203,7 +203,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install pinned BibReview
-        run: python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.0.0"
+        run: python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.1.0"
 
       - name: Render bibliography
         run: bibreview --config bibreview.yml render

@@ -1,6 +1,6 @@
 # Installation
 
-BibReview **v1.0.0** requires **Python 3.12 or newer** and exposes the
+BibReview **v1.1.0** requires **Python 3.12 or newer** and exposes the
 **bibreview** command-line program.
 
 For normal use, install an exact release tag. Pinning the version keeps local
