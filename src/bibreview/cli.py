@@ -84,7 +84,7 @@ def _parser() -> argparse.ArgumentParser:
         "--batch-size",
         type=int,
         default=None,
-        help="Batch size for a new audit campaign; fixed once the campaign starts",
+        help="Override the size of the next new audit batch; campaign default otherwise",
     )
     audit.add_argument(
         "--json",
