@@ -217,6 +217,8 @@ class ProviderConfig:
     enabled: bool = True
     api_key_env: str = ""
     token_env: str = ""
+    client_id_env: str = ""
+    client_secret_env: str = ""
 
 
 @dataclass(frozen=True)
@@ -444,6 +446,14 @@ def load_config(path: str | Path = "bibreview.yml") -> BibReviewConfig:
             enabled=_boolean(item.get("enabled"), f"providers.{provider_name}.enabled", True),
             api_key_env=_string(item.get("api_key_env"), f"providers.{provider_name}.api_key_env"),
             token_env=_string(item.get("token_env"), f"providers.{provider_name}.token_env"),
+            client_id_env=_string(
+                item.get("client_id_env"),
+                f"providers.{provider_name}.client_id_env",
+            ),
+            client_secret_env=_string(
+                item.get("client_secret_env"),
+                f"providers.{provider_name}.client_secret_env",
+            ),
         )
 
     site_raw = _mapping(raw.get("site"), "site")
