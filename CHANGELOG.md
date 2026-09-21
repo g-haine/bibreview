@@ -2,6 +2,19 @@
 
 All notable BibReview releases are documented here.
 
+## 1.3.2 — 2026-09-21
+
+### Audit usability
+
+- pace authenticated Semantic Scholar audit requests at a minimum interval of
+  1.1 seconds to respect the provider's introductory one-request-per-second
+  API-key limit and reduce HTTP 429 retries;
+- keep unauthenticated Semantic Scholar audit behavior unthrottled by BibReview;
+- replace the dense one-line audit completion summary with a readable multiline
+  batch/campaign progress report;
+- document and test that `bibreview.yml` in the current working directory is
+  the default configuration, so `--config bibreview.yml` may be omitted.
+
 ## 1.3.1 — 2026-09-21
 
 ### Campaign schema clarification

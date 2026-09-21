@@ -11,7 +11,7 @@ feed.
 BibReview is designed so that provider output remains inspectable and ambiguous
 decisions remain human decisions.
 
-Current stable release: **v1.3.1**.
+Current stable release: **v1.3.2**.
 
 ## What BibReview provides
 
@@ -38,7 +38,7 @@ BibReview currently requires **Python 3.12 or newer**.
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.3.1"
+python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.3.2"
 
 bibreview --version
 ~~~
