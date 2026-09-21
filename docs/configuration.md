@@ -7,6 +7,19 @@ rewriting absolute paths.
 The repository contains a complete starting point in
 [bibreview.example.yml](../bibreview.example.yml).
 
+## Independent schema versions
+
+BibReview deliberately versions different persisted formats independently:
+
+- `bibreview.yml` currently uses **configuration schema 1**;
+- the canonical bibliography currently uses **bibliography schema 2**;
+- resumable campaign checkpoints currently use **campaign schema 2**;
+- the audit report has its own report schema.
+
+A schema-version change in one format does not imply that the others change.
+For example, editor support moved the canonical bibliography to schema 2 while
+the project configuration remained schema 1.
+
 ## Minimal project identity
 
 ~~~yaml
@@ -274,8 +287,8 @@ site:
 ~~~
 
 `include_authorless_year_publications` is retained for compatibility with
-existing project configurations. In schema version 2, a valid canonical
-publication always has at least one author or editor; editor-only publications
+existing project configurations. In canonical bibliography schema version 2,
+a valid publication always has at least one author or editor; editor-only publications
 are therefore rendered even when this option is `false`.
 
 **bibreview render** owns generated publication posts, author pages and year
