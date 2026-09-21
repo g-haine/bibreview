@@ -129,7 +129,7 @@ def publication_data(publication: Publication) -> dict[str, Any]:
     """Convert one canonical publication to the persisted BibReview JSON shape."""
     if not isinstance(publication, Publication):
         raise StorageError("bibliography entries must be Publication objects")
-    return {
+    result = {
         "id": publication.id,
         "identifiers": dict(publication.identifiers),
         "type": publication.type,
@@ -142,15 +142,6 @@ def publication_data(publication: Publication) -> dict[str, Any]:
                 "source_fields": deepcopy(dict(author.source_fields)),
             }
             for author in publication.authors
-        ],
-        "editors": [
-            {
-                "given": editor.given,
-                "family": editor.family,
-                "literal": editor.literal,
-                "source_fields": deepcopy(dict(editor.source_fields)),
-            }
-            for editor in publication.editors
         ],
         "abstract": publication.abstract,
         "container_title": publication.container_title,
@@ -171,6 +162,17 @@ def publication_data(publication: Publication) -> dict[str, Any]:
             for reference in publication.references
         ],
     }
+    if publication.editors:
+        result["editors"] = [
+            {
+                "given": editor.given,
+                "family": editor.family,
+                "literal": editor.literal,
+                "source_fields": deepcopy(dict(editor.source_fields)),
+            }
+            for editor in publication.editors
+        ]
+    return result
 
 
 def _mapping(value: Any, name: str) -> Mapping[str, Any]:
@@ -201,10 +203,9 @@ def publication_from_data(
         "container_title", "publication_year", "volume", "issue", "pages",
         "publisher", "event", "keywords", "created_date", "permalink", "references",
     }
-    if schema_version >= 2:
-        required.add("editors")
+    allowed = required | ({"editors"} if schema_version >= 2 else set())
     missing = required - record.keys()
-    unknown = record.keys() - required
+    unknown = record.keys() - allowed
     if missing:
         raise StorageError(f"publication missing fields: {', '.join(sorted(missing))}")
     if unknown:
@@ -234,7 +235,7 @@ def publication_from_data(
             )
         )
 
-    raw_editors = record["editors"] if schema_version >= 2 else []
+    raw_editors = record.get("editors", []) if schema_version >= 2 else []
     if not isinstance(raw_editors, list):
         raise StorageError("publication.editors must be a list")
     editors: list[Editor] = []
