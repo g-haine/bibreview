@@ -2,6 +2,41 @@
 
 All notable BibReview releases are documented here.
 
+## 1.3.0 — 2026-09-21
+
+### Resumable audit workflow
+
+- add a generic resumable campaign/batching core with stable item snapshots,
+  checkpointed batch history, retryable failures, and deterministic JSON state;
+- add a pure offline audit comparison engine that distinguishes equal,
+  formatting-only, missing, substantive-difference, provider-disagreement, and
+  explicit identity-problem cases without deciding which source is authoritative;
+- add separate versioned audit campaign/report files, kept outside canonical
+  bibliography and collection staging state;
+- add `bibreview audit` with one stable batch per invocation, per-publication
+  checkpointing, interruption-safe resume, JSON output, and no canonical mutation;
+- support pilot-sized batches through per-invocation `--batch-size` overrides
+  while preserving the configured default for later batches.
+
+### Audit provider evidence
+
+- add CrossRef audit normalization for bibliographic metadata;
+- add DOI metadata lookup through OpenAlex for independent comparison evidence;
+- add richer Semantic Scholar paper lookup for audit while preserving the
+  minimal abstract-only fallback used by collection;
+- reuse optional Semantic Scholar API-key authentication during audit;
+- classify provider/network/rate-limit failures separately from canonical
+  metadata discrepancies and keep transient failures retryable.
+
+### Safety, documentation, and tests
+
+- keep audit writes restricted to configured campaign/report files;
+- preserve provider output as review evidence rather than merge-ready metadata;
+- document the pilot/review/batch workflow and audit state model;
+- add offline coverage for provider normalization, resume after interruption,
+  per-item checkpointing, retry ordering, dry-run behavior, JSON output, and
+  pilot-to-default batch sizing.
+
 ## 1.2.0 — 2026-09-21
 
 ### Provider diagnostics
