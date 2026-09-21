@@ -48,9 +48,10 @@ Authors and editors use the same source-preserving name shape but remain
 different roles. Editor names are not silently promoted to author identities.
 
 Schema version 2 adds the **editors** field and the contributor invariant.
-BibReview still reads valid schema-version-1 bibliographies; an authorless
-version-1 record must be repaired before it can become a valid version-2
-publication.
+For compact canonical JSON, **editors** is omitted when the list is empty and is
+written only when at least one editor is present. BibReview still reads valid
+schema-version-1 bibliographies; an authorless version-1 record must be repaired
+before it can become a valid version-2 publication.
 
 **metadata.last_update** changes on an effective merge that adds or updates a
 publication.
