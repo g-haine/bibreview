@@ -247,16 +247,28 @@ def _build_core_services(
         else None
     )
     mendeley_config = _provider(config, "mendeley")
-    mendeley_token = _secret(
+    mendeley_client_id = _secret(
         mendeley_config,
-        field="token_env",
-        provider_name="Mendeley",
+        field="client_id_env",
+        provider_name="Mendeley client ID",
+        environ=environ,
+        reporter=reporter,
+    )
+    mendeley_client_secret = _secret(
+        mendeley_config,
+        field="client_secret_env",
+        provider_name="Mendeley client secret",
         environ=environ,
         reporter=reporter,
     )
     mendeley = (
-        MendeleyProvider(transport, token=mendeley_token, user_agent=user_agent)
-        if mendeley_token
+        MendeleyProvider(
+            transport,
+            client_id=mendeley_client_id,
+            client_secret=mendeley_client_secret,
+            user_agent=user_agent,
+        )
+        if mendeley_client_id and mendeley_client_secret
         else None
     )
 
