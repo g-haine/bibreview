@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Mapping
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 import html
 import re
 from types import MappingProxyType
@@ -101,8 +101,8 @@ class ProviderEvidence:
     """One provider's normalized evidence for a canonical publication."""
 
     provider: str
-    identifiers: Mapping[str, str] = None
-    fields: Mapping[str, AuditValue] = None
+    identifiers: Mapping[str, str] = field(default_factory=dict)
+    fields: Mapping[str, AuditValue] = field(default_factory=dict)
     status: str = "available"
     detail: str = ""
 
@@ -111,7 +111,7 @@ class ProviderEvidence:
             raise AuditError("provider name must be a non-empty string")
         if self.provider.strip() != self.provider:
             raise AuditError("provider name must not contain surrounding whitespace")
-        if self.status not in _PROVIDER_STATUSES:
+        if not isinstance(self.status, str) or self.status not in _PROVIDER_STATUSES:
             allowed = ", ".join(sorted(_PROVIDER_STATUSES))
             raise AuditError(f"provider status must be one of: {allowed}")
         if not isinstance(self.detail, str):
