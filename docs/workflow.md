@@ -11,6 +11,32 @@ bibreview --config bibreview.yml status
 
 Commit a clean baseline before a substantial update.
 
+## Optional: audit historical canonical metadata
+
+A historical/data-quality audit is separate from the normal update cycle. Start
+with a pilot batch when introducing audit to an established project:
+
+~~~bash
+bibreview --config bibreview.yml --dry-run audit --batch-size 25
+bibreview --config bibreview.yml audit --batch-size 25
+~~~
+
+Inspect the configured audit report after each invocation. Provider differences
+are hypotheses to review, not automatic corrections. Apply any justified
+canonical/BibTeX/identity correction explicitly through the normal reviewed
+project workflow.
+
+Each later invocation processes the next stable batch:
+
+~~~bash
+bibreview --config bibreview.yml audit
+~~~
+
+If a run is interrupted, invoke the same command again: the open batch is
+resumed and already checkpointed publications are not repeated. Retryable
+provider failures are revisited only after never-yet-audited publications have
+received their first pass.
+
 ## 2. Discover candidate publications
 
 Preview:

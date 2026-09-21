@@ -19,6 +19,7 @@ Current stable release: **v1.2.0**.
 - CrossRef-backed DOI metadata collection;
 - optional publisher and abstract enrichment providers;
 - safe provider/credential diagnostics with optional live checks;
+- resumable, non-destructive audits of existing canonical metadata;
 - explicit pending, review, rejected and collected states;
 - persistent publication UUIDs independent from DOI representation;
 - reviewed author-name mapping with safe and ambiguous proposals;
@@ -98,6 +99,7 @@ A curated project should inspect staged metadata and BibTeX before merging.
 | **validate** | Validate project configuration. |
 | **status** | Show the resolved project configuration summary. |
 | **providers** | Inspect credential provenance and optionally live-check providers. |
+| **audit** | Audit one stable batch of existing canonical publications. |
 | **discover** | Discover and screen new DOI candidates. |
 | **collect** | Collect pending DOI metadata into canonical staging. |
 | **refresh** | Recollect selected incomplete existing publications. |

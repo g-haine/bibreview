@@ -16,10 +16,13 @@ from bibreview.project import ProjectStateError
 from bibreview.project_audit import (
     apply_project_audit_plan,
     audit_report_from_data,
+    execute_project_audit_batch,
     plan_project_audit_batch,
     plan_project_audit_checkpoint,
     plan_project_audit_close,
 )
+from bibreview.providers.http import HttpError
+from bibreview.reporting import Reporter
 from bibreview.storage import read_json, write_bibliography
 
 
@@ -35,6 +38,21 @@ audit:
 site:
   enabled: false
 """
+
+
+class FakeAuditSource:
+    name = "fake-provider"
+
+    def __init__(self, outcomes):
+        self.outcomes = dict(outcomes)
+        self.calls = []
+
+    def evidence(self, doi):
+        self.calls.append(doi)
+        outcome = self.outcomes[doi]
+        if isinstance(outcome, BaseException):
+            raise outcome
+        return outcome
 
 
 class ProjectAuditTests(unittest.TestCase):
@@ -302,6 +320,89 @@ class ProjectAuditTests(unittest.TestCase):
 
         with self.assertRaisesRegex(ProjectStateError, "both exist or both be absent"):
             plan_project_audit_batch(self.config)
+
+    def test_execution_checkpoints_provider_failures_as_retryable(self):
+        start = plan_project_audit_batch(self.config)
+        apply_project_audit_plan(start)
+        before = self.snapshot_non_audit()
+        first, second = self.publications[:2]
+        source = FakeAuditSource({
+            first.doi: HttpError(
+                "Cross-provider request: api.example.test: HTTP 429",
+                status_code=429,
+            ),
+            second.doi: ProviderEvidence(
+                provider="fake-provider",
+                identifiers={"doi": second.doi},
+                fields={
+                    "title": second.title,
+                    "publication_year": second.publication_year,
+                },
+            ),
+        })
+
+        execution = execute_project_audit_batch(
+            self.config,
+            batch_id=start.batch.id,
+            sources=(source,),
+            reporter=Reporter(-1),
+        )
+
+        self.assertEqual(execution.processed_count, 2)
+        self.assertEqual(execution.completed_count, 1)
+        self.assertEqual(execution.retryable_count, 1)
+        self.assertEqual(execution.failed_count, 0)
+        self.assertEqual(before, self.snapshot_non_audit())
+        self.assertTrue(execution.campaign.batches[0].closed)
+
+        entries = {
+            entry.publication_id: entry
+            for entry in execution.report.entries
+        }
+        first_result = entries[first.id].result
+        self.assertEqual(
+            first_result.provider_issues[0].classification,
+            "unavailable",
+        )
+        self.assertIn("HTTP 429", first_result.provider_issues[0].detail)
+        self.assertEqual(
+            next(item for item in execution.campaign.items if item.key == first.id).state,
+            "retryable",
+        )
+
+    def test_interruption_preserves_completed_checkpoint_and_open_batch(self):
+        start = plan_project_audit_batch(self.config)
+        apply_project_audit_plan(start)
+        first, second = self.publications[:2]
+        source = FakeAuditSource({
+            first.doi: ProviderEvidence(
+                provider="fake-provider",
+                identifiers={"doi": first.doi},
+                fields={"title": first.title},
+            ),
+            second.doi: KeyboardInterrupt(),
+        })
+
+        with self.assertRaises(KeyboardInterrupt):
+            execute_project_audit_batch(
+                self.config,
+                batch_id=start.batch.id,
+                sources=(source,),
+                reporter=Reporter(-1),
+            )
+
+        resumed = plan_project_audit_batch(self.config)
+        self.assertEqual(resumed.batch.id, start.batch.id)
+        states = {item.key: item.state for item in resumed.campaign.items}
+        self.assertEqual(states[first.id], "completed")
+        self.assertEqual(states[second.id], "active")
+        report = audit_report_from_data(
+            read_json(self.config.audit.report, dict)
+        )
+        self.assertEqual(
+            tuple(entry.publication_id for entry in report.entries),
+            (first.id,),
+        )
 
     def test_report_corruption_is_rejected_before_checkpoint(self):
         start = plan_project_audit_batch(self.config)

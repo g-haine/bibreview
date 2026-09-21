@@ -20,6 +20,12 @@ from .pipeline.collect import BibtexLookup, CitationLookup, EnrichmentLookup, Wo
 from .pipeline.discover import EnrichmentLookup as DiscoveryEnrichmentLookup
 from .pipeline.discover import WorkProvider as DiscoveryWorkProvider
 from .pipeline.enrich import EnrichmentService
+from .providers.audit import (
+    AuditEvidenceSource,
+    CrossRefAuditSource,
+    OpenAlexAuditSource,
+    SemanticScholarAuditSource,
+)
 from .providers.crossref import CrossRefProvider
 from .providers.doi import DoiProvider
 from .providers.elsevier import ElsevierProvider
@@ -59,6 +65,13 @@ class DiscoveryServices:
     discovery_provider: OpenAlexProvider
     provider: DiscoveryWorkProvider
     enrichment_lookup: DiscoveryEnrichmentLookup
+
+
+@dataclass(frozen=True)
+class AuditServices:
+    """Configured provider evidence sources for one audit command run."""
+
+    sources: tuple[AuditEvidenceSource, ...]
 
 
 @dataclass(frozen=True)
@@ -342,3 +355,64 @@ def build_discovery_services(
         provider=core.crossref,
         enrichment_lookup=core.enrichment.for_discovery,
     )
+
+
+def build_audit_services(
+    config: BibReviewConfig,
+    *,
+    reporter: Reporter | None = None,
+    environ: Mapping[str, str] | None = None,
+) -> AuditServices:
+    """Compose only the providers used by the non-destructive audit workflow."""
+    progress = reporter or Reporter()
+    environment = _runtime_environment(
+        config,
+        environ=environ,
+        reporter=progress,
+    )
+
+    crossref_config = config.providers.get("crossref")
+    if crossref_config is not None and not crossref_config.enabled:
+        raise ValueError("CrossRef must be enabled for DOI-backed audit workflows")
+
+    transport = HttpTransport(
+        reporter=progress,
+        default_headers={"User-Agent": f"BibReview/{__version__}"},
+    )
+    crossref = CrossRefProvider(
+        transport,
+        mailto=config.project.contact_email,
+    )
+    sources: list[AuditEvidenceSource] = [
+        CrossRefAuditSource(crossref),
+    ]
+
+    openalex_config = config.providers.get("openalex")
+    if openalex_config is None or openalex_config.enabled:
+        openalex_key = _optional_api_key(
+            openalex_config,
+            provider_name="OpenAlex",
+            environ=environment,
+            reporter=progress,
+        )
+        sources.append(
+            OpenAlexAuditSource(
+                OpenAlexProvider(transport, api_key=openalex_key)
+            )
+        )
+
+    semantic_config = _provider(config, "semantic_scholar")
+    if semantic_config is not None:
+        semantic_key = _optional_api_key(
+            semantic_config,
+            provider_name="Semantic Scholar",
+            environ=environment,
+            reporter=progress,
+        )
+        sources.append(
+            SemanticScholarAuditSource(
+                SemanticScholarProvider(transport, api_key=semantic_key)
+            )
+        )
+
+    return AuditServices(sources=tuple(sources))

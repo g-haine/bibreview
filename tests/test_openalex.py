@@ -12,6 +12,27 @@ class OpenAlexProviderTests(unittest.TestCase):
     def setUp(self) -> None:
         self.transport = Mock()
 
+    def test_fetches_one_work_by_doi_with_selected_fields(self) -> None:
+        self.transport.json.return_value = {"id": "https://openalex.org/W1"}
+        provider = OpenAlexProvider(self.transport, api_key="secret")
+
+        result = provider.work("10.1000/A?B")
+
+        self.assertEqual(result, {"id": "https://openalex.org/W1"})
+        call = self.transport.json.call_args
+        self.assertIn("https://doi.org/10.1000/a%3Fb", call.args[0])
+        self.assertIn("authorships", call.kwargs["params"]["select"])
+        self.assertEqual(call.kwargs["params"]["api_key"], "secret")
+
+    def test_work_returns_none_for_absent_record_and_rejects_bad_shape(self) -> None:
+        provider = OpenAlexProvider(self.transport)
+        self.transport.json.return_value = None
+        self.assertIsNone(provider.work("10.1000/test"))
+
+        self.transport.json.return_value = []
+        with self.assertRaisesRegex(OpenAlexError, "unexpected work response"):
+            provider.work("10.1000/test")
+
     def test_discovers_unique_normalized_dois_across_pages(self) -> None:
         self.transport.json.side_effect = [
             {

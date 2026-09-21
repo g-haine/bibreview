@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from urllib.parse import quote
+
 from ..identity import IdentityError, normalize_doi
 from .http import HttpTransport
 
@@ -18,6 +20,28 @@ class OpenAlexProvider:
     def __init__(self, transport: HttpTransport, *, api_key: str = "") -> None:
         self.transport = transport
         self.api_key = api_key.strip()
+
+    def work(self, doi: str) -> dict | None:
+        """Return one OpenAlex work by DOI, or None when it is absent."""
+        normalized = normalize_doi(doi)
+        params: dict[str, object] = {
+            "select": (
+                "id,doi,title,type,publication_year,authorships,"
+                "primary_location,biblio,abstract_inverted_index"
+            )
+        }
+        if self.api_key:
+            params["api_key"] = self.api_key
+        data = self.transport.json(
+            f"{self.BASE_URL}/https://doi.org/{quote(normalized, safe='/')}",
+            params=params,
+            context=f"OpenAlex metadata for DOI {normalized}",
+        )
+        if data is None:
+            return None
+        if not isinstance(data, dict):
+            raise OpenAlexError("OpenAlex: unexpected work response")
+        return data
 
     def discover(self, query: str, *, max_pages: int = 20) -> tuple[str, ...]:
         """Return unique normalized DOI candidates in provider order."""
