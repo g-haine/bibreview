@@ -132,13 +132,13 @@ snapshot through bounded batches. The generic layer does not know whether a key
 is a publication UUID, a normalized external identifier or another
 command-specific identity.
 
-Its versioned JSON representation has this shape:
+Its current versioned JSON representation has this shape:
 
 ~~~json
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "kind": "audit",
-  "batch_size": 50,
+  "default_batch_size": 50,
   "items": [
     {
       "key": "stable-item-id",
@@ -163,12 +163,17 @@ The mechanical item states are:
 Only one batch may be open at a time. Opening a campaign that already has an
 open batch returns that same batch, so interrupted work resumes on stable item
 membership rather than recalculating mutable offsets. New pending items are
-processed before retryable items. The campaign `batch_size` is a default for
-new batches, not a structural maximum: command-specific workflows may choose a
-different size for the next unopened batch while preserving the same stable item
-snapshot. Batch identities are monotonic (`batch-0001`, `batch-0002`, ...),
-and historical membership is retained so attempt counts and restart behavior are
-inspectable.
+processed before retryable items. The campaign `default_batch_size` is the
+default for new batches, not a structural maximum: command-specific workflows
+may choose a different size for the next unopened batch while preserving the
+same stable item snapshot. Batch identities are monotonic
+(`batch-0001`, `batch-0002`, ...), and historical membership is retained so
+attempt counts and restart behavior are inspectable.
+
+Campaign schema version 1 used the less precise field name `batch_size`.
+BibReview still reads that format and maps it to `default_batch_size`; the
+next audit-state write serializes the same campaign as schema version 2 without
+changing item states, batch membership, attempt counts, or report entries.
 
 This layer intentionally does **not** define audit classifications, initialization
 review decisions, provider policy, canonical corrections or automatic merge
