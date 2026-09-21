@@ -465,8 +465,11 @@ def audit_result_from_data(value: Mapping[str, Any]) -> AuditResult:
         )
 
     publication_id = validate_publication_id(value["publication_id"])
+    raw_identifiers = value["identifiers"]
+    if not isinstance(raw_identifiers, Mapping):
+        raise AuditError("audit result identifiers must be an object")
     try:
-        identifiers = normalize_identifiers(value["identifiers"])
+        identifiers = normalize_identifiers(raw_identifiers)
     except (TypeError, ValueError) as error:
         raise AuditError(f"invalid audit result identifiers: {error}") from error
 
@@ -497,6 +500,10 @@ def audit_result_from_data(value: Mapping[str, Any]) -> AuditResult:
         provider = raw["provider"]
         field_name = raw["field"]
         classification = raw["classification"]
+        if not isinstance(classification, str):
+            raise AuditError(
+                f"audit result comparisons[{index}].classification must be a string"
+            )
         if not isinstance(provider, str) or not provider.strip():
             raise AuditError(
                 f"audit result comparisons[{index}].provider must be a non-empty string"
