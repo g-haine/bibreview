@@ -7,8 +7,9 @@ from typing import Callable
 
 from .config import BibReviewConfig, ProviderConfig
 from .providers.http import HttpError, HttpTransport
-from .runtime import RuntimeEnvironment, resolve_runtime_environment
+from .providers.mendeley import MendeleyProvider
 from .reporting import Reporter
+from .runtime import RuntimeEnvironment, resolve_runtime_environment
 
 
 @dataclass(frozen=True)
@@ -30,7 +31,7 @@ class ProviderDiagnostic:
 
 @dataclass(frozen=True)
 class _ProviderSpec:
-    credential_field: str = ""
+    credential_fields: tuple[str, ...] = ()
     credential_required: bool = False
 
 
@@ -46,12 +47,12 @@ _PROVIDER_ORDER = (
 
 _PROVIDER_SPECS = {
     "crossref": _ProviderSpec(),
-    "openalex": _ProviderSpec("api_key_env", False),
-    "elsevier": _ProviderSpec("api_key_env", True),
-    "springer": _ProviderSpec("api_key_env", True),
-    "ieee": _ProviderSpec("api_key_env", True),
-    "semantic_scholar": _ProviderSpec("api_key_env", False),
-    "mendeley": _ProviderSpec("token_env", True),
+    "openalex": _ProviderSpec(("api_key_env",), False),
+    "elsevier": _ProviderSpec(("api_key_env",), True),
+    "springer": _ProviderSpec(("api_key_env",), True),
+    "ieee": _ProviderSpec(("api_key_env",), True),
+    "semantic_scholar": _ProviderSpec(("api_key_env",), False),
+    "mendeley": _ProviderSpec(("client_id_env", "client_secret_env"), True),
 }
 
 
@@ -70,55 +71,80 @@ def _enabled(config: BibReviewConfig, name: str) -> bool:
     return configured is not None and configured.enabled
 
 
-def _credential(
+def _credentials(
     config: BibReviewConfig,
     environment: RuntimeEnvironment,
     name: str,
-) -> tuple[str, str, str]:
-    """Return variable name, source, and resolved value without exposing it."""
+) -> tuple[str, str, tuple[str, ...], tuple[str, ...]]:
+    """Return display metadata, secret values, and raw source states."""
     spec = _PROVIDER_SPECS[name]
-    if not spec.credential_field:
-        return "", "not-required", ""
+    if not spec.credential_fields:
+        return "", "not-required", (), ()
+
     provider = _provider_config(config, name)
-    variable = (
-        getattr(provider, spec.credential_field)
-        if provider is not None
-        else ""
-    )
-    if not variable:
-        return "", "not-configured", ""
-    value = environment.values.get(variable, "").strip()
-    if not value:
-        return variable, "missing", ""
-    return variable, environment.sources.get(variable, "environment"), value
+    variables: list[str] = []
+    sources: list[str] = []
+    values: list[str] = []
+
+    for field in spec.credential_fields:
+        variable = getattr(provider, field) if provider is not None else ""
+        variables.append(variable)
+        if not variable:
+            sources.append("not-configured")
+            values.append("")
+            continue
+        value = environment.values.get(variable, "").strip()
+        if not value:
+            sources.append("missing")
+            values.append("")
+            continue
+        sources.append(environment.sources.get(variable, "environment"))
+        values.append(value)
+
+    display_variables = ", ".join(value or f"<{field}>" for field, value in zip(
+        spec.credential_fields,
+        variables,
+        strict=True,
+    ))
+    if len(sources) == 1:
+        display_source = sources[0]
+    else:
+        display_source = ", ".join(
+            f"{field}={source}"
+            for field, source in zip(spec.credential_fields, sources, strict=True)
+        )
+    return display_variables, display_source, tuple(values), tuple(sources)
 
 
 def _static_status(
     *,
     enabled: bool,
-    credential_variable: str,
-    credential_source: str,
+    sources: tuple[str, ...],
     spec: _ProviderSpec,
 ) -> tuple[str, str]:
     if not enabled:
         return "disabled", "provider disabled by project configuration"
-    if not spec.credential_field:
+    if not spec.credential_fields:
         return "configured", "no credential required"
-    if credential_source == "not-configured":
+    if "not-configured" in sources:
         if spec.credential_required:
             return (
                 "configuration-error",
-                "enabled provider requires a configured credential variable",
+                "enabled provider requires all configured credential-variable names",
             )
         return "configured", "optional credential is not configured"
-    if credential_source == "missing":
+    if "missing" in sources:
         if spec.credential_required:
-            return "missing-credential", "configured credential variable is unset"
+            return "missing-credential", "one or more configured credential variables are unset"
         return "configured", "optional credential is unset; unauthenticated access will be used"
-    return "configured", f"credential loaded from {credential_source}"
+    return "configured", "credential configuration is complete"
 
 
-def _probe_crossref(transport: HttpTransport, config: BibReviewConfig, _: str) -> None:
+def _probe_crossref(
+    transport: HttpTransport,
+    config: BibReviewConfig,
+    _: tuple[str, ...],
+) -> None:
     params: dict[str, object] = {"rows": 0}
     if config.project.contact_email:
         params["mailto"] = config.project.contact_email
@@ -129,7 +155,12 @@ def _probe_crossref(transport: HttpTransport, config: BibReviewConfig, _: str) -
     )
 
 
-def _probe_openalex(transport: HttpTransport, _: BibReviewConfig, credential: str) -> None:
+def _probe_openalex(
+    transport: HttpTransport,
+    _: BibReviewConfig,
+    credentials: tuple[str, ...],
+) -> None:
+    credential = credentials[0] if credentials else ""
     params: dict[str, object] = {"per-page": 1}
     if credential:
         params["api_key"] = credential
@@ -140,28 +171,40 @@ def _probe_openalex(transport: HttpTransport, _: BibReviewConfig, credential: st
     )
 
 
-def _probe_elsevier(transport: HttpTransport, _: BibReviewConfig, credential: str) -> None:
+def _probe_elsevier(
+    transport: HttpTransport,
+    _: BibReviewConfig,
+    credentials: tuple[str, ...],
+) -> None:
     transport.json(
         "https://api.elsevier.com/content/search/scopus",
         params={"query": "TITLE(test)", "count": 1},
-        headers={"Accept": "application/json", "X-ELS-APIKey": credential},
+        headers={"Accept": "application/json", "X-ELS-APIKey": credentials[0]},
         context="Elsevier provider diagnostic",
     )
 
 
-def _probe_springer(transport: HttpTransport, _: BibReviewConfig, credential: str) -> None:
+def _probe_springer(
+    transport: HttpTransport,
+    _: BibReviewConfig,
+    credentials: tuple[str, ...],
+) -> None:
     transport.json(
         "https://api.springernature.com/meta/v2/json",
-        params={"q": "keyword:test", "p": 1, "api_key": credential},
+        params={"q": "keyword:test", "p": 1, "api_key": credentials[0]},
         context="Springer provider diagnostic",
     )
 
 
-def _probe_ieee(transport: HttpTransport, _: BibReviewConfig, credential: str) -> None:
+def _probe_ieee(
+    transport: HttpTransport,
+    _: BibReviewConfig,
+    credentials: tuple[str, ...],
+) -> None:
     transport.json(
         "https://ieeexploreapi.ieee.org/api/v1/search/articles",
         params={
-            "apikey": credential,
+            "apikey": credentials[0],
             "querytext": "test",
             "max_records": 1,
             "format": "json",
@@ -173,8 +216,9 @@ def _probe_ieee(transport: HttpTransport, _: BibReviewConfig, credential: str) -
 def _probe_semantic_scholar(
     transport: HttpTransport,
     _: BibReviewConfig,
-    credential: str,
+    credentials: tuple[str, ...],
 ) -> None:
+    credential = credentials[0] if credentials else ""
     headers = {"x-api-key": credential} if credential else None
     transport.json(
         "https://api.semanticscholar.org/graph/v1/paper/search",
@@ -184,19 +228,23 @@ def _probe_semantic_scholar(
     )
 
 
-def _probe_mendeley(transport: HttpTransport, _: BibReviewConfig, credential: str) -> None:
-    transport.json(
-        "https://api.mendeley.com/catalog",
-        params={"doi": "10.1016/j.molcel.2009.09.013", "view": "bib"},
-        headers={
-            "Accept": "application/vnd.mendeley-document.1+json",
-            "Authorization": f"Bearer {credential}",
-        },
-        context="Mendeley provider diagnostic",
+def _probe_mendeley(
+    transport: HttpTransport,
+    _: BibReviewConfig,
+    credentials: tuple[str, ...],
+) -> None:
+    provider = MendeleyProvider(
+        transport,
+        client_id=credentials[0],
+        client_secret=credentials[1],
     )
+    provider.authenticate()
 
 
-_PROBES: dict[str, Callable[[HttpTransport, BibReviewConfig, str], None]] = {
+_PROBES: dict[
+    str,
+    Callable[[HttpTransport, BibReviewConfig, tuple[str, ...]], None],
+] = {
     "crossref": _probe_crossref,
     "openalex": _probe_openalex,
     "elsevier": _probe_elsevier,
@@ -213,7 +261,7 @@ def _failure_status(name: str, error: HttpError) -> tuple[str, str]:
         if name == "mendeley":
             return (
                 "authentication-failed",
-                "OAuth bearer access token rejected; Mendeley catalog access requires OAuth 2.0",
+                "Mendeley application ID/secret rejected during OAuth client-credentials exchange",
             )
         return "authentication-failed", "credential rejected by provider"
     if status == 403:
@@ -251,11 +299,14 @@ def diagnose_providers(
     for name in _PROVIDER_ORDER:
         enabled = _enabled(config, name)
         spec = _PROVIDER_SPECS[name]
-        variable, source, value = _credential(config, environment, name)
+        variable, source, values, sources = _credentials(
+            config,
+            environment,
+            name,
+        )
         status, detail = _static_status(
             enabled=enabled,
-            credential_variable=variable,
-            credential_source=source,
+            sources=sources,
             spec=spec,
         )
         checked = False
@@ -264,7 +315,7 @@ def diagnose_providers(
         if check and can_check:
             checked = True
             try:
-                _PROBES[name](live_transport, config, value)
+                _PROBES[name](live_transport, config, values)
             except HttpError as error:
                 status, detail = _failure_status(name, error)
             except (OSError, ValueError, TypeError):
