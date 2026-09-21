@@ -4,7 +4,7 @@ from datetime import date
 import unittest
 
 from bibreview.identity import new_publication_id
-from bibreview.model import Publication
+from bibreview.model import Author, Publication
 from bibreview.pipeline.refresh import refresh
 
 
@@ -24,6 +24,7 @@ def publication(doi, *, volume="", issue="", pages="", permalink="paper"):
         identifiers={"doi": doi},
         type="journal-article",
         title="Old title",
+        authors=(Author(literal="Example Author"),),
         publication_year="2025",
         volume=volume,
         issue=issue,
@@ -37,6 +38,7 @@ def message(title="Updated title"):
     return {
         "type": "journal-article",
         "title": [title],
+        "author": [{"given": "Ada", "family": "Lovelace"}],
         "container-title": ["Journal"],
         "created": {"date-parts": [[2026, 9, 17]]},
         "published-print": {"date-parts": [[2026]]},

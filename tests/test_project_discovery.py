@@ -6,7 +6,7 @@ import unittest
 
 from bibreview.config import load_config
 from bibreview.identity import new_publication_id
-from bibreview.model import Publication
+from bibreview.model import Author, Publication
 from bibreview.project import (
     ProjectStateError,
     apply_project_discovery,
@@ -79,6 +79,7 @@ class ProjectDiscoveryTests(unittest.TestCase):
             id=new_publication_id(),
             identifiers={"doi": "10.1/in-bibliography"},
             title="Existing",
+            authors=(Author(literal="Example Author"),),
         )
         write_bibliography(self.config.paths.bibliography, [existing])
         self.config.paths.known.write_text("10.1/known\n", encoding="utf-8")

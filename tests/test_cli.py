@@ -38,6 +38,7 @@ class FakeProvider:
         return {
             "type": "journal-article",
             "title": ["New publication"],
+            "author": [{"given": "Ada", "family": "Lovelace"}],
             "container-title": ["Journal"],
             "created": {"date-parts": [[2026, 9, 17]]},
             "published-print": {"date-parts": [[2026]]},
@@ -75,6 +76,7 @@ class CliTests(unittest.TestCase):
             id=new_publication_id(),
             identifiers={"doi": doi},
             title=title,
+            authors=(Author(literal="Example Author"),),
         )
 
     def snapshot(self):
