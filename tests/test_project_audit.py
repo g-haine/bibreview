@@ -1,0 +1,326 @@
+from __future__ import annotations
+
+from pathlib import Path
+import tempfile
+import unittest
+
+from bibreview.config import load_config
+from bibreview.identity import new_publication_id
+from bibreview.model import Author, Publication
+from bibreview.pipeline.audit import (
+    ProviderEvidence,
+    compare_audit_record,
+    publication_audit_record,
+)
+from bibreview.project import ProjectStateError
+from bibreview.project_audit import (
+    apply_project_audit_plan,
+    audit_report_from_data,
+    plan_project_audit_batch,
+    plan_project_audit_checkpoint,
+    plan_project_audit_close,
+)
+from bibreview.storage import read_json, write_bibliography
+
+
+CONFIG = """\
+schema_version: 1
+project:
+  name: Example Review
+  slug: example-review
+audit:
+  campaign: state/audit-campaign.json
+  report: state/audit-report.json
+  batch_size: 2
+site:
+  enabled: false
+"""
+
+
+class ProjectAuditTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.config_path = self.root / "bibreview.yml"
+        self.config_path.write_text(CONFIG, encoding="utf-8")
+        self.config = load_config(self.config_path)
+        self.publications = tuple(
+            Publication(
+                id=new_publication_id(),
+                identifiers={"doi": f"10.1000/item-{index}"},
+                title=f"Publication {index}",
+                authors=(Author(literal=f"Author {index}"),),
+                publication_year=str(2020 + index),
+                permalink=f"publication-{index}",
+            )
+            for index in range(1, 4)
+        )
+        self.config.paths.bibliography.parent.mkdir(parents=True, exist_ok=True)
+        write_bibliography(
+            self.config.paths.bibliography,
+            self.publications,
+        )
+        self.config.paths.pending.parent.mkdir(parents=True, exist_ok=True)
+        self.config.paths.pending.write_text(
+            "10.1000/untouched\n",
+            encoding="utf-8",
+        )
+
+    def snapshot_non_audit(self):
+        excluded = {
+            self.config.audit.campaign.resolve(),
+            self.config.audit.report.resolve(),
+        }
+        return {
+            path.resolve(): path.read_bytes()
+            for path in self.root.rglob("*")
+            if path.is_file() and path.resolve() not in excluded
+        }
+
+    def result_for(self, publication, provider_year=None, *, unavailable=False):
+        record = publication_audit_record(publication)
+        if unavailable:
+            evidence = ProviderEvidence(
+                provider="crossref",
+                status="unavailable",
+                detail="HTTP 429",
+            )
+        else:
+            evidence = ProviderEvidence(
+                provider="crossref",
+                identifiers={"doi": publication.doi},
+                fields={
+                    "title": publication.title,
+                    "publication_year": provider_year
+                    or publication.publication_year,
+                },
+            )
+        return compare_audit_record(record, (evidence,))
+
+    def test_start_is_read_only_until_apply_and_writes_only_audit_state(self):
+        before = self.snapshot_non_audit()
+
+        plan = plan_project_audit_batch(self.config)
+
+        self.assertEqual(before, self.snapshot_non_audit())
+        self.assertEqual(plan.batch.id, "batch-0001")
+        self.assertEqual(
+            plan.batch.keys,
+            tuple(publication.id for publication in self.publications[:2]),
+        )
+        self.assertEqual(
+            set(plan.outputs),
+            {self.config.audit.campaign, self.config.audit.report},
+        )
+
+        apply_project_audit_plan(plan)
+
+        self.assertEqual(before, self.snapshot_non_audit())
+        self.assertTrue(self.config.audit.campaign.exists())
+        self.assertTrue(self.config.audit.report.exists())
+        report = audit_report_from_data(
+            read_json(self.config.audit.report, dict)
+        )
+        self.assertEqual(
+            report.campaign_items,
+            tuple(publication.id for publication in self.publications),
+        )
+        self.assertEqual(report.entries, ())
+
+    def test_resume_returns_same_open_batch_without_new_writes(self):
+        first = plan_project_audit_batch(self.config)
+        apply_project_audit_plan(first)
+
+        before = self.snapshot_non_audit()
+        resumed = plan_project_audit_batch(self.config)
+
+        self.assertEqual(resumed.batch, first.batch)
+        self.assertFalse(resumed.changed)
+        self.assertEqual(before, self.snapshot_non_audit())
+
+    def test_checkpoint_persists_latest_result_without_touching_project_state(self):
+        start = plan_project_audit_batch(self.config)
+        apply_project_audit_plan(start)
+        publication = self.publications[0]
+        result = self.result_for(publication, provider_year="1999")
+        before = self.snapshot_non_audit()
+
+        checkpoint = plan_project_audit_checkpoint(
+            self.config,
+            batch_id=start.batch.id,
+            result=result,
+            state="completed",
+        )
+
+        self.assertEqual(before, self.snapshot_non_audit())
+        self.assertEqual(
+            set(checkpoint.outputs),
+            {self.config.audit.campaign, self.config.audit.report},
+        )
+        apply_project_audit_plan(checkpoint)
+        self.assertEqual(before, self.snapshot_non_audit())
+
+        report = audit_report_from_data(
+            read_json(self.config.audit.report, dict)
+        )
+        self.assertEqual(len(report.entries), 1)
+        entry = report.entries[0]
+        self.assertEqual(entry.publication_id, publication.id)
+        self.assertEqual(entry.batch_id, "batch-0001")
+        self.assertEqual(entry.attempt, 1)
+        self.assertEqual(
+            entry.result.comparisons[-1].classification,
+            "substantive-difference",
+        )
+
+    def test_cannot_close_batch_until_every_item_is_checkpointed(self):
+        start = plan_project_audit_batch(self.config)
+        apply_project_audit_plan(start)
+        first = plan_project_audit_checkpoint(
+            self.config,
+            batch_id=start.batch.id,
+            result=self.result_for(self.publications[0]),
+            state="completed",
+        )
+        apply_project_audit_plan(first)
+
+        with self.assertRaisesRegex(ProjectStateError, "cannot close with 1 active"):
+            plan_project_audit_close(
+                self.config,
+                batch_id=start.batch.id,
+            )
+
+    def test_close_then_next_batch_preserves_stable_uuid_snapshot(self):
+        start = plan_project_audit_batch(self.config)
+        apply_project_audit_plan(start)
+        for publication in self.publications[:2]:
+            checkpoint = plan_project_audit_checkpoint(
+                self.config,
+                batch_id=start.batch.id,
+                result=self.result_for(publication),
+                state="completed",
+            )
+            apply_project_audit_plan(checkpoint)
+
+        close = plan_project_audit_close(
+            self.config,
+            batch_id=start.batch.id,
+        )
+        apply_project_audit_plan(close)
+
+        changed = Publication(
+            id=new_publication_id(),
+            identifiers={"doi": "10.1000/new-after-start"},
+            title="Added after audit start",
+            authors=(Author(literal="Later Author"),),
+            permalink="added-after-audit-start",
+        )
+        write_bibliography(
+            self.config.paths.bibliography,
+            self.publications + (changed,),
+        )
+
+        second = plan_project_audit_batch(self.config)
+
+        self.assertEqual(second.batch.id, "batch-0002")
+        self.assertEqual(second.batch.keys, (self.publications[2].id,))
+        self.assertNotIn(changed.id, second.report.campaign_items)
+
+    def test_retry_replaces_old_report_entry_after_pending_first_pass(self):
+        first = plan_project_audit_batch(self.config)
+        apply_project_audit_plan(first)
+
+        retryable = plan_project_audit_checkpoint(
+            self.config,
+            batch_id=first.batch.id,
+            result=self.result_for(self.publications[0], unavailable=True),
+            state="retryable",
+        )
+        apply_project_audit_plan(retryable)
+        completed = plan_project_audit_checkpoint(
+            self.config,
+            batch_id=first.batch.id,
+            result=self.result_for(self.publications[1]),
+            state="completed",
+        )
+        apply_project_audit_plan(completed)
+        apply_project_audit_plan(
+            plan_project_audit_close(self.config, batch_id=first.batch.id)
+        )
+
+        second = plan_project_audit_batch(self.config)
+        self.assertEqual(second.batch.keys, (self.publications[2].id,))
+        apply_project_audit_plan(second)
+        third_publication = plan_project_audit_checkpoint(
+            self.config,
+            batch_id=second.batch.id,
+            result=self.result_for(self.publications[2]),
+            state="completed",
+        )
+        apply_project_audit_plan(third_publication)
+        apply_project_audit_plan(
+            plan_project_audit_close(self.config, batch_id=second.batch.id)
+        )
+
+        retry = plan_project_audit_batch(self.config)
+        self.assertEqual(retry.batch.id, "batch-0003")
+        self.assertEqual(retry.batch.keys, (self.publications[0].id,))
+        apply_project_audit_plan(retry)
+
+        replacement = plan_project_audit_checkpoint(
+            self.config,
+            batch_id=retry.batch.id,
+            result=self.result_for(self.publications[0]),
+            state="completed",
+        )
+        apply_project_audit_plan(replacement)
+
+        report = audit_report_from_data(
+            read_json(self.config.audit.report, dict)
+        )
+        entries = {
+            entry.publication_id: entry
+            for entry in report.entries
+        }
+        updated = entries[self.publications[0].id]
+        self.assertEqual(updated.batch_id, "batch-0003")
+        self.assertEqual(updated.attempt, 2)
+        self.assertEqual(updated.result.provider_issues, ())
+        self.assertEqual(len(report.entries), 3)
+
+    def test_batch_size_override_is_fixed_for_campaign_lifetime(self):
+        start = plan_project_audit_batch(self.config, batch_size=1)
+        apply_project_audit_plan(start)
+
+        with self.assertRaisesRegex(ProjectStateError, "already uses batch size 1"):
+            plan_project_audit_batch(self.config, batch_size=2)
+
+    def test_partial_audit_state_is_rejected(self):
+        self.config.audit.campaign.parent.mkdir(parents=True, exist_ok=True)
+        self.config.audit.campaign.write_text("{}\n", encoding="utf-8")
+
+        with self.assertRaisesRegex(ProjectStateError, "both exist or both be absent"):
+            plan_project_audit_batch(self.config)
+
+    def test_report_corruption_is_rejected_before_checkpoint(self):
+        start = plan_project_audit_batch(self.config)
+        apply_project_audit_plan(start)
+        payload = read_json(self.config.audit.report, dict)
+        payload["campaign_items"] = payload["campaign_items"][1:]
+        self.config.audit.report.write_text(
+            __import__("json").dumps(payload, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+        with self.assertRaisesRegex(ProjectStateError, "snapshots do not match"):
+            plan_project_audit_checkpoint(
+                self.config,
+                batch_id=start.batch.id,
+                result=self.result_for(self.publications[0]),
+                state="completed",
+            )
+
+
+if __name__ == "__main__":
+    unittest.main()
