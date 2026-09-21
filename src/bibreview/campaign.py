@@ -73,7 +73,12 @@ class CampaignProgress:
     @property
     def exhausted(self) -> bool:
         """Whether no more pending, active, or retryable work remains."""
-        return self.pending == 0 and self.active == 0 and self.retryable == 0
+        return (
+            self.pending == 0
+            and self.active == 0
+            and self.retryable == 0
+            and self.open_batch is None
+        )
 
     @property
     def successful(self) -> bool:
