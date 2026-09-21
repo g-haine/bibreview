@@ -128,6 +128,10 @@ audit:
 processed. A later retry replaces that publication's previous report entry while
 the campaign retains the attempt/batch history.
 
+**batch_size** is the default size for newly opened audit batches. A command-line
+`--batch-size` value may temporarily override the next new batch without
+changing this default or the stable campaign snapshot.
+
 The two paths must be different. Existing projects may omit the whole section;
 the defaults shown above are then used.
 

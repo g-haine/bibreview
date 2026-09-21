@@ -381,30 +381,24 @@ def plan_project_audit_batch(
 
     if campaign_path.exists():
         campaign, report = _read_state(config)
-        if batch_size is not None and batch_size != campaign.batch_size:
-            raise ProjectStateError(
-                f"audit campaign already uses batch size {campaign.batch_size}; "
-                f"cannot resume with {batch_size}"
-            )
     else:
         if not config.paths.bibliography.exists():
             raise ProjectStateError(
                 f"{config.paths.bibliography}: canonical bibliography does not exist"
             )
         publications = read_bibliography(config.paths.bibliography)
-        chosen_size = config.audit.batch_size if batch_size is None else batch_size
         try:
             campaign = create_campaign(
                 "audit",
                 (publication.id for publication in publications),
-                batch_size=chosen_size,
+                batch_size=config.audit.batch_size,
             )
         except CampaignError as error:
             raise ProjectStateError(str(error)) from error
         report = AuditReport(campaign_items=_campaign_items(campaign))
 
     try:
-        updated, batch = open_next_batch(campaign)
+        updated, batch = open_next_batch(campaign, batch_size=batch_size)
     except CampaignError as error:
         raise ProjectStateError(str(error)) from error
 

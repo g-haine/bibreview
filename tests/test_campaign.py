@@ -55,6 +55,38 @@ class CampaignTests(unittest.TestCase):
         self.assertEqual(resumed, opened)
         self.assertEqual(same_batch, batch)
 
+    def test_next_batch_size_can_be_overridden_without_changing_campaign_default(self):
+        campaign = create_campaign(
+            "audit",
+            ["one", "two", "three", "four", "five"],
+            batch_size=3,
+        )
+
+        campaign, first = open_next_batch(campaign, batch_size=1)
+        self.assertEqual(first.keys, ("one",))
+        self.assertEqual(campaign.batch_size, 3)
+        campaign = record_item_result(
+            campaign,
+            batch_id=first.id,
+            key="one",
+            state="completed",
+        )
+        campaign = close_batch(campaign, batch_id=first.id)
+
+        campaign, second = open_next_batch(campaign)
+        self.assertEqual(second.keys, ("two", "three", "four"))
+        self.assertEqual(campaign.batch_size, 3)
+
+    def test_open_batch_ignores_new_size_override_on_resume(self):
+        campaign, first = open_next_batch(
+            create_campaign("audit", ["one", "two", "three"], batch_size=2),
+            batch_size=1,
+        )
+        resumed, same = open_next_batch(campaign, batch_size=3)
+        self.assertEqual(resumed, campaign)
+        self.assertEqual(same, first)
+        self.assertEqual(same.keys, ("one",))
+
     def test_partial_checkpoint_keeps_same_open_batch_after_resume(self):
         campaign, batch = open_next_batch(
             create_campaign("audit", ["one", "two"], batch_size=2)

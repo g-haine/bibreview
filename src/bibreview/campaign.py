@@ -171,8 +171,17 @@ def _batch_id(sequence: int) -> str:
     return f"batch-{sequence:04d}"
 
 
-def open_next_batch(campaign: Campaign) -> tuple[Campaign, CampaignBatch | None]:
+def open_next_batch(
+    campaign: Campaign,
+    *,
+    batch_size: int | None = None,
+) -> tuple[Campaign, CampaignBatch | None]:
     """Open the next stable batch, or return the existing open batch on resume.
+
+    campaign.batch_size is the default for newly opened batches. A caller may
+    override the size of the next batch without changing the stable item
+    snapshot or the campaign default. An already-open batch always resumes with
+    its persisted membership.
 
     Unseen pending items are always selected before retryable items. A batch
     never mixes retryable work into a partially filled first-pass batch; retries
@@ -184,13 +193,19 @@ def open_next_batch(campaign: Campaign) -> tuple[Campaign, CampaignBatch | None]
     if current is not None:
         return campaign, current
 
+    effective_size = (
+        campaign.batch_size
+        if batch_size is None
+        else _validate_batch_size(batch_size)
+    )
+
     source = [item for item in campaign.items if item.state == "pending"]
     if not source:
         source = [item for item in campaign.items if item.state == "retryable"]
     if not source:
         return campaign, None
 
-    selected = source[: campaign.batch_size]
+    selected = source[:effective_size]
     selected_keys = tuple(item.key for item in selected)
     selected_set = set(selected_keys)
 
@@ -508,10 +523,6 @@ def validate_campaign(campaign: Campaign) -> None:
             )
         if not batch.keys:
             raise CampaignError(f"{batch.id}: batch must not be empty")
-        if len(batch.keys) > campaign.batch_size:
-            raise CampaignError(
-                f"{batch.id}: batch exceeds campaign batch_size"
-            )
         if len(set(batch.keys)) != len(batch.keys):
             raise CampaignError(f"{batch.id}: batch item keys must be unique")
         unknown = set(batch.keys) - known
