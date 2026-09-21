@@ -36,7 +36,8 @@ providers:
     enabled: true
   mendeley:
     enabled: true
-    token_env: MENDELEY_TOKEN
+    client_id_env: MENDELEY_CLIENT_ID
+    client_secret_env: MENDELEY_CLIENT_SECRET
 site:
   enabled: false
 """
@@ -58,7 +59,8 @@ class RuntimeTests(unittest.TestCase):
             environ={
                 "ELSEVIER_KEY": "elsevier-secret",
                 "IEEE_KEY": "ieee-secret",
-                "MENDELEY_TOKEN": "mendeley-secret",
+                "MENDELEY_CLIENT_ID": "mendeley-id",
+                "MENDELEY_CLIENT_SECRET": "mendeley-secret",
             },
         )
         self.assertIsInstance(services.provider, CrossRefProvider)
@@ -76,7 +78,8 @@ class RuntimeTests(unittest.TestCase):
                 "OPENALEX_KEY": "openalex-secret",
                 "ELSEVIER_KEY": "elsevier-secret",
                 "IEEE_KEY": "ieee-secret",
-                "MENDELEY_TOKEN": "mendeley-secret",
+                "MENDELEY_CLIENT_ID": "mendeley-id",
+                "MENDELEY_CLIENT_SECRET": "mendeley-secret",
             },
         )
         self.assertIsInstance(services.discovery_provider, OpenAlexProvider)
@@ -94,7 +97,8 @@ class RuntimeTests(unittest.TestCase):
             "OPENALEX_KEY=file-openalex\n"
             "ELSEVIER_KEY=file-elsevier\n"
             "IEEE_KEY=file-ieee\n"
-            "MENDELEY_TOKEN=file-mendeley\n",
+            "MENDELEY_CLIENT_ID=file-mendeley-id\n"
+            "MENDELEY_CLIENT_SECRET=file-mendeley-secret\n",
             encoding="utf-8",
         )
         stream = StringIO()
@@ -115,7 +119,8 @@ class RuntimeTests(unittest.TestCase):
             "OPENALEX_KEY=file-openalex\n"
             "ELSEVIER_KEY=file-elsevier\n"
             "IEEE_KEY=file-ieee\n"
-            "MENDELEY_TOKEN=file-mendeley\n",
+            "MENDELEY_CLIENT_ID=file-mendeley-id\n"
+            "MENDELEY_CLIENT_SECRET=file-mendeley-secret\n",
             encoding="utf-8",
         )
         services = build_discovery_services(
