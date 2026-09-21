@@ -106,7 +106,6 @@ def _crossref_event(value: object) -> str:
 
 
 def _crossref_identifiers(
-    requested_doi: str,
     message: Mapping[str, object],
 ) -> dict[str, str]:
     identifiers: dict[str, str] = {}
@@ -159,7 +158,7 @@ class CrossRefAuditSource:
         )
         return ProviderEvidence(
             provider=self.name,
-            identifiers=_crossref_identifiers(normalized, message),
+            identifiers=_crossref_identifiers(message),
             fields={
                 "type": _string(message.get("type")),
                 "title": _first(message.get("title")),
