@@ -307,12 +307,31 @@ class ProjectAuditTests(unittest.TestCase):
         self.assertEqual(updated.result.provider_issues, ())
         self.assertEqual(len(report.entries), 3)
 
-    def test_batch_size_override_is_fixed_for_campaign_lifetime(self):
-        start = plan_project_audit_batch(self.config, batch_size=1)
-        apply_project_audit_plan(start)
+    def test_batch_size_override_applies_only_to_newly_opened_batch(self):
+        first = plan_project_audit_batch(self.config, batch_size=1)
+        self.assertEqual(first.batch.keys, (self.publications[0].id,))
+        self.assertEqual(first.campaign.batch_size, 2)
+        apply_project_audit_plan(first)
 
-        with self.assertRaisesRegex(ProjectStateError, "already uses batch size 1"):
-            plan_project_audit_batch(self.config, batch_size=2)
+        resumed = plan_project_audit_batch(self.config, batch_size=2)
+        self.assertEqual(resumed.batch, first.batch)
+
+        checkpoint = plan_project_audit_checkpoint(
+            self.config,
+            batch_id=first.batch.id,
+            result=self.result_for(self.publications[0]),
+            state="completed",
+        )
+        apply_project_audit_plan(checkpoint)
+        apply_project_audit_plan(
+            plan_project_audit_close(self.config, batch_id=first.batch.id)
+        )
+
+        second = plan_project_audit_batch(self.config)
+        self.assertEqual(
+            second.batch.keys,
+            tuple(publication.id for publication in self.publications[1:]),
+        )
 
     def test_partial_audit_state_is_rejected(self):
         self.config.audit.campaign.parent.mkdir(parents=True, exist_ok=True)
