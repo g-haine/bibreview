@@ -176,6 +176,33 @@ The optional per-item `detail` field is persisted verbatim and therefore must
 contain only already-sanitized diagnostic text. Credentials, authorization
 headers and raw provider responses must never be stored in campaign state.
 
+### Audit campaign and report
+
+The audit workflow uses two separate files by default:
+
+~~~text
+data/audit/campaign.json
+data/audit/report.json
+~~~
+
+They are created and updated together when an audit campaign starts. A partial
+state where only one of the two files exists is rejected rather than silently
+reconstructed.
+
+The audit campaign snapshots publication **UUIDs** in canonical order when the
+campaign starts. Later additions or deletions in the canonical bibliography do
+not shift the remaining batches. Resuming an interrupted run returns the same
+open batch.
+
+The audit report stores only the latest result for each processed UUID, together
+with the batch ID and attempt number that produced it. If a retry later
+succeeds, that result replaces the previous report entry; the campaign file
+still records the complete batch/attempt history.
+
+Neither file is canonical bibliographic data. Audit planning and checkpointing
+must not modify **bibliography.json**, **collected.json**, DOI queues, BibTeX,
+author mappings, or generated site files.
+
 ## Archive
 
 Refresh creates backups of changed stored BibTeX before replacement in the
