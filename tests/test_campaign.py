@@ -122,6 +122,27 @@ class CampaignTests(unittest.TestCase):
         self.assertEqual(retried.attempts, 2)
         self.assertEqual(retried.detail, "")
 
+    def test_open_batch_prevents_premature_campaign_completion(self):
+        campaign, batch = open_next_batch(
+            create_campaign("audit", ["one"], batch_size=1)
+        )
+        campaign = record_item_result(
+            campaign,
+            batch_id=batch.id,
+            key="one",
+            state="completed",
+        )
+
+        progress = campaign_progress(campaign)
+        self.assertFalse(progress.exhausted)
+        self.assertFalse(progress.successful)
+        self.assertEqual(progress.open_batch, "batch-0001")
+
+        campaign = close_batch(campaign, batch_id=batch.id)
+        progress = campaign_progress(campaign)
+        self.assertTrue(progress.exhausted)
+        self.assertTrue(progress.successful)
+
     def test_completed_and_failed_items_are_terminal_for_campaign(self):
         campaign, batch = open_next_batch(
             create_campaign("audit", ["one", "two"], batch_size=2)
