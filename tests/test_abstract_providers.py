@@ -32,10 +32,7 @@ class SemanticScholarProviderTests(unittest.TestCase):
         self.assertEqual(provider.abstract("10.1/A?B"), "A useful abstract.")
         call = transport.json.call_args
         self.assertIn("DOI:10.1%2Fa%3Fb", call.args[0])
-        self.assertEqual(
-            call.kwargs["params"],
-            {"fields": "title,abstract,year,authors,venue,externalIds"},
-        )
+        self.assertEqual(call.kwargs["params"], {"fields": "abstract"})
 
     def test_optional_api_key_is_sent_in_header(self):
         transport = Mock()
