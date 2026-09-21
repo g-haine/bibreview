@@ -230,11 +230,13 @@ def record_item_result(
     """
     validate_campaign(campaign)
     key = _validate_key(key)
-    if state not in _RESULT_STATES:
+    if not isinstance(state, str) or state not in _RESULT_STATES:
         allowed = ", ".join(sorted(_RESULT_STATES))
         raise CampaignError(f"campaign result state must be one of: {allowed}")
     if not isinstance(detail, str):
         raise CampaignError("campaign item detail must be a string")
+    # Detail is persisted verbatim. Command-specific callers must pass only
+    # already-sanitized diagnostics and must never store credentials here.
 
     batch = _open_batch(campaign)
     if batch is None:
@@ -359,7 +361,11 @@ def campaign_from_data(value: Mapping[str, Any]) -> Campaign:
         )
 
     schema_version = root["schema_version"]
-    if schema_version != CAMPAIGN_SCHEMA_VERSION:
+    if (
+        not isinstance(schema_version, int)
+        or isinstance(schema_version, bool)
+        or schema_version != CAMPAIGN_SCHEMA_VERSION
+    ):
         raise CampaignError(
             "unsupported campaign schema version: "
             f"{schema_version!r}; expected {CAMPAIGN_SCHEMA_VERSION}"
@@ -383,7 +389,7 @@ def campaign_from_data(value: Mapping[str, Any]) -> Campaign:
             name=f"campaign.items[{index}].key",
         )
         state = item["state"]
-        if state not in _ITEM_STATES:
+        if not isinstance(state, str) or state not in _ITEM_STATES:
             raise CampaignError(
                 f"campaign.items[{index}].state is invalid: {state!r}"
             )
@@ -469,7 +475,7 @@ def validate_campaign(campaign: Campaign) -> None:
             raise CampaignError(f"campaign item {index} must be CampaignItem")
         key = _validate_key(item.key, name=f"campaign item {index} key")
         item_keys.append(key)
-        if item.state not in _ITEM_STATES:
+        if not isinstance(item.state, str) or item.state not in _ITEM_STATES:
             raise CampaignError(f"{key}: invalid campaign item state {item.state!r}")
         if (
             not isinstance(item.attempts, int)
