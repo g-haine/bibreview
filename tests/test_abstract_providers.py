@@ -8,6 +8,22 @@ from bibreview.providers.semantic_scholar import SemanticScholarProvider
 
 
 class SemanticScholarProviderTests(unittest.TestCase):
+    def test_fetches_selected_paper_metadata(self):
+        transport = Mock()
+        transport.json.return_value = {"title": "Example"}
+        provider = SemanticScholarProvider(transport, api_key="secret-key")
+
+        result = provider.paper("10.1/A?B")
+
+        self.assertEqual(result, {"title": "Example"})
+        call = transport.json.call_args
+        self.assertIn("DOI:10.1%2Fa%3Fb", call.args[0])
+        self.assertEqual(
+            call.kwargs["params"]["fields"],
+            "title,abstract,year,authors,venue,externalIds",
+        )
+        self.assertEqual(call.kwargs["headers"], {"x-api-key": "secret-key"})
+
     def test_returns_abstract_and_encodes_doi(self):
         transport = Mock()
         transport.json.return_value = {"abstract": "  A useful abstract.  "}
@@ -16,7 +32,10 @@ class SemanticScholarProviderTests(unittest.TestCase):
         self.assertEqual(provider.abstract("10.1/A?B"), "A useful abstract.")
         call = transport.json.call_args
         self.assertIn("DOI:10.1%2Fa%3Fb", call.args[0])
-        self.assertEqual(call.kwargs["params"], {"fields": "abstract"})
+        self.assertEqual(
+            call.kwargs["params"],
+            {"fields": "title,abstract,year,authors,venue,externalIds"},
+        )
 
     def test_optional_api_key_is_sent_in_header(self):
         transport = Mock()
