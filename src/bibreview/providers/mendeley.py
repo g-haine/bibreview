@@ -10,7 +10,7 @@ from typing import Callable
 from bs4 import BeautifulSoup
 
 from ..identity import normalize_doi
-from .http import HttpTransport
+from .http import HttpError, HttpTransport
 
 
 class MendeleyProvider:
@@ -84,10 +84,8 @@ class MendeleyProvider:
                 },
                 context=f"Mendeley catalog for DOI {doi}",
             )
-        except Exception as error:
-            from .http import HttpError
-
-            if not isinstance(error, HttpError) or error.status_code != 401:
+        except HttpError as error:
+            if error.status_code != 401:
                 raise
             token = self._access_token(force=True)
             return self.transport.json(
