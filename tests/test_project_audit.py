@@ -333,6 +333,53 @@ class ProjectAuditTests(unittest.TestCase):
             tuple(publication.id for publication in self.publications[1:]),
         )
 
+    def test_schema_v1_campaign_resumes_and_migrates_without_report_loss(self):
+        first = plan_project_audit_batch(self.config, batch_size=1)
+        apply_project_audit_plan(first)
+        checkpoint = plan_project_audit_checkpoint(
+            self.config,
+            batch_id=first.batch.id,
+            result=self.result_for(self.publications[0]),
+            state="completed",
+        )
+        apply_project_audit_plan(checkpoint)
+        apply_project_audit_plan(
+            plan_project_audit_close(self.config, batch_id=first.batch.id)
+        )
+
+        report_before = self.config.audit.report.read_bytes()
+        legacy = read_json(self.config.audit.campaign, dict)
+        legacy["schema_version"] = 1
+        legacy["batch_size"] = legacy.pop("default_batch_size")
+        self.config.audit.campaign.write_text(
+            __import__("json").dumps(legacy, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+        second = plan_project_audit_batch(self.config, batch_size=1)
+
+        self.assertEqual(second.batch.id, "batch-0002")
+        self.assertEqual(second.batch.keys, (self.publications[1].id,))
+        self.assertEqual(second.campaign.default_batch_size, 2)
+        self.assertEqual(
+            next(
+                item
+                for item in second.campaign.items
+                if item.key == self.publications[0].id
+            ).state,
+            "completed",
+        )
+        self.assertIn(self.config.audit.campaign, second.outputs)
+        self.assertNotIn(self.config.audit.report, second.outputs)
+
+        apply_project_audit_plan(second)
+
+        migrated = read_json(self.config.audit.campaign, dict)
+        self.assertEqual(migrated["schema_version"], 2)
+        self.assertEqual(migrated["default_batch_size"], 2)
+        self.assertNotIn("batch_size", migrated)
+        self.assertEqual(self.config.audit.report.read_bytes(), report_before)
+
     def test_partial_audit_state_is_rejected(self):
         self.config.audit.campaign.parent.mkdir(parents=True, exist_ok=True)
         self.config.audit.campaign.write_text("{}\n", encoding="utf-8")
