@@ -163,9 +163,12 @@ The mechanical item states are:
 Only one batch may be open at a time. Opening a campaign that already has an
 open batch returns that same batch, so interrupted work resumes on stable item
 membership rather than recalculating mutable offsets. New pending items are
-processed before retryable items. Batch identities are monotonic
-(`batch-0001`, `batch-0002`, ...), and historical membership is retained so
-attempt counts and restart behavior are inspectable.
+processed before retryable items. The campaign `batch_size` is a default for
+new batches, not a structural maximum: command-specific workflows may choose a
+different size for the next unopened batch while preserving the same stable item
+snapshot. Batch identities are monotonic (`batch-0001`, `batch-0002`, ...),
+and historical membership is retained so attempt counts and restart behavior are
+inspectable.
 
 This layer intentionally does **not** define audit classifications, initialization
 review decisions, provider policy, canonical corrections or automatic merge
