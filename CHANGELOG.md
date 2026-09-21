@@ -2,6 +2,38 @@
 
 All notable BibReview releases are documented here.
 
+## 1.2.0 — 2026-09-21
+
+### Provider diagnostics
+
+- add `bibreview providers` for offline inspection of provider enablement,
+  configured credential-variable names, and secret provenance;
+- add opt-in `bibreview providers --check` live probes with sanitized
+  classification of authentication, access, rate-limit, and availability
+  failures;
+- add JSON diagnostics suitable for tooling and future batch workflows;
+- preserve secret non-disclosure across runtime diagnostics and HTTP failures.
+
+### Provider authentication
+
+- support optional Semantic Scholar API keys through the `x-api-key` header;
+- add generic runtime provenance tracking so process-environment credentials
+  continue to override configured dotenv values without exposing secrets;
+- replace manual Mendeley bearer-token configuration with OAuth 2.0
+  `client_credentials` using the Mendeley Application ID and Application
+  Secret;
+- cache Mendeley access tokens for the current process, renew them before expiry,
+  and retry once after a catalog HTTP 401;
+- add sanitized form-POST transport support for OAuth token exchange.
+
+### Documentation and tests
+
+- document provider credential semantics and the new diagnostics command;
+- update the example configuration for Semantic Scholar and Mendeley;
+- cover credential precedence, secret non-disclosure, provider status
+  classification, Semantic Scholar authentication, and the Mendeley token
+  lifecycle.
+
 ## 1.1.0 — 2026-09-21
 
 ### Bibliographic contributors
