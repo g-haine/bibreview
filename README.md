@@ -18,6 +18,7 @@ Current stable release: **v1.1.0**.
 - OpenAlex discovery with configurable relevance rules;
 - CrossRef-backed DOI metadata collection;
 - optional publisher and abstract enrichment providers;
+- safe provider/credential diagnostics with optional live checks;
 - explicit pending, review, rejected and collected states;
 - persistent publication UUIDs independent from DOI representation;
 - reviewed author-name mapping with safe and ambiguous proposals;
@@ -95,7 +96,8 @@ A curated project should inspect staged metadata and BibTeX before merging.
 | Command | Purpose |
 |---|---|
 | **validate** | Validate project configuration. |
-| **status** | Show resolved project/provider status. |
+| **status** | Show the resolved project configuration summary. |
+| **providers** | Inspect credential provenance and optionally live-check providers. |
 | **discover** | Discover and screen new DOI candidates. |
 | **collect** | Collect pending DOI metadata into canonical staging. |
 | **refresh** | Recollect selected incomplete existing publications. |
