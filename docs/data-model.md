@@ -120,6 +120,62 @@ For future non-DOI ingestion, this provenance rule still applies: either obtain
 a trustworthy BibTeX record or add a reviewed explicit mechanism for creating
 one. Do not generate a citation merely to satisfy the renderer.
 
+
+## Resumable campaign state
+
+Long-running workflows such as the planned **audit** and **init** commands share
+a small generic campaign model. Campaign state is deliberately separate from
+the canonical bibliography, DOI queues and `collected.json`.
+
+A campaign snapshots a stable ordered universe of item keys and processes that
+snapshot through bounded batches. The generic layer does not know whether a key
+is a publication UUID, a normalized external identifier or another
+command-specific identity.
+
+Its versioned JSON representation has this shape:
+
+~~~json
+{
+  "schema_version": 1,
+  "kind": "audit",
+  "batch_size": 50,
+  "items": [
+    {
+      "key": "stable-item-id",
+      "state": "pending",
+      "attempts": 0,
+      "detail": ""
+    }
+  ],
+  "batches": []
+}
+~~~
+
+The mechanical item states are:
+
+- **pending** — never selected yet;
+- **active** — belongs to the single currently open batch;
+- **completed** — command-specific processing finished;
+- **retryable** — processing was unavailable or transiently failed and may be
+  selected again after the first pass;
+- **failed** — terminal failure for this campaign.
+
+Only one batch may be open at a time. Opening a campaign that already has an
+open batch returns that same batch, so interrupted work resumes on stable item
+membership rather than recalculating mutable offsets. New pending items are
+processed before retryable items. Batch identities are monotonic
+(`batch-0001`, `batch-0002`, ...), and historical membership is retained so
+attempt counts and restart behavior are inspectable.
+
+This layer intentionally does **not** define audit classifications, initialization
+review decisions, provider policy, canonical corrections or automatic merge
+behavior. Those belong to the command-specific workflow built on top of the
+shared mechanics.
+
+The optional per-item `detail` field is persisted verbatim and therefore must
+contain only already-sanitized diagnostic text. Credentials, authorization
+headers and raw provider responses must never be stored in campaign state.
+
 ## Archive
 
 Refresh creates backups of changed stored BibTeX before replacement in the
