@@ -144,7 +144,8 @@ providers:
 
   mendeley:
     enabled: true
-    token_env: MENDELEY_ACCESS_TOKEN
+    client_id_env: MENDELEY_CLIENT_ID
+    client_secret_env: MENDELEY_CLIENT_SECRET
 ~~~
 
 A corresponding private **.env** may contain:
@@ -155,17 +156,20 @@ ELSEVIER_API_KEY=...
 SPRINGER_API_KEY=...
 IEEE_API_KEY=...
 SEMANTIC_SCHOLAR_API_KEY=...
-MENDELEY_ACCESS_TOKEN=...
+MENDELEY_CLIENT_ID=...
+MENDELEY_CLIENT_SECRET=...
 ~~~
 
 Optional providers whose required configured secret is missing are skipped with
 a warning. OpenAlex and Semantic Scholar can run without API keys, but supplying
 their optional keys may provide more predictable rate limits.
 
-Mendeley's `token_env` is an **OAuth 2.0 bearer access token**, not an
-application/API key. Mendeley access tokens are short-lived; if a configured
-token returns HTTP 401, obtain a fresh token through an appropriate Mendeley
-OAuth flow before retrying.
+For Mendeley, configure the **Application ID** and **Application Secret** from
+the Mendeley Developer Portal. BibReview uses the OAuth 2.0
+`client_credentials` flow to request a short-lived bearer access token from
+Mendeley, caches it for the current process, and automatically requests a new
+token before expiry. The application secret is never used directly as a bearer
+token and is never printed by diagnostics.
 
 ### Provider diagnostics
 
