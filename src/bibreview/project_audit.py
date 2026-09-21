@@ -580,6 +580,8 @@ def execute_project_audit_batch(
 
     if not isinstance(sources, tuple):
         sources = tuple(sources)
+    if not sources:
+        raise ProjectStateError("audit requires at least one evidence source")
     if any(not hasattr(source, "name") or not hasattr(source, "evidence") for source in sources):
         raise ProjectStateError("audit sources must provide name and evidence()")
     names = [source.name for source in sources]
