@@ -32,6 +32,32 @@ Show the resolved project configuration, enabled providers and arXiv status:
 bibreview --config bibreview.yml status
 ~~~
 
+## providers
+
+Inspect provider enablement, configured credential-variable names, and safe
+credential provenance without making network requests:
+
+~~~bash
+bibreview --config bibreview.yml providers
+~~~
+
+Run one sanitized live request per provider that is ready to use:
+
+~~~bash
+bibreview --config bibreview.yml providers --check
+~~~
+
+Common live statuses distinguish authentication failure, access/entitlement
+denial, rate limiting, and provider unavailability. Secret values are never
+printed.
+
+Machine-readable diagnostics:
+
+~~~bash
+bibreview --config bibreview.yml providers --json
+bibreview --config bibreview.yml providers --check --json
+~~~
+
 ## discover
 
 Search the configured discovery provider, verify candidates and update DOI
