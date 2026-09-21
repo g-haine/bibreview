@@ -130,7 +130,8 @@ class RuntimeTests(unittest.TestCase):
                 "OPENALEX_KEY": "shell-openalex",
                 "ELSEVIER_KEY": "shell-elsevier",
                 "IEEE_KEY": "shell-ieee",
-                "MENDELEY_TOKEN": "shell-mendeley",
+                "MENDELEY_CLIENT_ID": "shell-mendeley-id",
+                "MENDELEY_CLIENT_SECRET": "shell-mendeley-secret",
             },
         )
         self.assertEqual(services.discovery_provider.api_key, "shell-openalex")
