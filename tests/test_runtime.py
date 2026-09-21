@@ -4,10 +4,19 @@ import tempfile
 import unittest
 
 from bibreview.config import load_config
+from bibreview.providers.audit import (
+    CrossRefAuditSource,
+    OpenAlexAuditSource,
+    SemanticScholarAuditSource,
+)
 from bibreview.providers.crossref import CrossRefProvider
 from bibreview.providers.openalex import OpenAlexProvider
 from bibreview.reporting import Reporter
-from bibreview.runtime import build_collection_services, build_discovery_services
+from bibreview.runtime import (
+    build_audit_services,
+    build_collection_services,
+    build_discovery_services,
+)
 
 
 CONFIG = """\
@@ -87,6 +96,44 @@ class RuntimeTests(unittest.TestCase):
         self.assertIsInstance(services.provider, CrossRefProvider)
         self.assertTrue(callable(services.enrichment_lookup))
         self.assertEqual(stream.getvalue(), "")
+
+    def test_audit_services_compose_only_core_evidence_providers(self):
+        config = self.config(CONFIG.replace(
+            "  semantic_scholar:\n    enabled: true\n",
+            "  semantic_scholar:\n"
+            "    enabled: true\n"
+            "    api_key_env: SEMANTIC_KEY\n",
+        ))
+        stream = StringIO()
+        services = build_audit_services(
+            config,
+            reporter=Reporter(stream=stream),
+            environ={
+                "OPENALEX_KEY": "openalex-secret",
+                "SEMANTIC_KEY": "semantic-secret",
+            },
+        )
+
+        self.assertEqual(
+            tuple(type(source) for source in services.sources),
+            (
+                CrossRefAuditSource,
+                OpenAlexAuditSource,
+                SemanticScholarAuditSource,
+            ),
+        )
+        self.assertEqual(
+            services.sources[1].provider.api_key,
+            "openalex-secret",
+        )
+        self.assertEqual(
+            services.sources[2].provider.api_key,
+            "semantic-secret",
+        )
+        warnings = stream.getvalue()
+        self.assertNotIn("Elsevier", warnings)
+        self.assertNotIn("IEEE", warnings)
+        self.assertNotIn("Mendeley", warnings)
 
     def test_configured_environment_file_supplies_provider_secrets(self):
         config = self.config(CONFIG.replace(
