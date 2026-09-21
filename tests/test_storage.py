@@ -140,6 +140,7 @@ class StorageTests(unittest.TestCase):
         self.assertEqual(raw["metadata"]["schema_version"], 2)
         self.assertEqual(raw["metadata"]["last_update"], "2026-09-18")
         self.assertEqual(len(raw["publications"]), 1)
+        self.assertIn("editors", raw["publications"][0])
         self.assertEqual(
             bibliography_data(loaded)[0]["authors"][0]["source_fields"]["ORCID"],
             "example-orcid",
@@ -159,7 +160,6 @@ class StorageTests(unittest.TestCase):
             authors=(Author(literal="Example Author"),),
         )
         record = bibliography_data([publication])[0]
-        record.pop("editors")
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "bibliography.json"
             path.write_bytes(json_bytes([record]))
@@ -176,7 +176,6 @@ class StorageTests(unittest.TestCase):
             authors=(Author(literal="Legacy Author"),),
         )
         record = bibliography_data([publication])[0]
-        record.pop("editors")
         payload = {
             "metadata": {
                 "schema_version": 1,
@@ -193,14 +192,14 @@ class StorageTests(unittest.TestCase):
         self.assertEqual(document.metadata.schema_version, 2)
         self.assertEqual(document.metadata.last_update, date(2026, 9, 18))
 
-    def test_schema_two_requires_editors_field(self) -> None:
+    def test_schema_two_accepts_omitted_empty_editors(self) -> None:
         publication = Publication(
             id=new_publication_id(),
             title="Current",
             authors=(Author(literal="Current Author"),),
         )
         record = bibliography_data([publication])[0]
-        record.pop("editors")
+        self.assertNotIn("editors", record)
         payload = {
             "metadata": {
                 "schema_version": 2,
@@ -211,8 +210,10 @@ class StorageTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "bibliography.json"
             path.write_bytes(json_bytes(payload))
-            with self.assertRaisesRegex(StorageError, "missing fields: editors"):
-                read_bibliography_document(path)
+            document = read_bibliography_document(path)
+
+        self.assertEqual(document.publications, (publication,))
+        self.assertEqual(document.publications[0].editors, ())
 
     def test_canonical_reader_rejects_invalid_document_metadata(self) -> None:
         publication = Publication(
