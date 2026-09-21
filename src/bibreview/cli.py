@@ -41,6 +41,15 @@ from .runtime import (
 from .storage import StorageError
 
 
+def _audit_progress_data(campaign) -> dict[str, object]:
+    progress = campaign_progress(campaign)
+    return {
+        **progress.data(),
+        "exhausted": progress.exhausted,
+        "successful": progress.successful,
+    }
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="bibreview")
     parser.add_argument("--config", default="bibreview.yml", help="Project configuration file")
@@ -173,7 +182,7 @@ def main(argv: list[str] | None = None) -> int:
                     "dry_run": True,
                     "batch_id": plan.batch.id if plan.batch is not None else None,
                     "keys": list(plan.batch.keys) if plan.batch is not None else [],
-                    "progress": campaign_progress(plan.campaign).data(),
+                    "progress": _audit_progress_data(plan.campaign),
                     "campaign": str(config.audit.campaign),
                     "report": str(config.audit.report),
                 }
@@ -194,7 +203,7 @@ def main(argv: list[str] | None = None) -> int:
                 payload = {
                     "batch_id": None,
                     "processed": 0,
-                    "progress": progress.data(),
+                    "progress": _audit_progress_data(plan.campaign),
                     "campaign": str(config.audit.campaign),
                     "report": str(config.audit.report),
                 }
@@ -223,7 +232,7 @@ def main(argv: list[str] | None = None) -> int:
             "completed": execution.completed_count,
             "retryable": execution.retryable_count,
             "failed": execution.failed_count,
-            "progress": campaign_progress(execution.campaign).data(),
+            "progress": _audit_progress_data(execution.campaign),
             "campaign": str(config.audit.campaign),
             "report": str(config.audit.report),
         }
