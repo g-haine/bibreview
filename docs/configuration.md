@@ -203,6 +203,11 @@ site:
     include_authorless_year_publications: true
 ~~~
 
+`include_authorless_year_publications` is retained for compatibility with
+existing project configurations. In schema version 2, a valid canonical
+publication always has at least one author or editor; editor-only publications
+are therefore rendered even when this option is `false`.
+
 **bibreview render** owns generated publication posts, author pages and year
 pages. It does not own your Jekyll theme, layouts, CSS, deployment or analytics.
 

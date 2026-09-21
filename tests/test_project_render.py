@@ -135,7 +135,7 @@ class ProjectRenderTests(unittest.TestCase):
             (site / "_data/bibreview/metadata.json").read_text(
                 encoding="utf-8"
             ),
-            '{\n  "schema_version": 1,\n  "last_update": "2026-09-11"\n}\n',
+            '{\n  "schema_version": 2,\n  "last_update": "2026-09-11"\n}\n',
         )
         self.assertFalse((site / "_posts/obsolete.md").exists())
         self.assertEqual((site / "manual.md").read_text(), "manual")

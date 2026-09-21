@@ -11,7 +11,7 @@ feed.
 BibReview is designed so that provider output remains inspectable and ambiguous
 decisions remain human decisions.
 
-Current stable release: **v1.0.0**.
+Current stable release: **v1.1.0**.
 
 ## What BibReview provides
 
