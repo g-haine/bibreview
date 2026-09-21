@@ -26,7 +26,9 @@ are hypotheses to review, not automatic corrections. Apply any justified
 canonical/BibTeX/identity correction explicitly through the normal reviewed
 project workflow.
 
-Each later invocation processes the next stable batch:
+Each later invocation processes the next stable batch. Omitting
+`--batch-size` returns to the configured default (50 in the example
+configuration):
 
 ~~~bash
 bibreview --config bibreview.yml audit
