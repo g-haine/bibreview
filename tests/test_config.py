@@ -42,6 +42,9 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(config.paths.bibliography, root / "data/bibliography.json")
         self.assertEqual(config.paths.collected, root / "data/collected.json")
         self.assertEqual(config.paths.pending, root / "data/pending.txt")
+        self.assertEqual(config.audit.campaign, root / "data/audit/campaign.json")
+        self.assertEqual(config.audit.report, root / "data/audit/report.json")
+        self.assertEqual(config.audit.batch_size, 50)
         self.assertEqual(config.discovery.query, "fluid-structure interaction")
         self.assertEqual(config.discovery.accepted_types, DEFAULT_DISCOVERY_TYPES)
         self.assertEqual(config.discovery.exclude_doi_substrings, ())
@@ -138,6 +141,42 @@ class ConfigTests(unittest.TestCase):
         )
         _, path = self.write(content)
         with self.assertRaisesRegex(ConfigError, "arxiv.sort_by"):
+            load_config(path)
+
+    def test_loads_audit_configuration(self):
+        root, path = self.write(BASE.replace(
+            "relevance:\n",
+            "audit:\n"
+            "  campaign: state/audit.json\n"
+            "  report: reports/audit.json\n"
+            "  batch_size: 25\n"
+            "relevance:\n",
+        ))
+        config = load_config(path)
+        self.assertEqual(config.audit.campaign, root / "state/audit.json")
+        self.assertEqual(config.audit.report, root / "reports/audit.json")
+        self.assertEqual(config.audit.batch_size, 25)
+
+    def test_rejects_identical_audit_paths_and_invalid_batch_size(self):
+        same_path = BASE.replace(
+            "relevance:\n",
+            "audit:\n"
+            "  campaign: data/audit.json\n"
+            "  report: data/audit.json\n"
+            "relevance:\n",
+        )
+        _, path = self.write(same_path)
+        with self.assertRaisesRegex(ConfigError, "must be different paths"):
+            load_config(path)
+
+        invalid_size = BASE.replace(
+            "relevance:\n",
+            "audit:\n"
+            "  batch_size: 0\n"
+            "relevance:\n",
+        )
+        _, path = self.write(invalid_size)
+        with self.assertRaisesRegex(ConfigError, "audit.batch_size"):
             load_config(path)
 
     def test_loads_provider_oauth_environment_fields(self):

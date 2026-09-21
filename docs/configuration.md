@@ -111,6 +111,29 @@ Only publications of a configured type with at least one configured empty field
 are eligible. BibReview compares the stored BibTeX with the current DOI BibTeX;
 changed or missing BibTeX can trigger recollection into staging.
 
+## Audit state
+
+The non-destructive audit workflow keeps its checkpoint and report separate from
+canonical bibliography state and collection staging:
+
+~~~yaml
+audit:
+  campaign: data/audit/campaign.json
+  report: data/audit/report.json
+  batch_size: 50
+~~~
+
+**campaign** stores the stable UUID snapshot, batch history and retry state.
+**report** stores the latest comparison result for each publication already
+processed. A later retry replaces that publication's previous report entry while
+the campaign retains the attempt/batch history.
+
+The two paths must be different. Existing projects may omit the whole section;
+the defaults shown above are then used.
+
+Audit state is intentionally not placed under **paths.collected** and is never
+interpreted as merge-ready bibliographic data.
+
 ## Providers and secrets
 
 CrossRef is the mandatory metadata provider for DOI-backed workflows.

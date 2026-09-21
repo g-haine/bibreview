@@ -430,6 +430,225 @@ def _json_value(value: AuditValue) -> str | list[str]:
     return value if isinstance(value, str) else list(value)
 
 
+
+def _audit_value_from_json(value: Any, *, name: str) -> AuditValue:
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list) and all(isinstance(item, str) for item in value):
+        return tuple(value)
+    raise AuditError(f"{name} must be a string or list of strings")
+
+
+def audit_result_from_data(value: Mapping[str, Any]) -> AuditResult:
+    """Reconstruct and validate one persisted machine-readable audit result."""
+    if not isinstance(value, Mapping):
+        raise AuditError("audit result must be an object")
+    required = {
+        "publication_id",
+        "identifiers",
+        "permalink",
+        "title",
+        "comparisons",
+        "provider_issues",
+        "disagreements",
+        "classification_counts",
+    }
+    missing = required - value.keys()
+    unknown = value.keys() - required
+    if missing:
+        raise AuditError(
+            "audit result missing fields: " + ", ".join(sorted(missing))
+        )
+    if unknown:
+        raise AuditError(
+            "audit result has unknown fields: " + ", ".join(sorted(unknown))
+        )
+
+    publication_id = validate_publication_id(value["publication_id"])
+    raw_identifiers = value["identifiers"]
+    if not isinstance(raw_identifiers, Mapping):
+        raise AuditError("audit result identifiers must be an object")
+    try:
+        identifiers = normalize_identifiers(raw_identifiers)
+    except (TypeError, ValueError) as error:
+        raise AuditError(f"invalid audit result identifiers: {error}") from error
+
+    permalink = value["permalink"]
+    title = value["title"]
+    if not isinstance(permalink, str) or not isinstance(title, str):
+        raise AuditError("audit result permalink and title must be strings")
+
+    raw_comparisons = value["comparisons"]
+    if not isinstance(raw_comparisons, list):
+        raise AuditError("audit result comparisons must be a list")
+    comparisons: list[AuditComparison] = []
+    for index, raw in enumerate(raw_comparisons, 1):
+        if not isinstance(raw, Mapping):
+            raise AuditError(f"audit result comparisons[{index}] must be an object")
+        required_comparison = {
+            "provider",
+            "field",
+            "classification",
+            "canonical_value",
+            "provider_value",
+        }
+        if set(raw) != required_comparison:
+            raise AuditError(
+                f"audit result comparisons[{index}] must contain "
+                + ", ".join(sorted(required_comparison))
+            )
+        provider = raw["provider"]
+        field_name = raw["field"]
+        classification = raw["classification"]
+        if not isinstance(classification, str):
+            raise AuditError(
+                f"audit result comparisons[{index}].classification must be a string"
+            )
+        if not isinstance(provider, str) or not provider.strip():
+            raise AuditError(
+                f"audit result comparisons[{index}].provider must be a non-empty string"
+            )
+        if not isinstance(field_name, str) or not field_name.strip():
+            raise AuditError(
+                f"audit result comparisons[{index}].field must be a non-empty string"
+            )
+        comparisons.append(
+            AuditComparison(
+                provider=provider,
+                field=field_name,
+                classification=classification,
+                canonical_value=_audit_value_from_json(
+                    raw["canonical_value"],
+                    name=f"audit result comparisons[{index}].canonical_value",
+                ),
+                provider_value=_audit_value_from_json(
+                    raw["provider_value"],
+                    name=f"audit result comparisons[{index}].provider_value",
+                ),
+            )
+        )
+
+    raw_issues = value["provider_issues"]
+    if not isinstance(raw_issues, list):
+        raise AuditError("audit result provider_issues must be a list")
+    provider_issues: list[AuditProviderIssue] = []
+    for index, raw in enumerate(raw_issues, 1):
+        if not isinstance(raw, Mapping) or set(raw) != {
+            "provider",
+            "classification",
+            "detail",
+        }:
+            raise AuditError(
+                f"audit result provider_issues[{index}] must contain "
+                "provider, classification, and detail"
+            )
+        if (
+            not isinstance(raw["provider"], str)
+            or not raw["provider"].strip()
+            or not isinstance(raw["detail"], str)
+        ):
+            raise AuditError(
+                f"audit result provider_issues[{index}] has invalid text fields"
+            )
+        provider_issues.append(
+            AuditProviderIssue(
+                provider=raw["provider"],
+                classification=raw["classification"],
+                detail=raw["detail"],
+            )
+        )
+
+    raw_disagreements = value["disagreements"]
+    if not isinstance(raw_disagreements, list):
+        raise AuditError("audit result disagreements must be a list")
+    disagreements: list[AuditDisagreement] = []
+    for index, raw in enumerate(raw_disagreements, 1):
+        if not isinstance(raw, Mapping) or set(raw) != {
+            "classification",
+            "field",
+            "provider_values",
+        }:
+            raise AuditError(
+                f"audit result disagreements[{index}] must contain "
+                "classification, field, and provider_values"
+            )
+        if raw["classification"] != "provider-disagreement":
+            raise AuditError(
+                f"audit result disagreements[{index}].classification is invalid"
+            )
+        field_name = raw["field"]
+        raw_provider_values = raw["provider_values"]
+        if not isinstance(field_name, str) or not field_name.strip():
+            raise AuditError(
+                f"audit result disagreements[{index}].field must be a non-empty string"
+            )
+        if not isinstance(raw_provider_values, list):
+            raise AuditError(
+                f"audit result disagreements[{index}].provider_values must be a list"
+            )
+        provider_values: list[tuple[str, AuditValue]] = []
+        for pair_index, pair in enumerate(raw_provider_values, 1):
+            if not isinstance(pair, Mapping) or set(pair) != {"provider", "value"}:
+                raise AuditError(
+                    f"audit result disagreements[{index}].provider_values"
+                    f"[{pair_index}] must contain provider and value"
+                )
+            provider = pair["provider"]
+            if not isinstance(provider, str) or not provider.strip():
+                raise AuditError(
+                    f"audit result disagreements[{index}].provider_values"
+                    f"[{pair_index}].provider must be a non-empty string"
+                )
+            provider_values.append(
+                (
+                    provider,
+                    _audit_value_from_json(
+                        pair["value"],
+                        name=(
+                            f"audit result disagreements[{index}].provider_values"
+                            f"[{pair_index}].value"
+                        ),
+                    ),
+                )
+            )
+        disagreements.append(
+            AuditDisagreement(
+                field=field_name,
+                provider_values=tuple(provider_values),
+            )
+        )
+
+    result = AuditResult(
+        publication_id=publication_id,
+        identifiers=MappingProxyType(dict(identifiers)),
+        permalink=permalink,
+        title=title,
+        comparisons=tuple(comparisons),
+        provider_issues=tuple(provider_issues),
+        disagreements=tuple(disagreements),
+    )
+
+    counts = value["classification_counts"]
+    if not isinstance(counts, Mapping):
+        raise AuditError("audit result classification_counts must be an object")
+    normalized_counts: dict[str, int] = {}
+    for name, count in counts.items():
+        if (
+            not isinstance(name, str)
+            or not isinstance(count, int)
+            or isinstance(count, bool)
+            or count < 0
+        ):
+            raise AuditError(
+                "audit result classification_counts must map strings to "
+                "non-negative integers"
+            )
+        normalized_counts[name] = count
+    if normalized_counts != dict(result.classification_counts()):
+        raise AuditError("audit result classification_counts are inconsistent")
+
+    return result
+
 def audit_result_data(result: AuditResult) -> dict[str, Any]:
     """Return one machine-readable, provenance-explicit audit result."""
     if not isinstance(result, AuditResult):
