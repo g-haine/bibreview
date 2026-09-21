@@ -71,15 +71,18 @@ The first invocation creates a stable UUID snapshot and opens the first batch.
 Each invocation processes **one batch only**, checkpoints every publication
 result immediately, closes the batch, and stops for human review.
 
-Choose a smaller pilot batch when starting a new campaign:
+Choose a smaller pilot batch when starting a campaign, or override the size of
+any later **new** batch:
 
 ~~~bash
 bibreview --config bibreview.yml audit --batch-size 25
 ~~~
 
-The batch size is fixed for the lifetime of that campaign. A later invocation
-with a different value is rejected rather than silently changing batch
-boundaries.
+The configured `audit.batch_size` remains the campaign default (50 unless
+changed in configuration). `--batch-size` overrides only the next batch that
+is opened; it does not change the stable UUID snapshot or the default for later
+batches. If a batch is already open after an interruption, BibReview resumes its
+persisted membership and ignores a different size override.
 
 Preview the next batch without writing audit state and without making provider
 requests:
