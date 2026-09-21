@@ -470,6 +470,37 @@ class ProjectAuditTests(unittest.TestCase):
             (first.id,),
         )
 
+    def test_execution_summary_is_human_readable(self):
+        start = plan_project_audit_batch(self.config, batch_size=2)
+        apply_project_audit_plan(start)
+        source = FakeAuditSource({
+            self.publications[0].doi: ProviderEvidence(
+                provider="fake-provider",
+                identifiers={"doi": self.publications[0].doi},
+                fields={"title": self.publications[0].title},
+            ),
+            self.publications[1].doi: HttpError(
+                "provider: HTTP 429",
+                status_code=429,
+            ),
+        })
+
+        execution = execute_project_audit_batch(
+            self.config,
+            batch_id=start.batch.id,
+            sources=(source,),
+            reporter=Reporter(-1),
+        )
+
+        self.assertEqual(
+            execution.summary(),
+            "Audit batch batch-0001 complete\n"
+            "  This batch : 2 processed (1 completed, 1 retryable, 0 failed)\n"
+            "  Campaign   : 2 / 3 processed (1 completed, 1 retryable, 0 failed)\n"
+            "  Remaining  : 1 pending\n"
+            "  Batches    : 1 closed",
+        )
+
     def test_report_corruption_is_rejected_before_checkpoint(self):
         start = plan_project_audit_batch(self.config)
         apply_project_audit_plan(start)
