@@ -18,6 +18,16 @@ class SemanticScholarProviderTests(unittest.TestCase):
         self.assertIn("DOI:10.1%2Fa%3Fb", call.args[0])
         self.assertEqual(call.kwargs["params"], {"fields": "abstract"})
 
+    def test_optional_api_key_is_sent_in_header(self):
+        transport = Mock()
+        transport.json.return_value = {"abstract": "A useful abstract."}
+        provider = SemanticScholarProvider(transport, api_key=" secret-key ")
+
+        provider.abstract("10.1/test")
+
+        call = transport.json.call_args
+        self.assertEqual(call.kwargs["headers"], {"x-api-key": "secret-key"})
+
     def test_missing_or_unexpected_payload_is_empty(self):
         transport = Mock()
         provider = SemanticScholarProvider(transport)
