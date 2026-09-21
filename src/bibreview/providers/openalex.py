@@ -33,7 +33,7 @@ class OpenAlexProvider:
         if self.api_key:
             params["api_key"] = self.api_key
         data = self.transport.json(
-            f"{self.BASE_URL}/https://doi.org/{quote(normalized, safe='')}",
+            f"{self.BASE_URL}/https://doi.org/{quote(normalized, safe='/')}",
             params=params,
             context=f"OpenAlex metadata for DOI {normalized}",
         )
