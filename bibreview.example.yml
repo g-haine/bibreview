@@ -86,10 +86,13 @@ providers:
 
   semantic_scholar:
     enabled: false
+    # Optional; authenticated requests have dedicated rate limits.
+    api_key_env: SEMANTIC_SCHOLAR_API_KEY
 
   mendeley:
     enabled: false
-    token_env: MENDELEY_TOKEN
+    # OAuth 2.0 bearer access token, not an application API key.
+    token_env: MENDELEY_ACCESS_TOKEN
 
 site:
   enabled: false
