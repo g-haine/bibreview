@@ -161,8 +161,15 @@ one actionable finding at a time and stores resumable human decisions in
   session;
 - **q**: stop cleanly; decisions already made remain persisted.
 
-For tuple-valued metadata such as contributor lists, `f` requires a JSON
-string array, for example:
+For tuple-valued metadata such as contributor lists, `f` accepts the same
+semicolon-separated form shown by the resolver, for example:
+
+~~~text
+f Nguyen Thanh Sang; Tan Chee Keong; Hussain Mohd Azlan
+~~~
+
+A JSON string array remains supported when it is more convenient or less
+ambiguous:
 
 ~~~text
 f ["Ada Lovelace", "Alan Turing"]
