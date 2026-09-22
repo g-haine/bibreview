@@ -272,7 +272,7 @@ _TEX_MATH_DELIMITER = re.compile(r"(?:\$\$?|\\\(|\\\)|\\\[|\\\])")
 _NAME_PUNCTUATION = re.compile(r"[^a-z0-9 ]+")
 _FAMILY_PARTICLES = frozenset({
     "da", "de", "del", "della", "den", "der", "di", "du",
-    "la", "le", "van", "von",
+    "la", "le", "ten", "ter", "van", "von",
 })
 
 
