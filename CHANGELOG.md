@@ -2,6 +2,35 @@
 
 All notable BibReview releases are documented here.
 
+## 1.6.0 — 2026-09-22
+
+### Audited correction promotion
+
+- add `bibreview audit --apply` as an offline, explicit promotion step for
+  completed human audit resolutions;
+- require a complete resolution set, revalidate the review fingerprint, and
+  reject stale canonical values before staging any correction;
+- reuse the normal `collected.json` staging boundary and refuse to overwrite a
+  non-empty collect/refresh batch;
+- stage only accepted/custom decisions while leaving rejected findings
+  unchanged;
+- synchronize applicable tracked BibTeX fields at apply time, with archive
+  backups before replacement;
+- add a conservative single-entry BibTeX field editor with no new dependency;
+- abort safely when required BibTeX is missing/malformed or a correction cannot
+  be represented without guessing;
+- preserve contributor decisions without inferring given/family components;
+- support dry-run, verbose, JSON, and quiet application modes while keeping
+  `bibreview merge` as the only canonical promotion boundary.
+
+### Validation
+
+- add regression coverage for application planning, staging guards, stale
+  canonical detection, contributor preservation, BibTeX synchronization and
+  backups, JSON-only fields, no-op rejected decisions, dry-run/JSON CLI modes,
+  and conservative BibTeX parsing/editing;
+- validate the feature with 364 passing tests before release.
+
 ## 1.5.3 — 2026-09-22
 
 ### Interactive terminal line editing
