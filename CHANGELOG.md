@@ -2,6 +2,29 @@
 
 All notable BibReview releases are documented here.
 
+## 1.4.2 — 2026-09-22
+
+### Batched audit provider requests
+
+- batch OpenAlex audit lookups with bounded multi-DOI OR filters, up to 100 DOI
+  values per provider request;
+- batch Semantic Scholar audit lookups through the paper batch endpoint, up to
+  500 DOI values per provider request;
+- keep CrossRef DOI audit lookups individual because its REST API does not
+  provide an equivalent arbitrary-DOI batch endpoint;
+- retain the existing 1.1-second authenticated Semantic Scholar pacing between
+  batch requests rather than between publications.
+
+### Audit safety and compatibility
+
+- preserve the same normalized provider evidence, comparison semantics,
+  corroboration rules, campaign state, and per-publication checkpointing;
+- mark only DOI values in a failed provider chunk retryable when a batch request
+  fails;
+- add sanitized JSON-POST transport support and retry coverage for idempotent
+  provider batch lookups;
+- validate the implementation with 322 passing tests.
+
 ## 1.4.1 — 2026-09-22
 
 ### Corroborated audit review

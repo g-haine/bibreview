@@ -65,8 +65,15 @@ version-specific; inspect each occurrence.
 Before opening or merging the release pull request:
 
 - run the full test suite;
-- verify `python -m bibreview --version` or `bibreview --version` reports the
-  intended version in the development checkout;
+- verify the package metadata and source-tree runtime version without requiring
+  a prior installation:
+
+~~~bash
+grep '^version' pyproject.toml
+PYTHONPATH=src python -c "import bibreview; print(bibreview.__version__)"
+~~~
+
+  Both must report the intended version;
 - inspect `git diff main...HEAD`;
 - repeat the old-version search and confirm only intentional historical
   references remain;
