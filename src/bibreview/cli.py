@@ -28,8 +28,10 @@ from .project_arxiv import apply_project_arxiv, plan_project_arxiv
 from .project_audit import (
     apply_project_audit_plan,
     execute_project_audit_batch,
+    format_project_audit_review,
     plan_project_audit_batch,
     plan_project_audit_reclassify,
+    project_audit_review,
 )
 from .project_refresh import apply_project_refresh, plan_project_refresh
 from .project_render import apply_project_render, plan_project_render
@@ -87,10 +89,16 @@ def _parser() -> argparse.ArgumentParser:
         default=None,
         help="Override the size of the next new audit batch; campaign default otherwise",
     )
-    audit.add_argument(
+    audit_actions = audit.add_mutually_exclusive_group()
+    audit_actions.add_argument(
         "--reclassify",
         action="store_true",
         help="Reclassify the existing audit report offline using current rules",
+    )
+    audit_actions.add_argument(
+        "--review",
+        action="store_true",
+        help="Show the current actionable audit review without provider requests",
     )
     audit.add_argument(
         "--json",
@@ -178,6 +186,23 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "audit":
         reporter = Reporter(-1 if args.quiet else args.verbose)
+
+        if args.review:
+            try:
+                if args.batch_size is not None:
+                    raise ProjectStateError(
+                        "--batch-size cannot be used with --review"
+                    )
+                review = project_audit_review(config)
+            except (OSError, StorageError, ProjectStateError, ValueError, TypeError) as error:
+                print(f"bibreview audit: {error}", file=sys.stderr)
+                return 1
+
+            if args.json_output:
+                print(json.dumps(review.data(), ensure_ascii=False, indent=2))
+            elif not args.quiet:
+                print(format_project_audit_review(review))
+            return 0
 
         if args.reclassify:
             try:
