@@ -14,8 +14,15 @@ from bibreview.cli import main
 from bibreview.config import load_config
 from bibreview.identity import new_publication_id
 from bibreview.model import Author, Publication
-from bibreview.pipeline.audit import AuditComparison, AuditResult, ProviderEvidence
+from bibreview.pipeline.audit import (
+    AuditComparison,
+    AuditResult,
+    AuditReviewFinding,
+    ProviderEvidence,
+)
 from bibreview.project_audit import (
+    AuditPublicationReview,
+    ProjectAuditReview,
     apply_project_audit_plan,
     audit_report_from_data,
     plan_project_audit_batch,
@@ -213,6 +220,250 @@ class AuditCliTests(unittest.TestCase):
         self.assertEqual(payload["actionable_findings"], 0)
         self.assertEqual(self.config.audit.report.read_bytes(), report_before)
         self.assertEqual(self.config.audit.campaign.read_bytes(), campaign_before)
+
+    def test_resolve_interactively_accepts_custom_rejects_and_defers(self):
+        review = ProjectAuditReview(
+            audited_publications=1,
+            flagged_publications=1,
+            actionable_findings=4,
+            informational_findings=0,
+            provider_issues=0,
+            items=(
+                AuditPublicationReview(
+                    publication_id=self.publication.id,
+                    identifiers=self.publication.identifiers,
+                    permalink=self.publication.permalink,
+                    title=self.publication.title,
+                    findings=(
+                        AuditReviewFinding(
+                            field="volume",
+                            classification="canonical-missing",
+                            providers=("crossref", "openalex"),
+                            canonical_value="",
+                            provider_values=(
+                                ("crossref", "48"),
+                                ("openalex", "48"),
+                            ),
+                            actionable=True,
+                            detail="corroborated by 2 independent providers",
+                        ),
+                        AuditReviewFinding(
+                            field="title",
+                            classification="substantive-difference",
+                            providers=("crossref", "semantic_scholar"),
+                            canonical_value="Old title",
+                            provider_values=(
+                                ("crossref", "New title"),
+                                ("semantic_scholar", "New Title"),
+                            ),
+                            actionable=True,
+                            detail="corroborated by 2 independent providers",
+                        ),
+                        AuditReviewFinding(
+                            field="issue",
+                            classification="canonical-missing",
+                            providers=("crossref", "openalex"),
+                            canonical_value="",
+                            provider_values=(
+                                ("crossref", "8"),
+                                ("openalex", "8"),
+                            ),
+                            actionable=True,
+                            detail="corroborated by 2 independent providers",
+                        ),
+                        AuditReviewFinding(
+                            field="pages",
+                            classification="canonical-missing",
+                            providers=("crossref", "openalex"),
+                            canonical_value="",
+                            provider_values=(
+                                ("crossref", "1-9"),
+                                ("openalex", "1-9"),
+                            ),
+                            actionable=True,
+                            detail="corroborated by 2 independent providers",
+                        ),
+                    ),
+                ),
+            ),
+        )
+        stdout = StringIO()
+        stderr = StringIO()
+
+        with patch(
+            "bibreview.cli.project_audit_review",
+            return_value=review,
+        ), patch(
+            "builtins.input",
+            side_effect=["", "f Preferred title", "n", "s"],
+        ), redirect_stdout(stdout), redirect_stderr(stderr):
+            code = main([
+                "--config",
+                str(self.config_path),
+                "audit",
+                "--resolve",
+            ])
+
+        self.assertEqual(code, 0, stderr.getvalue())
+        self.assertIn("[1/4] 10.1000/audit", stdout.getvalue())
+        self.assertIn("Proposed: no single exact provider representation", stdout.getvalue())
+        resolution_path = self.root / "state/resolutions.json"
+        payload = read_json(resolution_path, dict)
+        decisions = {item["field"]: item for item in payload["decisions"]}
+        self.assertEqual(decisions["volume"]["decision"], "accepted")
+        self.assertEqual(decisions["volume"]["resolved_value"], "48")
+        self.assertEqual(decisions["title"]["decision"], "custom")
+        self.assertEqual(decisions["title"]["resolved_value"], "Preferred title")
+        self.assertEqual(decisions["issue"]["decision"], "rejected")
+        self.assertEqual(decisions["pages"]["decision"], "deferred")
+        self.assertIn("Accepted            : 1", stdout.getvalue())
+        self.assertIn("Custom              : 1", stdout.getvalue())
+        self.assertIn("Rejected            : 1", stdout.getvalue())
+        self.assertIn("Deferred            : 1", stdout.getvalue())
+
+    def test_resolve_quit_preserves_prior_decisions_and_resume_skips_them(self):
+        review = ProjectAuditReview(
+            audited_publications=1,
+            flagged_publications=1,
+            actionable_findings=2,
+            informational_findings=0,
+            provider_issues=0,
+            items=(
+                AuditPublicationReview(
+                    publication_id=self.publication.id,
+                    identifiers=self.publication.identifiers,
+                    permalink=self.publication.permalink,
+                    title=self.publication.title,
+                    findings=(
+                        AuditReviewFinding(
+                            field="volume",
+                            classification="canonical-missing",
+                            providers=("crossref", "openalex"),
+                            canonical_value="",
+                            provider_values=(("crossref", "48"), ("openalex", "48")),
+                            actionable=True,
+                        ),
+                        AuditReviewFinding(
+                            field="issue",
+                            classification="canonical-missing",
+                            providers=("crossref", "openalex"),
+                            canonical_value="",
+                            provider_values=(("crossref", "8"), ("openalex", "8")),
+                            actionable=True,
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        with patch(
+            "bibreview.cli.project_audit_review",
+            return_value=review,
+        ), patch(
+            "builtins.input",
+            side_effect=["", "q"],
+        ), redirect_stdout(StringIO()), redirect_stderr(StringIO()):
+            self.assertEqual(
+                main(["--config", str(self.config_path), "audit", "--resolve"]),
+                0,
+            )
+
+        first = read_json(self.root / "state/resolutions.json", dict)
+        self.assertEqual(len(first["decisions"]), 1)
+        self.assertEqual(first["decisions"][0]["field"], "volume")
+
+        stdout = StringIO()
+        with patch(
+            "bibreview.cli.project_audit_review",
+            return_value=review,
+        ), patch(
+            "builtins.input",
+            side_effect=[""],
+        ), redirect_stdout(stdout), redirect_stderr(StringIO()):
+            self.assertEqual(
+                main(["--config", str(self.config_path), "audit", "--resolve"]),
+                0,
+            )
+
+        second = read_json(self.root / "state/resolutions.json", dict)
+        self.assertEqual(len(second["decisions"]), 2)
+        self.assertNotIn("[1/2]", stdout.getvalue())
+        self.assertIn("[2/2]", stdout.getvalue())
+
+    def test_resolve_dry_run_does_not_write_resolution_state(self):
+        review = ProjectAuditReview(
+            audited_publications=1,
+            flagged_publications=1,
+            actionable_findings=1,
+            informational_findings=0,
+            provider_issues=0,
+            items=(
+                AuditPublicationReview(
+                    publication_id=self.publication.id,
+                    identifiers=self.publication.identifiers,
+                    permalink=self.publication.permalink,
+                    title=self.publication.title,
+                    findings=(
+                        AuditReviewFinding(
+                            field="volume",
+                            classification="canonical-missing",
+                            providers=("crossref", "openalex"),
+                            canonical_value="",
+                            provider_values=(("crossref", "48"), ("openalex", "48")),
+                            actionable=True,
+                        ),
+                    ),
+                ),
+            ),
+        )
+        stdout = StringIO()
+        stderr = StringIO()
+        with patch(
+            "bibreview.cli.project_audit_review",
+            return_value=review,
+        ), patch(
+            "builtins.input",
+            side_effect=[""],
+        ), redirect_stdout(stdout), redirect_stderr(stderr):
+            code = main([
+                "--config",
+                str(self.config_path),
+                "--dry-run",
+                "audit",
+                "--resolve",
+            ])
+
+        self.assertEqual(code, 0, stderr.getvalue())
+        self.assertFalse((self.root / "state/resolutions.json").exists())
+        self.assertIn("Dry run: Audit resolution", stdout.getvalue())
+
+    def test_resolve_rejects_json_and_quiet_modes(self):
+        for extra in (["--json"],):
+            stdout = StringIO()
+            stderr = StringIO()
+            with redirect_stdout(stdout), redirect_stderr(stderr):
+                code = main([
+                    "--config",
+                    str(self.config_path),
+                    "audit",
+                    "--resolve",
+                    *extra,
+                ])
+            self.assertEqual(code, 1)
+            self.assertIn("interactive --resolve", stderr.getvalue())
+
+        stdout = StringIO()
+        stderr = StringIO()
+        with redirect_stdout(stdout), redirect_stderr(stderr):
+            code = main([
+                "--config",
+                str(self.config_path),
+                "--quiet",
+                "audit",
+                "--resolve",
+            ])
+        self.assertEqual(code, 1)
+        self.assertIn("interactive --resolve", stderr.getvalue())
 
     def test_dry_run_selects_batch_without_provider_or_state_writes(self):
         before = self.snapshot()

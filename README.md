@@ -127,6 +127,13 @@ canonical abstract, contributor-role disagreements, and isolated contributor
 anomalies remain informational evidence rather than automatic corrections. The
 raw audit comparisons are preserved separately from this review interpretation.
 
+Once an audit is complete, `bibreview audit --resolve` walks through actionable
+findings one by one and records explicit human decisions without changing the
+canonical bibliography. Exact common provider values may be accepted directly;
+ambiguous representations require an explicit custom value. Rejected and
+deferred findings remain distinguishable, and the session can be stopped and
+resumed safely.
+
 By default, `bibreview audit --review` prints only the aggregate review summary
 so long-running campaigns remain readable. Use the existing global verbose form,
 `bibreview -v audit --review`, for the complete publication-by-publication
