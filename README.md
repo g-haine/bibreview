@@ -11,7 +11,7 @@ feed.
 BibReview is designed so that provider output remains inspectable and ambiguous
 decisions remain human decisions.
 
-Current stable release: **v1.4.1**.
+Current stable release: **v1.4.2**.
 
 ## What BibReview provides
 
@@ -39,7 +39,7 @@ BibReview currently requires **Python 3.12 or newer**.
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.4.1"
+python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.4.2"
 
 bibreview --version
 ~~~
@@ -126,6 +126,12 @@ One-day `created_date` offsets, obvious provider truncations of a fuller
 canonical abstract, contributor-role disagreements, and isolated contributor
 anomalies remain informational evidence rather than automatic corrections. The
 raw audit comparisons are preserved separately from this review interpretation.
+
+During networked audit runs, BibReview batches DOI lookups whenever the provider
+supports an exact multi-DOI API: OpenAlex uses bounded OR-filter requests and
+Semantic Scholar uses its paper batch endpoint. CrossRef remains an individual
+DOI lookup. Batching changes transport efficiency only; comparison semantics,
+per-publication checkpointing, and canonical data remain unchanged.
 
 ## Project state is explicit
 
