@@ -20,6 +20,7 @@ Current stable release: **v1.3.2**.
 - optional publisher and abstract enrichment providers;
 - safe provider/credential diagnostics with optional live checks;
 - resumable, non-destructive audits of existing canonical metadata;
+- offline audit reclassification and actionable human-review views;
 - explicit pending, review, rejected and collected states;
 - persistent publication UUIDs independent from DOI representation;
 - reviewed author-name mapping with safe and ambiguous proposals;
