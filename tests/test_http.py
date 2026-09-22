@@ -76,7 +76,7 @@ class HttpTransportTests(unittest.TestCase):
         retry = transport.session.get_adapter("https://").max_retries
         self.assertEqual(retry.total, 3)
         self.assertEqual(set(retry.status_forcelist), {429, 500, 502, 503, 504})
-        self.assertEqual(set(retry.allowed_methods), {"GET"})
+        self.assertEqual(set(retry.allowed_methods), {"GET", "POST"})
         self.assertFalse(retry.raise_on_status)
 
     def test_debug_output_is_sanitized(self) -> None:
@@ -119,6 +119,31 @@ class HttpTransportTests(unittest.TestCase):
             session.post.call_args.kwargs["auth"],
             ("client-id", "client-secret"),
         )
+
+    def test_post_json_sends_payload_params_and_sanitizes_errors(self) -> None:
+        session = Mock()
+        session.post.return_value = response(
+            429,
+            "https://api.example.test/batch?api_key=hidden",
+        )
+        transport = HttpTransport(session)
+
+        with self.assertRaises(HttpError) as caught:
+            transport.post_json(
+                "https://api.example.test/batch",
+                json_body={"ids": ["DOI:10.1/test"]},
+                params={"fields": "title"},
+                headers={"x-api-key": "secret-key"},
+                context="Batch metadata lookup",
+            )
+
+        self.assertIn("Batch metadata lookup", str(caught.exception))
+        self.assertIn("HTTP 429", str(caught.exception))
+        self.assertNotIn("secret-key", str(caught.exception))
+        call = session.post.call_args
+        self.assertEqual(call.kwargs["json"], {"ids": ["DOI:10.1/test"]})
+        self.assertEqual(call.kwargs["params"], {"fields": "title"})
+        self.assertEqual(call.kwargs["headers"], {"x-api-key": "secret-key"})
 
     def test_timeout_and_redirect_arguments_are_explicit(self) -> None:
         session = Mock()
