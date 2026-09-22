@@ -39,6 +39,33 @@ resumed and already checkpointed publications are not repeated. Retryable
 provider failures are revisited only after never-yet-audited publications have
 received their first pass.
 
+When the campaign is complete, derive the concise review and resolve every
+actionable finding explicitly:
+
+~~~bash
+bibreview --config bibreview.yml audit --review
+bibreview --config bibreview.yml audit --resolve
+~~~
+
+Then promote the completed human decisions through the normal staging boundary:
+
+~~~bash
+bibreview --config bibreview.yml --dry-run audit --apply
+bibreview --config bibreview.yml audit --apply
+~~~
+
+The apply step requires empty **collected.json**, refuses stale canonical values,
+stages only accepted/custom corrections, updates applicable tracked BibTeX with
+backups, and leaves rejected decisions unchanged. Inspect the staging JSON and
+BibTeX diff before merging:
+
+~~~bash
+bibreview --config bibreview.yml --dry-run merge
+bibreview --config bibreview.yml merge
+~~~
+
+Do not start a collect/refresh batch while audit corrections remain staged.
+
 ## 2. Discover candidate publications
 
 Preview:
@@ -68,7 +95,7 @@ This is intentionally a human decision.
 
 ## 4. Refresh existing incomplete records
 
-Refresh and collection share the same staging file, so handle refresh first:
+Refresh, collection, and audit application share the same staging file, so handle any existing audit staging before refresh:
 
 ~~~bash
 bibreview --config bibreview.yml --dry-run refresh
