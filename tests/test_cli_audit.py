@@ -390,6 +390,82 @@ class AuditCliTests(unittest.TestCase):
         self.assertNotIn("[1/2]", stdout.getvalue())
         self.assertIn("[2/2]", stdout.getvalue())
 
+    def test_resolve_accepts_semicolon_separated_tuple_custom_value(self):
+        review = ProjectAuditReview(
+            audited_publications=1,
+            flagged_publications=1,
+            actionable_findings=1,
+            informational_findings=0,
+            provider_issues=0,
+            items=(
+                AuditPublicationReview(
+                    publication_id=self.publication.id,
+                    identifiers=self.publication.identifiers,
+                    permalink=self.publication.permalink,
+                    title=self.publication.title,
+                    findings=(
+                        AuditReviewFinding(
+                            field="authors",
+                            classification="substantive-difference",
+                            providers=("crossref", "openalex"),
+                            canonical_value=(
+                                "Nguyen Thanh Sang",
+                                "Tan Chee Keong",
+                            ),
+                            provider_values=(
+                                (
+                                    "crossref",
+                                    (
+                                        "Nguyen Thanh Sang",
+                                        "Tan Chee Keong",
+                                        "Mohd Azlan, Hussain",
+                                    ),
+                                ),
+                                (
+                                    "openalex",
+                                    (
+                                        "Nguyen Thanh Sang",
+                                        "Tan Chee Keong",
+                                        "Mohd Azlan, Hussain",
+                                    ),
+                                ),
+                            ),
+                            actionable=True,
+                        ),
+                    ),
+                ),
+            ),
+        )
+        stdout = StringIO()
+        stderr = StringIO()
+        with patch(
+            "bibreview.cli.project_audit_review",
+            return_value=review,
+        ), patch(
+            "builtins.input",
+            side_effect=[
+                "f Nguyen Thanh Sang; Tan Chee Keong; Hussain Mohd Azlan"
+            ],
+        ), redirect_stdout(stdout), redirect_stderr(stderr):
+            code = main([
+                "--config",
+                str(self.config_path),
+                "audit",
+                "--resolve",
+            ])
+
+        self.assertEqual(code, 0, stderr.getvalue())
+        payload = read_json(self.root / "state/resolutions.json", dict)
+        self.assertEqual(
+            payload["decisions"][0]["resolved_value"],
+            [
+                "Nguyen Thanh Sang",
+                "Tan Chee Keong",
+                "Hussain Mohd Azlan",
+            ],
+        )
+        self.assertEqual(payload["decisions"][0]["decision"], "custom")
+
     def test_resolve_dry_run_does_not_write_resolution_state(self):
         review = ProjectAuditReview(
             audited_publications=1,
