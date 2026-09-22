@@ -226,7 +226,20 @@ changes only derived classifications/disagreements in the report; it does not
 repeat provider requests, modify campaign progress, or alter the stored
 canonical/provider values.
 
-Neither file is canonical bibliographic data. Audit planning and checkpointing
+After the actionable review is stable, `bibreview audit --resolve` may create a
+third, versioned human-decision file beside the report:
+
+~~~text
+data/audit/resolutions.json
+~~~
+
+This file stores explicit accepted, custom, rejected, and deferred decisions.
+It is fingerprinted against the exact actionable review so decisions cannot be
+silently reused after the evidence or review classification changes. Accepted
+and custom values are still review state only: they are not canonical
+bibliographic data until a separate staging/promotion step is explicitly run.
+
+None of these files is canonical bibliographic data. Audit planning and checkpointing
 must not modify **bibliography.json**, **collected.json**, DOI queues, BibTeX,
 author mappings, or generated site files.
 
