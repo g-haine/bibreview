@@ -197,8 +197,43 @@ Interactive `--resolve` is intentionally incompatible with `--json` and
 `--quiet`.
 
 Resolution decisions are review state only. They do not update
-**bibliography.json** or **collected.json**; promotion into canonical staging is
-a separate explicit step.
+**bibliography.json** or **collected.json** until the maintainer explicitly
+promotes them:
+
+~~~bash
+bibreview --config bibreview.yml --dry-run audit --apply
+bibreview --config bibreview.yml audit --apply
+~~~
+
+`audit --apply` is offline. It requires every actionable finding to be either
+accepted, custom, or rejected; deferred/unresolved findings block the operation.
+It rechecks the resolution fingerprint and verifies that every audited canonical
+value is still unchanged before applying anything. A non-empty
+**collected.json** also blocks the operation so audit corrections cannot be mixed
+with an existing collect/refresh batch.
+
+Accepted and custom decisions are copied into normal **collected.json** staging;
+rejected decisions make no metadata change. Applicable fields in the tracked
+BibTeX file are updated at the same time (solution A), with the previous BibTeX
+saved under the configured archive directory. A required missing/malformed
+BibTeX file or an unsafe field edit aborts the complete plan before any output is
+written. Fields with no meaningful tracked BibTeX representation remain JSON
+only and are reported as such.
+
+By default the command prints aggregate counts. Use the global `-v` option to
+show each current/staged value and its mapped BibTeX field, or `--json` for the
+complete machine-readable application plan. `--dry-run` performs all safety
+checks and computes the same JSON/BibTeX changes without writing files.
+
+After applying, inspect **collected.json**, BibTeX changes and reported backups,
+then use the ordinary merge boundary:
+
+~~~bash
+bibreview --config bibreview.yml --dry-run merge
+bibreview --config bibreview.yml merge
+~~~
+
+`audit --apply` never edits **bibliography.json** directly.
 
 When comparison rules improve, reclassify the already-stored raw values without
 re-querying any provider:
@@ -228,10 +263,12 @@ separately from canonical metadata discrepancies. If one provider batch fails,
 only the DOI values in that provider chunk become retryable; it does not modify
 the canonical record.
 
-Audit writes only the configured audit campaign/report files. It never writes
-to **bibliography.json**, **collected.json**, DOI queues, BibTeX, author
-mappings, or generated site files. The report is evidence for human review and
-is never merge-ready staging.
+Networked audit, offline review/reclassification, and interactive resolution
+write only their dedicated audit state. They never edit **bibliography.json**,
+DOI queues, author mappings, or generated site files. Only the explicit
+`audit --apply` promotion step writes normal **collected.json** staging and
+reviewed tracked BibTeX updates; it still never edits the canonical bibliography
+directly.
 
 Current comparison normalization treats common bibliographic representation
 differences conservatively: LaTeX page ranges such as `1128--1144` versus
