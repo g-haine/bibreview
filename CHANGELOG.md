@@ -2,6 +2,40 @@
 
 All notable BibReview releases are documented here.
 
+## 1.4.0 — 2026-09-22
+
+### Actionable audit review
+
+- add `bibreview audit --review` as a fully offline, read-only human-review
+  surface derived from persisted audit evidence;
+- hide equal, formatting-only and provider-missing pairwise noise from the
+  review view while preserving every raw canonical/provider value in the report;
+- group providers that corroborate the same candidate correction;
+- classify provider authors on canonical editor-only records as informational
+  contributor-role disagreements rather than automatic author additions;
+- keep year/container disagreements out of the actionable view when another
+  provider confirms the canonical value.
+
+### Offline reclassification
+
+- add `bibreview audit --reclassify` and dry-run support to reapply current
+  comparison rules to an existing report without provider requests;
+- rewrite only the audit report while preserving campaign progress, batch
+  history, attempt counts and project/canonical state;
+- report before/after classification counts plus actionable/informational review
+  totals.
+
+### Comparison normalization
+
+- recognize conservative contributor-name variants including initials,
+  diacritics, compound-name punctuation, surname-first provider forms and
+  common surname particles while preserving author order;
+- normalize common TeX/Unicode and rendering artifacts in titles;
+- treat near-identical abstracts with prefix/markup/spacing differences as
+  formatting-only while preserving real truncations as substantive;
+- keep provider disagreement normalization consistent with pairwise comparison
+  equivalence.
+
 ## 1.3.2 — 2026-09-21
 
 ### Audit usability
