@@ -201,7 +201,11 @@ def main(argv: list[str] | None = None) -> int:
             if args.json_output:
                 print(json.dumps(review.data(), ensure_ascii=False, indent=2))
             elif not args.quiet:
-                print(format_project_audit_review(review))
+                print(
+                    format_project_audit_review(review)
+                    if args.verbose
+                    else review.summary()
+                )
             return 0
 
         if args.reclassify:
