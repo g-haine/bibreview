@@ -846,6 +846,56 @@ def _missing_canonical_result(publication_id: str) -> AuditResult:
     )
 
 
+def _batch_capability(source: AuditEvidenceSource) -> tuple[int, object | None]:
+    """Return a validated batch size and optional evidence_many callable."""
+    evidence_many = getattr(source, "evidence_many", None)
+    if not callable(evidence_many):
+        return 1, None
+    size = getattr(source, "batch_size", 1)
+    if not isinstance(size, int) or isinstance(size, bool) or size < 1:
+        raise ProjectStateError(
+            f"{source.name}: audit batch_size must be a positive integer"
+        )
+    return size, evidence_many
+
+
+def _prefetch_batched_evidence(
+    source: AuditEvidenceSource,
+    dois: tuple[str, ...],
+    *,
+    reporter: Reporter,
+) -> tuple[dict[str, ProviderEvidence], set[str]]:
+    """Fetch one provider's batch-capable evidence in bounded chunks."""
+    size, evidence_many = _batch_capability(source)
+    if evidence_many is None or size <= 1 or not dois:
+        return {}, set()
+
+    evidence_by_doi: dict[str, ProviderEvidence] = {}
+    failed_dois: set[str] = set()
+    for offset in range(0, len(dois), size):
+        chunk = dois[offset : offset + size]
+        try:
+            batch = evidence_many(chunk)
+            if not isinstance(batch, Mapping):
+                raise TypeError("batch evidence must be a mapping")
+            for doi in chunk:
+                evidence = batch.get(doi)
+                if not isinstance(evidence, ProviderEvidence):
+                    raise TypeError(
+                        f"batch evidence missing normalized result for {doi}"
+                    )
+                evidence_by_doi[doi] = evidence
+        except (HttpError, OSError, ValueError, TypeError) as error:
+            evidence = _provider_failure_evidence(source, error)
+            failed_dois.update(chunk)
+            for doi in chunk:
+                evidence_by_doi[doi] = evidence
+            reporter.warning(
+                f"{source.name}: batch of {len(chunk)} DOI values: {evidence.detail}"
+            )
+    return evidence_by_doi, failed_dois
+
+
 def execute_project_audit_batch(
     config: BibReviewConfig,
     *,
@@ -874,6 +924,8 @@ def execute_project_audit_batch(
         raise ProjectStateError("audit requires at least one evidence source")
     if any(not hasattr(source, "name") or not hasattr(source, "evidence") for source in sources):
         raise ProjectStateError("audit sources must provide name and evidence()")
+    for source in sources:
+        _batch_capability(source)
     names = [source.name for source in sources]
     if len(set(names)) != len(names):
         raise ProjectStateError("audit source names must be unique")
@@ -883,6 +935,27 @@ def execute_project_audit_batch(
         for publication in read_bibliography(config.paths.bibliography)
     }
     states = {item.key: item.state for item in campaign.items}
+
+    active_dois = tuple(
+        dict.fromkeys(
+            publication.doi
+            for key in batch.keys
+            if states.get(key) == "active"
+            for publication in (publications.get(key),)
+            if publication is not None and publication.doi is not None
+        )
+    )
+    batched_evidence: dict[str, dict[str, ProviderEvidence]] = {}
+    batched_failures: dict[str, set[str]] = {}
+    for source in sources:
+        evidence_by_doi, failed_dois = _prefetch_batched_evidence(
+            source,
+            active_dois,
+            reporter=progress_reporter,
+        )
+        if evidence_by_doi:
+            batched_evidence[source.name] = evidence_by_doi
+            batched_failures[source.name] = failed_dois
 
     processed = 0
     completed = 0
@@ -920,14 +993,20 @@ def execute_project_audit_batch(
                 )
             else:
                 for source in sources:
-                    try:
-                        evidence = source.evidence(publication.doi)
-                    except (HttpError, OSError, ValueError, TypeError) as error:
-                        evidence = _provider_failure_evidence(source, error)
-                        had_provider_failure = True
-                        progress_reporter.warning(
-                            f"{source.name}: {evidence.detail}"
-                        )
+                    cached = batched_evidence.get(source.name)
+                    if cached is not None:
+                        evidence = cached[publication.doi]
+                        if publication.doi in batched_failures[source.name]:
+                            had_provider_failure = True
+                    else:
+                        try:
+                            evidence = source.evidence(publication.doi)
+                        except (HttpError, OSError, ValueError, TypeError) as error:
+                            evidence = _provider_failure_evidence(source, error)
+                            had_provider_failure = True
+                            progress_reporter.warning(
+                                f"{source.name}: {evidence.detail}"
+                            )
                     evidences.append(evidence)
 
             result = compare_audit_record(record, tuple(evidences))
