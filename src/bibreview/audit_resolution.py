@@ -479,17 +479,25 @@ def parse_custom_resolution_value(
     if not tuple_valued:
         return text
 
-    try:
-        value = json.loads(text)
-    except json.JSONDecodeError as error:
+    if text.startswith("["):
+        try:
+            value = json.loads(text)
+        except json.JSONDecodeError as error:
+            raise ProjectStateError(
+                "invalid JSON string array for tuple-valued correction"
+            ) from error
+        if not isinstance(value, list) or not value or any(
+            not isinstance(item, str) or not item.strip() for item in value
+        ):
+            raise ProjectStateError(
+                "tuple-valued corrections require a non-empty JSON string array"
+            )
+        return tuple(item.strip() for item in value)
+
+    values = tuple(item.strip() for item in text.split(";"))
+    if not values or any(not item for item in values):
         raise ProjectStateError(
-            "tuple-valued corrections require a JSON string array, "
-            'for example f ["Ada Lovelace", "Alan Turing"]'
-        ) from error
-    if not isinstance(value, list) or not value or any(
-        not isinstance(item, str) or not item for item in value
-    ):
-        raise ProjectStateError(
-            "tuple-valued corrections require a non-empty JSON string array"
+            "tuple-valued corrections require semicolon-separated non-empty "
+            "values or a JSON string array"
         )
-    return tuple(value)
+    return values
