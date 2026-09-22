@@ -29,6 +29,7 @@ from .project_audit import (
     apply_project_audit_plan,
     execute_project_audit_batch,
     plan_project_audit_batch,
+    plan_project_audit_reclassify,
 )
 from .project_refresh import apply_project_refresh, plan_project_refresh
 from .project_render import apply_project_render, plan_project_render
@@ -87,10 +88,15 @@ def _parser() -> argparse.ArgumentParser:
         help="Override the size of the next new audit batch; campaign default otherwise",
     )
     audit.add_argument(
+        "--reclassify",
+        action="store_true",
+        help="Reclassify the existing audit report offline using current rules",
+    )
+    audit.add_argument(
         "--json",
         dest="json_output",
         action="store_true",
-        help="Print the batch result as JSON",
+        help="Print the audit result as JSON",
     )
     commands.add_parser("discover", help="Discover and screen new DOI candidates")
     commands.add_parser("collect", help="Collect pending DOI metadata into canonical staging state")
@@ -172,6 +178,34 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "audit":
         reporter = Reporter(-1 if args.quiet else args.verbose)
+
+        if args.reclassify:
+            try:
+                if args.batch_size is not None:
+                    raise ProjectStateError(
+                        "--batch-size cannot be used with --reclassify"
+                    )
+                reclassify_plan = plan_project_audit_reclassify(config)
+                if not args.dry_run:
+                    apply_project_audit_plan(reclassify_plan)
+            except (OSError, StorageError, ProjectStateError, ValueError, TypeError) as error:
+                print(f"bibreview audit: {error}", file=sys.stderr)
+                return 1
+
+            payload = {
+                "dry_run": bool(args.dry_run),
+                "changed": reclassify_plan.changed,
+                "report": str(config.audit.report),
+                **reclassify_plan.summary_metrics.data(),
+            }
+            if args.json_output:
+                print(json.dumps(payload, ensure_ascii=False, indent=2))
+            elif not args.quiet:
+                prefix = "Dry run: " if args.dry_run else ""
+                print(prefix + reclassify_plan.summary())
+                print(f"Report: {config.audit.report}")
+            return 0
+
         try:
             plan = plan_project_audit_batch(
                 config,
