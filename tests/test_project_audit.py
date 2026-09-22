@@ -60,6 +60,27 @@ class FakeAuditSource:
         return outcome
 
 
+class FakeBatchAuditSource:
+    name = "fake-batch-provider"
+    batch_size = 50
+
+    def __init__(self, outcomes=None, *, error=None):
+        self.outcomes = dict(outcomes or {})
+        self.error = error
+        self.batch_calls = []
+        self.single_calls = []
+
+    def evidence_many(self, dois):
+        self.batch_calls.append(tuple(dois))
+        if self.error is not None:
+            raise self.error
+        return {doi: self.outcomes[doi] for doi in dois}
+
+    def evidence(self, doi):
+        self.single_calls.append(doi)
+        raise AssertionError("batch-capable source should not use evidence()")
+
+
 class ProjectAuditTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -563,6 +584,60 @@ class ProjectAuditTests(unittest.TestCase):
             next(item for item in execution.campaign.items if item.key == first.id).state,
             "retryable",
         )
+
+    def test_execution_batches_capable_sources_once_for_active_dois(self):
+        start = plan_project_audit_batch(self.config)
+        apply_project_audit_plan(start)
+        first, second = self.publications[:2]
+        source = FakeBatchAuditSource({
+            first.doi: ProviderEvidence(
+                provider="fake-batch-provider",
+                identifiers={"doi": first.doi},
+                fields={"title": first.title},
+            ),
+            second.doi: ProviderEvidence(
+                provider="fake-batch-provider",
+                identifiers={"doi": second.doi},
+                fields={"title": second.title},
+            ),
+        })
+
+        execution = execute_project_audit_batch(
+            self.config,
+            batch_id=start.batch.id,
+            sources=(source,),
+            reporter=Reporter(-1),
+        )
+
+        self.assertEqual(source.batch_calls, [(first.doi, second.doi)])
+        self.assertEqual(source.single_calls, [])
+        self.assertEqual(execution.completed_count, 2)
+        self.assertEqual(execution.retryable_count, 0)
+
+    def test_batch_provider_failure_marks_only_that_chunk_retryable(self):
+        start = plan_project_audit_batch(self.config)
+        apply_project_audit_plan(start)
+        first, second = self.publications[:2]
+        source = FakeBatchAuditSource(
+            error=HttpError("provider: HTTP 429", status_code=429)
+        )
+
+        execution = execute_project_audit_batch(
+            self.config,
+            batch_id=start.batch.id,
+            sources=(source,),
+            reporter=Reporter(-1),
+        )
+
+        self.assertEqual(source.batch_calls, [(first.doi, second.doi)])
+        self.assertEqual(execution.completed_count, 0)
+        self.assertEqual(execution.retryable_count, 2)
+        for entry in execution.report.entries:
+            self.assertEqual(
+                entry.result.provider_issues[0].classification,
+                "unavailable",
+            )
+            self.assertIn("HTTP 429", entry.result.provider_issues[0].detail)
 
     def test_interruption_preserves_completed_checkpoint_and_open_batch(self):
         start = plan_project_audit_batch(self.config)
