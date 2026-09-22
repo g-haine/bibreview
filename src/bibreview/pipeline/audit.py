@@ -479,8 +479,8 @@ def _near_equal_abstract(canonical: AuditValue, provider: AuditValue) -> bool:
     right = _normalize_text(provider, field="abstract")
     if not left or not right:
         return False
-    compact_left = re.sub(r"[^\\w]+", "", left, flags=re.UNICODE)
-    compact_right = re.sub(r"[^\\w]+", "", right, flags=re.UNICODE)
+    compact_left = re.sub(r"[^\w]+", "", left, flags=re.UNICODE)
+    compact_right = re.sub(r"[^\w]+", "", right, flags=re.UNICODE)
     if compact_left == compact_right:
         return True
     shorter = min(len(left), len(right))
