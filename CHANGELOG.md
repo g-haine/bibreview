@@ -2,6 +2,24 @@
 
 All notable BibReview releases are documented here.
 
+## 1.4.4 — 2026-09-22
+
+### Concise audit review output
+
+- make `bibreview audit --review` print only the aggregate review summary by
+  default;
+- expose the existing full publication-by-publication human-readable review
+  through the global `-v/--verbose` option;
+- keep `bibreview audit --review --json` complete and unchanged regardless of
+  verbosity;
+- preserve all audit evidence, classification, campaign, checkpoint, and
+  canonical-state semantics.
+
+### Validation
+
+- add CLI regression coverage for default summary output, verbose detailed
+  output, and complete JSON review behavior.
+
 ## 1.4.3 — 2026-09-22
 
 ### Batched CrossRef audit lookups
