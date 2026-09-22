@@ -662,6 +662,55 @@ def _canonical_field_value(
     return values[0]
 
 
+def _merge_review_findings(
+    findings: list[AuditReviewFinding],
+) -> tuple[AuditReviewFinding, ...]:
+    merged: list[AuditReviewFinding] = []
+    for finding in findings:
+        representative = (
+            finding.provider_values[0][1]
+            if finding.provider_values
+            else ""
+        )
+        match_index: int | None = None
+        for index, existing in enumerate(merged):
+            if (
+                existing.field == finding.field
+                and existing.classification == finding.classification
+                and existing.actionable == finding.actionable
+                and existing.detail == finding.detail
+                and _equivalent_values(
+                    finding.field,
+                    existing.canonical_value,
+                    finding.canonical_value,
+                )
+                and existing.provider_values
+                and _equivalent_values(
+                    finding.field,
+                    existing.provider_values[0][1],
+                    representative,
+                )
+            ):
+                match_index = index
+                break
+
+        if match_index is None:
+            merged.append(finding)
+            continue
+
+        existing = merged[match_index]
+        merged[match_index] = AuditReviewFinding(
+            field=existing.field,
+            classification=existing.classification,
+            providers=tuple(dict.fromkeys(existing.providers + finding.providers)),
+            canonical_value=existing.canonical_value,
+            provider_values=existing.provider_values + finding.provider_values,
+            actionable=existing.actionable,
+            detail=existing.detail,
+        )
+    return tuple(merged)
+
+
 def audit_review_findings(result: AuditResult) -> tuple[AuditReviewFinding, ...]:
     """Derive concise human-review findings from a full raw audit result."""
     if not isinstance(result, AuditResult):
@@ -749,7 +798,7 @@ def audit_review_findings(result: AuditResult) -> tuple[AuditReviewFinding, ...]
             )
         )
 
-    return tuple(findings)
+    return _merge_review_findings(findings)
 
 
 def _json_value(value: AuditValue) -> str | list[str]:
