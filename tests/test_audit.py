@@ -338,6 +338,26 @@ class AuditComparisonTests(unittest.TestCase):
             "formatting-only",
         )
 
+    def test_title_smallcap_and_math_index_artifacts_are_formatting_only(self):
+        result = compare_audit_record(
+            self.record(
+                title="A Port-<scp>H</scp>amiltonian C 0-semigroup",
+            ),
+            (
+                ProviderEvidence(
+                    provider="openalex",
+                    fields={
+                        "title": "A Port- H amiltonian C0-semigroup",
+                    },
+                ),
+            ),
+        )
+
+        self.assertEqual(
+            result.comparisons[0].classification,
+            "formatting-only",
+        )
+
     def test_review_findings_mask_non_actionable_pairwise_noise(self):
         result = compare_audit_record(
             self.record(pages="10--20", volume="12"),
