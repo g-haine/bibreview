@@ -105,6 +105,25 @@ class OpenAlexAuditSourceTests(unittest.TestCase):
         self.assertEqual(evidence.fields["publication_year"], "2024")
         self.assertEqual(evidence.fields["pages"], "10-20")
 
+    def test_batches_multiple_dois_and_marks_missing_records_unavailable(self):
+        provider = Mock()
+        provider.works.return_value = {
+            "10.1000/one": {
+                "doi": "10.1000/one",
+                "title": "One",
+                "publication_year": 2024,
+            }
+        }
+        source = OpenAlexAuditSource(provider)
+
+        result = source.evidence_many(("10.1000/ONE", "10.1000/two"))
+
+        self.assertEqual(source.batch_size, 100)
+        self.assertEqual(provider.works.call_args.args[0], ("10.1000/one", "10.1000/two"))
+        self.assertEqual(result["10.1000/one"].fields["title"], "One")
+        self.assertEqual(result["10.1000/two"].status, "unavailable")
+        self.assertEqual(result["10.1000/two"].detail, "record not found")
+
     def test_missing_work_is_non_retryable_evidence(self):
         provider = Mock()
         provider.work.return_value = None
@@ -133,6 +152,24 @@ class SemanticScholarAuditSourceTests(unittest.TestCase):
         self.assertEqual(evidence.fields["publication_year"], "2023")
         self.assertEqual(evidence.fields["authors"], ("Ada Lovelace", "Alan Turing"))
         self.assertEqual(evidence.fields["container_title"], "Journal of Examples")
+
+    def test_batches_multiple_dois_and_marks_missing_records_unavailable(self):
+        provider = Mock()
+        provider.papers.return_value = {
+            "10.1000/one": {
+                "title": "One",
+                "externalIds": {"DOI": "10.1000/one"},
+            }
+        }
+        source = SemanticScholarAuditSource(provider)
+
+        result = source.evidence_many(("10.1000/ONE", "10.1000/two"))
+
+        self.assertEqual(source.batch_size, 500)
+        self.assertEqual(provider.papers.call_args.args[0], ("10.1000/one", "10.1000/two"))
+        self.assertEqual(result["10.1000/one"].fields["title"], "One")
+        self.assertEqual(result["10.1000/two"].status, "unavailable")
+        self.assertEqual(result["10.1000/two"].detail, "record not found")
 
     def test_missing_paper_is_unavailable(self):
         provider = Mock()
