@@ -331,6 +331,9 @@ def _normalize_text(value: str, *, field: str) -> str:
     text = _SPACE.sub(" ", text).strip().casefold()
     if field == "pages":
         text = text.replace(" ", "")
+        singleton = _PAGE_SINGLETON_RANGE.fullmatch(text)
+        if singleton is not None:
+            text = singleton.group(1)
     return text.rstrip(".").strip()
 
 
