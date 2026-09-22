@@ -267,7 +267,7 @@ def publication_audit_record(publication: Publication) -> AuditRecord:
 _TAG = re.compile(r"<[^>]+>")
 _DASH = re.compile(r"(?:--+|[‐‑‒–—−])")
 _SPACE = re.compile(r"\s+")
-_PAGE_SINGLETON_RANGE = re.compile(r"^(.+)-\\1$")
+_PAGE_SINGLETON_RANGE = re.compile(r"^(.+)-\1$")
 _ABSTRACT_PREFIX = re.compile(r"^(?:abstract|summary)\s*[:.\-]?\s*", re.IGNORECASE)
 _TITLE_SMALLCAP_FRAGMENT = re.compile(r"-\s*([A-Za-z])\s+([A-Za-z]{2,})\b")
 _TITLE_MATH_INDEX = re.compile(r"\b([A-Za-z])\s+(\d)(?=-)")
