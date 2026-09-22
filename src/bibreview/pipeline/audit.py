@@ -267,6 +267,8 @@ _TAG = re.compile(r"<[^>]+>")
 _DASH = re.compile(r"(?:--+|[‐‑‒–—−])")
 _SPACE = re.compile(r"\s+")
 _ABSTRACT_PREFIX = re.compile(r"^(?:abstract|summary)\s*[:.\-]?\s*", re.IGNORECASE)
+_TITLE_SMALLCAP_FRAGMENT = re.compile(r"-\s*([A-Za-z])\s+([A-Za-z]{2,})\b")
+_TITLE_MATH_INDEX = re.compile(r"\b([A-Za-z])\s+(\d)(?=-)")
 _TEX_COMMAND = re.compile(r"\\([A-Za-z]+)")
 _TEX_MATH_DELIMITER = re.compile(r"(?:\$\$?|\\\(|\\\)|\\\[|\\\])")
 _NAME_PUNCTUATION = re.compile(r"[^a-z0-9 ]+")
@@ -318,6 +320,9 @@ def _normalize_text(value: str, *, field: str) -> str:
     text = _TAG.sub("", text)
     if field in {"title", "abstract"}:
         text = _normalize_tex(text)
+    if field == "title":
+        text = _TITLE_SMALLCAP_FRAGMENT.sub(r"-\1\2", text)
+        text = _TITLE_MATH_INDEX.sub(r"\1\2", text)
     text = unicodedata.normalize("NFKC", text)
     text = _DASH.sub("-", text)
     if field == "abstract":
