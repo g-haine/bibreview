@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from importlib import import_module
 import sys
 
 from . import __version__
@@ -51,6 +52,14 @@ from .runtime import (
     build_discovery_services,
 )
 from .storage import StorageError
+
+
+def _enable_interactive_line_editing() -> None:
+    """Enable terminal line editing for input() when Python readline is available."""
+    try:
+        import_module("readline")
+    except ImportError:
+        return
 
 
 def _audit_progress_data(campaign) -> dict[str, object]:
@@ -161,6 +170,8 @@ def _run_audit_resolution(config, args) -> int:
         print("No unresolved actionable findings.")
         print(f"Resolutions: {path}")
         return 0
+
+    _enable_interactive_line_editing()
 
     for candidate in candidates:
         print(format_audit_resolution_candidate(candidate))
