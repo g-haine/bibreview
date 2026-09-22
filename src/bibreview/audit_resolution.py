@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 import hashlib
 import json
+import re
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Mapping
@@ -120,16 +121,27 @@ def _optional_audit_value(value: Any, *, name: str) -> AuditValue | None:
     return None if value is None else _audit_value(value, name=name)
 
 
+def _proposal_value(field: str, value: AuditValue) -> AuditValue:
+    """Normalize only the human-facing proposal representation."""
+    if field != "pages" or not isinstance(value, str):
+        return value
+    return re.sub(
+        r"(?<=[0-9A-Za-z])[-–—](?=[0-9A-Za-z])",
+        "--",
+        value,
+    )
+
+
 def _exact_proposal(finding: AuditReviewFinding) -> AuditValue | None:
-    """Return a common raw provider value without choosing a representative."""
+    """Return one safe common proposal without changing stored provider evidence."""
     if not finding.provider_values:
         return None
-    first = finding.provider_values[0][1]
-    return (
-        first
-        if all(value == first for _, value in finding.provider_values[1:])
-        else None
+    values = tuple(
+        _proposal_value(finding.field, value)
+        for _, value in finding.provider_values
     )
+    first = values[0]
+    return first if all(value == first for value in values[1:]) else None
 
 
 def actionable_resolution_candidates(

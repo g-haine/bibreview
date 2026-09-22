@@ -171,7 +171,10 @@ f ["Ada Lovelace", "Alan Turing"]
 When corroborating providers agree only after review normalization but retain
 different raw representations, BibReview deliberately offers no default **Y**
 choice. Use `f VALUE` to choose the canonical representation explicitly, or
-defer/reject the finding.
+defer/reject the finding. Page ranges are the intentional exception: provider
+single/Unicode dashes are normalized in the proposed value to BibTeX-style
+double hyphens (for example `8793--8805`) without changing the stored provider
+evidence.
 
 The resolution file is fingerprinted against the exact actionable review. If
 the underlying actionable evidence changes after reclassification or a new
