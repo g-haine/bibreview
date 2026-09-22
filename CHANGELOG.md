@@ -2,6 +2,34 @@
 
 All notable BibReview releases are documented here.
 
+## 1.5.0 — 2026-09-22
+
+### Interactive audit resolution
+
+- add `bibreview audit --resolve` as an offline, resumable human-review workflow
+  for actionable audit findings;
+- present one actionable finding at a time with canonical value, provider
+  evidence, and an exact common proposal when a safe default representation
+  exists;
+- support explicit accept, reject, custom-value, defer, and quit decisions with
+  `Y`, `n`, `f VALUE`, `s`, and `q`;
+- require an explicit custom value when corroborating providers agree only after
+  review normalization but retain different raw representations;
+- persist decisions atomically in a versioned `resolutions.json` file beside
+  the audit report and fingerprint them against the exact actionable review;
+- reject stale resolution state after the underlying actionable evidence or
+  review classification changes;
+- keep resolution decisions separate from canonical bibliography and collection
+  staging; accepted/custom decisions are not promoted automatically;
+- support interactive `--dry-run` without writing resolution state.
+
+### Validation
+
+- add regression coverage for exact proposals, custom scalar and tuple values,
+  reject/defer semantics, resumability, stale-review detection, quit/resume,
+  dry-run behavior, and incompatible interactive output modes;
+- validate the feature with 340 passing tests before release.
+
 ## 1.4.4 — 2026-09-22
 
 ### Concise audit review output
