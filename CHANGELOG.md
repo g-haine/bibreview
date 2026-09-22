@@ -2,6 +2,27 @@
 
 All notable BibReview releases are documented here.
 
+## 1.5.2 — 2026-09-22
+
+### Natural tuple-valued audit corrections
+
+- allow tuple-valued custom corrections in `bibreview audit --resolve` to use
+  the same semicolon-separated representation displayed by the interactive CLI;
+- accept natural contributor input such as
+  `f Nguyen Thanh Sang; Tan Chee Keong; Hussain Mohd Azlan`;
+- retain JSON string-array input for explicit or complex tuple corrections;
+- trim surrounding whitespace, reject empty tuple items, and leave scalar
+  custom-value behavior unchanged;
+- preserve audit evidence, review fingerprints, resolution resumability, and
+  canonical/staging state semantics.
+
+### Validation
+
+- add unit coverage for semicolon-separated tuples, whitespace trimming,
+  empty-item rejection, single-item tuples, and retained JSON compatibility;
+- add CLI regression coverage for semicolon-separated author correction input;
+- validate the correction with 347 passing tests before release.
+
 ## 1.5.1 — 2026-09-22
 
 ### Audit page-range proposals
