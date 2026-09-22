@@ -2,6 +2,23 @@
 
 All notable BibReview releases are documented here.
 
+## 1.5.1 — 2026-09-22
+
+### Audit page-range proposals
+
+- normalize human-facing `pages` proposals in `bibreview audit --resolve` to
+  BibTeX-style double hyphens;
+- map provider page ranges such as `8793-8805`, `8793–8805`, and
+  `8793—8805` to the proposed value `8793--8805`;
+- preserve raw provider evidence unchanged in the audit report and keep
+  non-page proposal semantics unchanged.
+
+### Validation
+
+- add regression coverage for ASCII, Unicode, mixed-provider, and already
+  canonical double-hyphen page ranges;
+- validate the correction with 343 passing tests before release.
+
 ## 1.5.0 — 2026-09-22
 
 ### Interactive audit resolution
