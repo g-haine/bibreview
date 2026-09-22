@@ -26,6 +26,7 @@ from .pipeline.audit import (
     AuditError,
     AuditProviderIssue,
     AuditResult,
+    AuditReviewFinding,
     ProviderEvidence,
     audit_result_data,
     audit_result_from_data,
@@ -110,6 +111,72 @@ class ProjectAuditClosePlan:
     @property
     def changed(self) -> bool:
         return bool(self.outputs)
+
+
+@dataclass(frozen=True)
+class AuditPublicationReview:
+    """Current derived review findings for one audited publication."""
+
+    publication_id: str
+    identifiers: Mapping[str, str]
+    permalink: str
+    title: str
+    findings: tuple[AuditReviewFinding, ...]
+
+    def data(self) -> dict[str, Any]:
+        return {
+            "publication_id": self.publication_id,
+            "identifiers": dict(self.identifiers),
+            "permalink": self.permalink,
+            "title": self.title,
+            "findings": [
+                {
+                    "field": finding.field,
+                    "classification": finding.classification,
+                    "providers": list(finding.providers),
+                    "canonical_value": finding.canonical_value,
+                    "provider_values": [
+                        [provider, value]
+                        for provider, value in finding.provider_values
+                    ],
+                    "actionable": finding.actionable,
+                    "detail": finding.detail,
+                }
+                for finding in self.findings
+            ],
+        }
+
+
+@dataclass(frozen=True)
+class ProjectAuditReview:
+    """Read-only actionable view derived from persisted audit evidence."""
+
+    audited_publications: int
+    flagged_publications: int
+    actionable_findings: int
+    informational_findings: int
+    provider_issues: int
+    items: tuple[AuditPublicationReview, ...]
+
+    def data(self) -> dict[str, Any]:
+        return {
+            "audited_publications": self.audited_publications,
+            "flagged_publications": self.flagged_publications,
+            "actionable_findings": self.actionable_findings,
+            "informational_findings": self.informational_findings,
+            "provider_issues": self.provider_issues,
+            "items": [item.data() for item in self.items],
+        }
+
+    def summary(self) -> str:
+        return (
+            "Audit review\n"
+            f"  Audited publications : {self.audited_publications}\n"
+            f"  Flagged publications : {self.flagged_publications}\n"
+            f"  Actionable findings   : {self.actionable_findings}\n"
+            f"  Informational findings: {self.informational_findings}\n"
+            f"  Provider issues       : {self.provider_issues}"
+        )
 
 
 @dataclass(frozen=True)
@@ -434,6 +501,83 @@ def _aggregate_result_counts(
     for entry in entries:
         counts.update(entry.result.classification_counts())
     return MappingProxyType(dict(sorted(counts.items())))
+
+
+def project_audit_review(
+    config: BibReviewConfig,
+) -> ProjectAuditReview:
+    """Build the current human-review view without writing project state."""
+    if not isinstance(config, BibReviewConfig):
+        raise ProjectStateError("config must be a BibReviewConfig")
+    _, report = _read_state(config)
+
+    items: list[AuditPublicationReview] = []
+    actionable = 0
+    informational = 0
+    provider_issues = 0
+
+    for entry in report.entries:
+        current = reclassify_audit_result(entry.result)
+        findings = audit_review_findings(current)
+        provider_issues += len(current.provider_issues)
+        if not findings:
+            continue
+        actionable += sum(finding.actionable for finding in findings)
+        informational += sum(not finding.actionable for finding in findings)
+        items.append(
+            AuditPublicationReview(
+                publication_id=current.publication_id,
+                identifiers=current.identifiers,
+                permalink=current.permalink,
+                title=current.title,
+                findings=findings,
+            )
+        )
+
+    return ProjectAuditReview(
+        audited_publications=len(report.entries),
+        flagged_publications=len(items),
+        actionable_findings=actionable,
+        informational_findings=informational,
+        provider_issues=provider_issues,
+        items=tuple(items),
+    )
+
+
+def _format_audit_value(value: Any) -> str:
+    if isinstance(value, tuple):
+        return "; ".join(value) if value else "(missing)"
+    if isinstance(value, list):
+        return "; ".join(str(item) for item in value) if value else "(missing)"
+    text = str(value)
+    return text if text else "(missing)"
+
+
+def format_project_audit_review(review: ProjectAuditReview) -> str:
+    """Format a compact human-readable audit review."""
+    lines = [review.summary()]
+    for item in review.items:
+        doi = item.identifiers.get("doi", item.publication_id)
+        lines.append("")
+        lines.append(f"{doi} — {item.title}")
+        for finding in item.findings:
+            label = "action" if finding.actionable else "info"
+            providers = ", ".join(finding.providers)
+            canonical = _format_audit_value(finding.canonical_value)
+            proposed_values = []
+            seen: set[str] = set()
+            for _, value in finding.provider_values:
+                rendered = _format_audit_value(value)
+                if rendered not in seen:
+                    seen.add(rendered)
+                    proposed_values.append(rendered)
+            proposed = " | ".join(proposed_values) if proposed_values else "(none)"
+            detail = f"; {finding.detail}" if finding.detail else ""
+            lines.append(
+                f"  [{label}] {finding.classification} / {finding.field}: "
+                f"{canonical} -> {proposed} ({providers}){detail}"
+            )
+    return "\n".join(lines)
 
 
 def plan_project_audit_reclassify(
