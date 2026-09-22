@@ -60,11 +60,36 @@ class AuditApplyChange:
 
 
 @dataclass(frozen=True)
+class AuditApplyNoOp:
+    """One accepted/custom resolution already equal to canonical metadata."""
+
+    publication_id: str
+    doi: str
+    title: str
+    field: str
+    decision: str
+    value: AuditValue
+
+    def data(self) -> dict[str, Any]:
+        value: str | list[str]
+        value = list(self.value) if isinstance(self.value, tuple) else self.value
+        return {
+            "publication_id": self.publication_id,
+            "doi": self.doi,
+            "title": self.title,
+            "field": self.field,
+            "decision": self.decision,
+            "value": value,
+        }
+
+
+@dataclass(frozen=True)
 class ProjectAuditApplyPlan:
     """Read-only plan for applying completed audit resolutions."""
 
     state: AuditResolutionState
     changes: tuple[AuditApplyChange, ...]
+    no_ops: tuple[AuditApplyNoOp, ...]
     outputs: Mapping[Path, bytes]
     bibtex_backups: tuple[Path, ...]
     affected_publication_ids: tuple[str, ...]
@@ -87,6 +112,7 @@ class ProjectAuditApplyPlan:
             f"  Accepted              : {counts['accepted']}\n"
             f"  Custom                : {counts['custom']}\n"
             f"  Rejected              : {counts['rejected']}\n"
+            f"  No-op resolutions     : {len(self.no_ops)}\n"
             f"  Changes to stage      : {len(self.changes)}\n"
             f"  Publications affected : {len(self.affected_publication_ids)}\n"
             f"  BibTeX files affected : {self.bibtex_files_affected}"
@@ -101,10 +127,12 @@ class ProjectAuditApplyPlan:
             "rejected": counts["rejected"],
             "deferred": counts["deferred"],
             "unresolved": counts["unresolved"],
+            "no_op_resolutions": len(self.no_ops),
             "changes_to_stage": len(self.changes),
             "publications_affected": len(self.affected_publication_ids),
             "bibtex_files_affected": self.bibtex_files_affected,
             "changes": [change.data() for change in self.changes],
+            "no_ops": [item.data() for item in self.no_ops],
         }
 
 
@@ -300,6 +328,7 @@ def plan_project_audit_apply(config: BibReviewConfig) -> ProjectAuditApplyPlan:
     originals = {publication.id: publication for publication in canonical}
     updated = dict(originals)
     raw_changes: list[AuditApplyChange] = []
+    no_ops: list[AuditApplyNoOp] = []
     changed_ids: list[str] = []
     changed_seen: set[str] = set()
 
@@ -331,6 +360,16 @@ def plan_project_audit_apply(config: BibReviewConfig) -> ProjectAuditApplyPlan:
                 f"{candidate.key}: accepted/custom resolution has no resolved value"
             )
         if decision.resolved_value == current:
+            no_ops.append(
+                AuditApplyNoOp(
+                    publication_id=candidate.publication_id,
+                    doi=publication.doi or candidate.publication_id,
+                    title=publication.title,
+                    field=field,
+                    decision=decision.decision,
+                    value=current,
+                )
+            )
             continue
 
         revised = _apply_field(
@@ -440,6 +479,7 @@ def plan_project_audit_apply(config: BibReviewConfig) -> ProjectAuditApplyPlan:
     return ProjectAuditApplyPlan(
         state=state,
         changes=tuple(finalized),
+        no_ops=tuple(no_ops),
         outputs=MappingProxyType(outputs),
         bibtex_backups=tuple(backups),
         affected_publication_ids=tuple(changed_ids),
@@ -478,6 +518,18 @@ def format_project_audit_apply_plan(plan: ProjectAuditApplyPlan) -> str:
                     if change.bibtex_field is not None
                     else "not applicable"
                 ),
+            )
+        )
+    for item in plan.no_ops:
+        lines.extend(
+            (
+                "",
+                f"{item.doi} — {item.title}",
+                f"  {item.field}",
+                f"    current : {_format_value(item.value)}",
+                "    staged  : unchanged",
+                f"    source  : {item.decision} (no-op)",
+                "    BibTeX  : unchanged",
             )
         )
     return "\n".join(lines)
