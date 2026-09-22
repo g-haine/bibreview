@@ -217,7 +217,17 @@ def _run_audit_resolution(config, args) -> int:
                 if choice == "f" or choice.startswith("f "):
                     custom_text = raw[1:].strip()
                     if not custom_text:
-                        custom_text = input("Custom value: ").strip()
+                        try:
+                            custom_text = input("Custom value: ").strip()
+                        except (EOFError, KeyboardInterrupt):
+                            print()
+                            print(
+                                "Resolution session stopped; previous decisions "
+                                "are preserved."
+                            )
+                            print(state.summary())
+                            print(f"Resolutions: {path}")
+                            return 0
                     custom = parse_custom_resolution_value(
                         custom_text,
                         candidate,
