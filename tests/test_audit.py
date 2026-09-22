@@ -324,7 +324,7 @@ class AuditComparisonTests(unittest.TestCase):
 
     def test_title_tex_and_unicode_math_are_formatting_only(self):
         result = compare_audit_record(
-            self.record(title=r"Index $\\le 1$ and $\\theta$-methods"),
+            self.record(title=r"Index $\le 1$ and $\theta$-methods"),
             (
                 ProviderEvidence(
                     provider="provider-a",
