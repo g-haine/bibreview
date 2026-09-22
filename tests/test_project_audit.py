@@ -19,10 +19,12 @@ from bibreview.project_audit import (
     apply_project_audit_plan,
     audit_report_from_data,
     execute_project_audit_batch,
+    format_project_audit_review,
     plan_project_audit_batch,
     plan_project_audit_checkpoint,
     plan_project_audit_close,
     plan_project_audit_reclassify,
+    project_audit_review,
 )
 from bibreview.providers.http import HttpError
 from bibreview.reporting import Reporter
@@ -255,6 +257,68 @@ class ProjectAuditTests(unittest.TestCase):
             report.entries[0].result.comparisons[0].classification,
             "formatting-only",
         )
+
+    def test_review_groups_corroborating_actionable_findings(self):
+        start = plan_project_audit_batch(self.config, batch_size=1)
+        apply_project_audit_plan(start)
+        publication = self.publications[0]
+        result = AuditResult(
+            publication_id=publication.id,
+            identifiers=publication.identifiers,
+            permalink=publication.permalink,
+            title=publication.title,
+            comparisons=(
+                AuditComparison(
+                    provider="crossref",
+                    field="volume",
+                    classification="canonical-missing",
+                    canonical_value="",
+                    provider_value="48",
+                ),
+                AuditComparison(
+                    provider="openalex",
+                    field="volume",
+                    classification="canonical-missing",
+                    canonical_value="",
+                    provider_value="48",
+                ),
+            ),
+            provider_issues=(),
+            disagreements=(),
+        )
+        checkpoint = plan_project_audit_checkpoint(
+            self.config,
+            batch_id=start.batch.id,
+            result=result,
+            state="completed",
+        )
+        apply_project_audit_plan(checkpoint)
+        apply_project_audit_plan(
+            plan_project_audit_close(self.config, batch_id=start.batch.id)
+        )
+        report_before = self.config.audit.report.read_bytes()
+        campaign_before = self.config.audit.campaign.read_bytes()
+
+        review = project_audit_review(self.config)
+
+        self.assertEqual(review.audited_publications, 1)
+        self.assertEqual(review.flagged_publications, 1)
+        self.assertEqual(review.actionable_findings, 1)
+        self.assertEqual(review.informational_findings, 0)
+        self.assertEqual(review.provider_issues, 0)
+        finding = review.items[0].findings[0]
+        self.assertEqual(finding.field, "volume")
+        self.assertEqual(finding.classification, "canonical-missing")
+        self.assertEqual(finding.providers, ("crossref", "openalex"))
+        self.assertEqual(
+            tuple(value for _, value in finding.provider_values),
+            ("48", "48"),
+        )
+        rendered = format_project_audit_review(review)
+        self.assertIn("canonical-missing / volume", rendered)
+        self.assertIn("(crossref, openalex)", rendered)
+        self.assertEqual(self.config.audit.report.read_bytes(), report_before)
+        self.assertEqual(self.config.audit.campaign.read_bytes(), campaign_before)
 
     def test_cannot_close_batch_until_every_item_is_checkpointed(self):
         start = plan_project_audit_batch(self.config)
