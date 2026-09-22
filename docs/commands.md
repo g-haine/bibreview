@@ -141,6 +141,49 @@ and spacing variants before provider support is counted. One-day
 abstract remain informational. Provider-role disagreements stay informational.
 Use `--json` for the complete machine-readable review.
 
+Resolve actionable findings interactively after the audit campaign is complete:
+
+~~~bash
+bibreview audit --resolve
+~~~
+
+The resolver is offline and never edits the canonical bibliography. It presents
+one actionable finding at a time and stores resumable human decisions in
+`resolutions.json` beside the configured audit report. The prompt uses:
+
+- **Enter** or **Y**: accept the proposed value, but only when all supporting
+  providers expose one exact common representation;
+- **n**: explicitly reject the proposed correction and keep the current
+  canonical value;
+- **f VALUE**: force a human-selected replacement value instead of the provider
+  representation;
+- **s**: defer the finding so it is presented again in a later resolution
+  session;
+- **q**: stop cleanly; decisions already made remain persisted.
+
+For tuple-valued metadata such as contributor lists, `f` requires a JSON
+string array, for example:
+
+~~~text
+f ["Ada Lovelace", "Alan Turing"]
+~~~
+
+When corroborating providers agree only after review normalization but retain
+different raw representations, BibReview deliberately offers no default **Y**
+choice. Use `f VALUE` to choose the canonical representation explicitly, or
+defer/reject the finding.
+
+The resolution file is fingerprinted against the exact actionable review. If
+the underlying actionable evidence changes after reclassification or a new
+audit, BibReview refuses to reuse stale decisions. `--dry-run audit --resolve`
+supports the same interactive flow without writing the resolution file.
+Interactive `--resolve` is intentionally incompatible with `--json` and
+`--quiet`.
+
+Resolution decisions are review state only. They do not update
+**bibliography.json** or **collected.json**; promotion into canonical staging is
+a separate explicit step.
+
 When comparison rules improve, reclassify the already-stored raw values without
 re-querying any provider:
 
