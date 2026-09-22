@@ -45,7 +45,7 @@ class HttpTransport:
                 total=retries,
                 backoff_factor=1,
                 status_forcelist=(429, 500, 502, 503, 504),
-                allowed_methods=frozenset({"GET"}),
+                allowed_methods=frozenset({"GET", "POST"}),
                 raise_on_status=False,
             )
             self.session.mount("https://", HTTPAdapter(max_retries=retry))
@@ -167,6 +167,50 @@ class HttpTransport:
                 url,
                 data=dict(data),
                 auth=auth,
+                headers=merged_headers or None,
+                timeout=self.timeout,
+                allow_redirects=True,
+            )
+            final_url = response.url if isinstance(response.url, str) else url
+            final_host = urlsplit(final_url).hostname or initial_host
+            redirect = f" -> {final_host}" if final_host != initial_host else ""
+            self.reporter.debug(
+                f"{operation}: HTTP {response.status_code} from {initial_host}{redirect}"
+            )
+            response.raise_for_status()
+        except requests.RequestException as error:
+            raise self._request_error(
+                error,
+                response=response,
+                initial_host=initial_host,
+                context=context,
+            ) from error
+
+        try:
+            return response.json()
+        except ValueError as error:
+            raise HttpError(f"{initial_host}: invalid JSON response") from error
+
+    def post_json(
+        self,
+        url: str,
+        *,
+        json_body: Mapping[str, object],
+        params: Mapping[str, object] | None = None,
+        headers: Mapping[str, str] | None = None,
+        context: str | None = None,
+    ) -> object:
+        """POST a JSON object and decode JSON with sanitized diagnostics."""
+        response = None
+        initial_host = urlsplit(url).hostname or "unknown host"
+        operation = context or "HTTP request"
+        self.reporter.debug(f"{operation}: POST {initial_host}")
+        merged_headers = {**self.default_headers, **dict(headers or {})}
+        try:
+            response = self.session.post(
+                url,
+                params=params,
+                json=dict(json_body),
                 headers=merged_headers or None,
                 timeout=self.timeout,
                 allow_redirects=True,
