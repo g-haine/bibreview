@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
@@ -28,8 +29,10 @@ from .pipeline.audit import (
     ProviderEvidence,
     audit_result_data,
     audit_result_from_data,
+    audit_review_findings,
     compare_audit_record,
     publication_audit_record,
+    reclassify_audit_result,
 )
 from .project import ProjectStateError
 from .providers.audit import AuditEvidenceSource
@@ -107,6 +110,60 @@ class ProjectAuditClosePlan:
     @property
     def changed(self) -> bool:
         return bool(self.outputs)
+
+
+@dataclass(frozen=True)
+class AuditReclassificationSummary:
+    """Aggregate before/after metrics for one offline report reclassification."""
+
+    publications: int
+    changed_results: int
+    changed_comparisons: int
+    before_counts: Mapping[str, int]
+    after_counts: Mapping[str, int]
+    review_findings: int
+    actionable_findings: int
+    informational_findings: int
+
+    def data(self) -> dict[str, Any]:
+        return {
+            "publications": self.publications,
+            "changed_results": self.changed_results,
+            "changed_comparisons": self.changed_comparisons,
+            "before_counts": dict(self.before_counts),
+            "after_counts": dict(self.after_counts),
+            "review_findings": self.review_findings,
+            "actionable_findings": self.actionable_findings,
+            "informational_findings": self.informational_findings,
+        }
+
+    def summary(self) -> str:
+        return (
+            "Audit report reclassification\n"
+            f"  Publications        : {self.publications}\n"
+            f"  Changed results     : {self.changed_results}\n"
+            f"  Changed comparisons : {self.changed_comparisons}\n"
+            f"  Review findings     : {self.review_findings} "
+            f"({self.actionable_findings} actionable, "
+            f"{self.informational_findings} informational)"
+        )
+
+
+@dataclass(frozen=True)
+class ProjectAuditReclassifyPlan:
+    """Offline plan for reclassifying stored audit evidence without network I/O."""
+
+    campaign: Campaign
+    report: AuditReport
+    summary_metrics: AuditReclassificationSummary
+    outputs: Mapping[Path, bytes]
+
+    @property
+    def changed(self) -> bool:
+        return bool(self.outputs)
+
+    def summary(self) -> str:
+        return self.summary_metrics.summary()
 
 
 @dataclass(frozen=True)
@@ -370,6 +427,84 @@ def _state_outputs(
     return MappingProxyType(outputs)
 
 
+def _aggregate_result_counts(
+    entries: tuple[AuditReportEntry, ...],
+) -> Mapping[str, int]:
+    counts: Counter[str] = Counter()
+    for entry in entries:
+        counts.update(entry.result.classification_counts())
+    return MappingProxyType(dict(sorted(counts.items())))
+
+
+def plan_project_audit_reclassify(
+    config: BibReviewConfig,
+) -> ProjectAuditReclassifyPlan:
+    """Reclassify persisted audit values using current offline rules only."""
+    if not isinstance(config, BibReviewConfig):
+        raise ProjectStateError("config must be a BibReviewConfig")
+    campaign, report = _read_state(config)
+
+    changed_results = 0
+    changed_comparisons = 0
+    updated_entries: list[AuditReportEntry] = []
+    for entry in report.entries:
+        updated_result = reclassify_audit_result(entry.result)
+        if updated_result != entry.result:
+            changed_results += 1
+        changed_comparisons += sum(
+            before.classification != after.classification
+            for before, after in zip(
+                entry.result.comparisons,
+                updated_result.comparisons,
+                strict=True,
+            )
+        )
+        updated_entries.append(
+            AuditReportEntry(
+                publication_id=entry.publication_id,
+                batch_id=entry.batch_id,
+                attempt=entry.attempt,
+                result=updated_result,
+            )
+        )
+
+    updated_report = AuditReport(
+        campaign_items=report.campaign_items,
+        entries=tuple(updated_entries),
+    )
+    _validate_report_against_campaign(campaign, updated_report)
+
+    findings = tuple(
+        finding
+        for entry in updated_report.entries
+        for finding in audit_review_findings(entry.result)
+    )
+    actionable = sum(finding.actionable for finding in findings)
+    summary = AuditReclassificationSummary(
+        publications=len(updated_report.entries),
+        changed_results=changed_results,
+        changed_comparisons=changed_comparisons,
+        before_counts=_aggregate_result_counts(report.entries),
+        after_counts=_aggregate_result_counts(updated_report.entries),
+        review_findings=len(findings),
+        actionable_findings=actionable,
+        informational_findings=len(findings) - actionable,
+    )
+
+    outputs: dict[Path, bytes] = {}
+    _put_if_changed(
+        outputs,
+        config.audit.report,
+        json_bytes(audit_report_data(updated_report)),
+    )
+    return ProjectAuditReclassifyPlan(
+        campaign=campaign,
+        report=updated_report,
+        summary_metrics=summary,
+        outputs=MappingProxyType(outputs),
+    )
+
+
 def plan_project_audit_batch(
     config: BibReviewConfig,
     *,
@@ -501,12 +636,22 @@ def plan_project_audit_close(
 
 
 def apply_project_audit_plan(
-    plan: ProjectAuditBatchPlan | ProjectAuditCheckpointPlan | ProjectAuditClosePlan,
+    plan: (
+        ProjectAuditBatchPlan
+        | ProjectAuditCheckpointPlan
+        | ProjectAuditClosePlan
+        | ProjectAuditReclassifyPlan
+    ),
 ) -> None:
     """Apply one prepared audit-state plan atomically per destination."""
     if not isinstance(
         plan,
-        (ProjectAuditBatchPlan, ProjectAuditCheckpointPlan, ProjectAuditClosePlan),
+        (
+            ProjectAuditBatchPlan,
+            ProjectAuditCheckpointPlan,
+            ProjectAuditClosePlan,
+            ProjectAuditReclassifyPlan,
+        ),
     ):
         raise ProjectStateError("plan must be a project audit plan")
     if plan.outputs:
