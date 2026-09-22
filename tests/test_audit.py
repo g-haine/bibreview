@@ -232,6 +232,32 @@ class AuditComparisonTests(unittest.TestCase):
             "formatting-only",
         )
 
+    def test_surname_first_provider_names_are_compatible(self):
+        result = compare_audit_record(
+            self.record(
+                authors=(
+                    "Peter Benner",
+                    "E. Jan W. ter Maten",
+                ),
+            ),
+            (
+                ProviderEvidence(
+                    provider="openalex",
+                    fields={
+                        "authors": (
+                            "Benner, Peter",
+                            "ter Maten, E. Jan W.",
+                        ),
+                    },
+                ),
+            ),
+        )
+
+        self.assertEqual(
+            result.comparisons[0].classification,
+            "formatting-only",
+        )
+
     def test_contributor_reorder_remains_substantive(self):
         record = self.record(
             authors=("Ada Lovelace", "Alan Turing"),
@@ -349,6 +375,29 @@ class AuditComparisonTests(unittest.TestCase):
         self.assertEqual(findings[0].classification, "role-disagreement")
         self.assertEqual(findings[0].field, "contributors")
         self.assertFalse(findings[0].actionable)
+
+    def test_editor_only_provider_authors_are_informational_even_when_names_disagree(self):
+        result = compare_audit_record(
+            self.record(
+                authors=(),
+                editors=("Ada Lovelace", "Alan Turing"),
+            ),
+            (
+                ProviderEvidence(
+                    provider="semantic-scholar",
+                    fields={"authors": ("Unrelated Person",)},
+                ),
+            ),
+        )
+        findings = audit_review_findings(result)
+
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].classification, "role-disagreement")
+        self.assertFalse(findings[0].actionable)
+        self.assertEqual(
+            findings[0].detail,
+            "provider reports authors for canonical editor-only record",
+        )
 
     def test_year_and_container_difference_is_not_actionable_when_canon_is_confirmed(self):
         result = compare_audit_record(
