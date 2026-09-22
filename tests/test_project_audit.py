@@ -8,6 +8,8 @@ from bibreview.config import load_config
 from bibreview.identity import new_publication_id
 from bibreview.model import Author, Publication
 from bibreview.pipeline.audit import (
+    AuditComparison,
+    AuditResult,
     ProviderEvidence,
     compare_audit_record,
     publication_audit_record,
@@ -20,6 +22,7 @@ from bibreview.project_audit import (
     plan_project_audit_batch,
     plan_project_audit_checkpoint,
     plan_project_audit_close,
+    plan_project_audit_reclassify,
 )
 from bibreview.providers.http import HttpError
 from bibreview.reporting import Reporter
@@ -190,6 +193,67 @@ class ProjectAuditTests(unittest.TestCase):
         self.assertEqual(
             entry.result.comparisons[-1].classification,
             "substantive-difference",
+        )
+
+    def test_offline_reclassification_changes_only_report(self):
+        start = plan_project_audit_batch(self.config, batch_size=1)
+        apply_project_audit_plan(start)
+        publication = self.publications[0]
+        old_result = AuditResult(
+            publication_id=publication.id,
+            identifiers=publication.identifiers,
+            permalink=publication.permalink,
+            title=publication.title,
+            comparisons=(
+                AuditComparison(
+                    provider="crossref",
+                    field="pages",
+                    classification="substantive-difference",
+                    canonical_value="10--20",
+                    provider_value="10-20",
+                ),
+            ),
+            provider_issues=(),
+            disagreements=(),
+        )
+        checkpoint = plan_project_audit_checkpoint(
+            self.config,
+            batch_id=start.batch.id,
+            result=old_result,
+            state="completed",
+        )
+        apply_project_audit_plan(checkpoint)
+        apply_project_audit_plan(
+            plan_project_audit_close(self.config, batch_id=start.batch.id)
+        )
+        campaign_before = self.config.audit.campaign.read_bytes()
+
+        plan = plan_project_audit_reclassify(self.config)
+
+        self.assertEqual(set(plan.outputs), {self.config.audit.report})
+        self.assertEqual(self.config.audit.campaign.read_bytes(), campaign_before)
+        self.assertEqual(plan.summary_metrics.publications, 1)
+        self.assertEqual(plan.summary_metrics.changed_results, 1)
+        self.assertEqual(plan.summary_metrics.changed_comparisons, 1)
+        self.assertEqual(
+            dict(plan.summary_metrics.before_counts),
+            {"substantive-difference": 1},
+        )
+        self.assertEqual(
+            dict(plan.summary_metrics.after_counts),
+            {"formatting-only": 1},
+        )
+        self.assertEqual(plan.summary_metrics.review_findings, 0)
+
+        apply_project_audit_plan(plan)
+
+        self.assertEqual(self.config.audit.campaign.read_bytes(), campaign_before)
+        report = audit_report_from_data(
+            read_json(self.config.audit.report, dict)
+        )
+        self.assertEqual(
+            report.entries[0].result.comparisons[0].classification,
+            "formatting-only",
         )
 
     def test_cannot_close_batch_until_every_item_is_checkpointed(self):
