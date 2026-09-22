@@ -132,21 +132,12 @@ class CrossRefAuditSource:
     """Normalize CrossRef work metadata into audit evidence."""
 
     name = "crossref"
-    batch_size = 1
+    batch_size = CrossRefProvider.BATCH_SIZE
 
     def __init__(self, provider: CrossRefProvider) -> None:
         self.provider = provider
 
-    def evidence(self, doi: str) -> ProviderEvidence:
-        normalized = normalize_doi(doi)
-        message = self.provider.work(normalized)
-        if message is None:
-            return ProviderEvidence(
-                provider=self.name,
-                status="unavailable",
-                detail="record not found",
-            )
-
+    def _from_message(self, message: Mapping[str, object]) -> ProviderEvidence:
         subjects = message.get("subject")
         keywords = (
             tuple(
@@ -180,6 +171,36 @@ class CrossRefAuditSource:
                 "created_date": _crossref_created_date(message),
             },
         )
+
+    def evidence(self, doi: str) -> ProviderEvidence:
+        normalized = normalize_doi(doi)
+        message = self.provider.work(normalized)
+        if message is None:
+            return ProviderEvidence(
+                provider=self.name,
+                status="unavailable",
+                detail="record not found",
+            )
+        return self._from_message(message)
+
+    def evidence_many(
+        self,
+        dois: tuple[str, ...],
+    ) -> Mapping[str, ProviderEvidence]:
+        normalized = tuple(dict.fromkeys(normalize_doi(doi) for doi in dois))
+        records = self.provider.works(normalized)
+        return {
+            doi: (
+                self._from_message(records[doi])
+                if doi in records
+                else ProviderEvidence(
+                    provider=self.name,
+                    status="unavailable",
+                    detail="record not found",
+                )
+            )
+            for doi in normalized
+        }
 
 
 def _openalex_authors(value: object) -> tuple[str, ...]:

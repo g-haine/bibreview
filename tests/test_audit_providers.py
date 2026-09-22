@@ -52,6 +52,32 @@ class CrossRefAuditSourceTests(unittest.TestCase):
         self.assertEqual(evidence.fields["keywords"], ("Control", "Energy"))
         self.assertEqual(provider.work.call_args.args, ("10.1000/example",))
 
+    def test_batches_multiple_dois_and_marks_missing_records_unavailable(self):
+        provider = Mock()
+        provider.works.return_value = {
+            "10.1000/one": {
+                "DOI": "10.1000/one",
+                "title": ["One"],
+                "published-online": {"date-parts": [[2024, 1, 1]]},
+            }
+        }
+        source = CrossRefAuditSource(provider)
+
+        result = source.evidence_many(("10.1000/ONE", "10.1000/two"))
+
+        self.assertEqual(source.batch_size, 25)
+        self.assertEqual(
+            provider.works.call_args.args[0],
+            ("10.1000/one", "10.1000/two"),
+        )
+        self.assertEqual(result["10.1000/one"].fields["title"], "One")
+        self.assertEqual(
+            result["10.1000/one"].fields["publication_year"],
+            "2024",
+        )
+        self.assertEqual(result["10.1000/two"].status, "unavailable")
+        self.assertEqual(result["10.1000/two"].detail, "record not found")
+
     def test_missing_work_is_unavailable_not_error(self):
         provider = Mock()
         provider.work.return_value = None
