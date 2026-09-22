@@ -2,6 +2,24 @@
 
 All notable BibReview releases are documented here.
 
+## 1.4.3 — 2026-09-22
+
+### Batched CrossRef audit lookups
+
+- add exact multi-DOI CrossRef REST lookups using repeated `doi:` filters;
+- use a conservative audit chunk size of 25 DOI values per CrossRef request;
+- reuse the existing generic audit batching orchestrator without changing
+  comparison, checkpoint, retry, or canonical-state semantics;
+- preserve the same CrossRef normalization for single and batched responses;
+- keep missing CrossRef records as non-retryable provider-unavailable evidence
+  while chunk-level transport failures remain retryable.
+
+### Validation
+
+- extend regression coverage for batched CrossRef provider responses, missing
+  records, response-shape validation, provider limits, and audit normalization;
+- validate the feature with 327 passing tests before release.
+
 ## 1.4.2 — 2026-09-22
 
 ### Batched audit provider requests
