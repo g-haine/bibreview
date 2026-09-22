@@ -8,6 +8,15 @@ import sys
 
 from . import __version__
 from .arxiv import ArxivError, TemporaryArxivError
+from .audit_resolution import (
+    audit_resolution_path,
+    format_audit_resolution_candidate,
+    load_project_audit_resolutions,
+    parse_custom_resolution_value,
+    record_audit_resolution,
+    save_project_audit_resolutions,
+    unresolved_resolution_candidates,
+)
 from .campaign import campaign_progress
 from .config import ConfigError, load_config
 from .pipeline.authors import author_mapping_plan_data, format_author_mapping_plan
@@ -100,6 +109,11 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Show the current actionable audit review without provider requests",
     )
+    audit_actions.add_argument(
+        "--resolve",
+        action="store_true",
+        help="Interactively resolve actionable audit findings without changing canonical metadata",
+    )
     audit.add_argument(
         "--json",
         dest="json_output",
@@ -125,6 +139,110 @@ def _parser() -> argparse.ArgumentParser:
     commands.add_parser("render", help="Render and reconcile configured static-site artifacts")
     commands.add_parser("arxiv", help="Refresh the optional configured arXiv cache")
     return parser
+
+
+def _run_audit_resolution(config, args) -> int:
+    """Run the resumable interactive resolver for actionable audit findings."""
+    if args.batch_size is not None:
+        raise ProjectStateError("--batch-size cannot be used with --resolve")
+    if args.json_output:
+        raise ProjectStateError("--json cannot be used with interactive --resolve")
+    if args.quiet:
+        raise ProjectStateError("--quiet cannot be used with interactive --resolve")
+
+    review = project_audit_review(config)
+    state = load_project_audit_resolutions(config, review)
+    candidates = unresolved_resolution_candidates(review, state)
+    path = audit_resolution_path(config)
+
+    if not candidates:
+        print(state.summary())
+        print(f"Resolutions: {path}")
+        return 0
+
+    for candidate in candidates:
+        print(format_audit_resolution_candidate(candidate))
+        while True:
+            prompt = (
+                "Decision [Y/n/f VALUE/s/q]: "
+                if candidate.proposed_value is not None
+                else "Decision [f VALUE/n/s/q]: "
+            )
+            try:
+                raw = input(prompt).strip()
+            except (EOFError, KeyboardInterrupt):
+                print()
+                print("Resolution session stopped; previous decisions are preserved.")
+                print(state.summary())
+                print(f"Resolutions: {path}")
+                return 0
+
+            choice = raw.lower()
+            try:
+                if raw == "" or choice in {"y", "yes"}:
+                    if candidate.proposed_value is None:
+                        print(
+                            "No exact common provider representation is available; "
+                            "use f VALUE, n, s, or q."
+                        )
+                        continue
+                    state = record_audit_resolution(
+                        state,
+                        candidate,
+                        decision="accepted",
+                    )
+                    break
+
+                if choice in {"n", "no"}:
+                    state = record_audit_resolution(
+                        state,
+                        candidate,
+                        decision="rejected",
+                    )
+                    break
+
+                if choice in {"s", "skip"}:
+                    state = record_audit_resolution(
+                        state,
+                        candidate,
+                        decision="deferred",
+                    )
+                    break
+
+                if choice in {"q", "quit"}:
+                    print(state.summary())
+                    print(f"Resolutions: {path}")
+                    return 0
+
+                if choice == "f" or choice.startswith("f "):
+                    custom_text = raw[1:].strip()
+                    if not custom_text:
+                        custom_text = input("Custom value: ").strip()
+                    custom = parse_custom_resolution_value(
+                        custom_text,
+                        candidate,
+                    )
+                    state = record_audit_resolution(
+                        state,
+                        candidate,
+                        decision="custom",
+                        resolved_value=custom,
+                    )
+                    break
+            except ProjectStateError as error:
+                print(f"Invalid resolution: {error}")
+                continue
+
+            print("Please enter Y, n, f VALUE, s, or q.")
+
+        if not args.dry_run:
+            save_project_audit_resolutions(config, state)
+        print()
+
+    prefix = "Dry run: " if args.dry_run else ""
+    print(prefix + state.summary())
+    print(f"Resolutions: {path}")
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -186,6 +304,13 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "audit":
         reporter = Reporter(-1 if args.quiet else args.verbose)
+
+        if args.resolve:
+            try:
+                return _run_audit_resolution(config, args)
+            except (OSError, StorageError, ProjectStateError, ValueError, TypeError) as error:
+                print(f"bibreview audit: {error}", file=sys.stderr)
+                return 1
 
         if args.review:
             try:
