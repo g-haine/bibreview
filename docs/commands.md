@@ -108,6 +108,32 @@ Machine-readable command output:
 bibreview --config bibreview.yml audit --json
 ~~~
 
+Review the current report offline without making provider requests or changing
+project files:
+
+~~~bash
+bibreview --config bibreview.yml audit --review
+~~~
+
+The review view applies the current comparison rules in memory, hides pairwise
+`equal`, `formatting-only`, and `provider-missing` noise, groups providers
+that corroborate the same candidate correction, and keeps informational
+provider-role disagreements separate from actionable canonical findings.
+Use `--json` for a machine-readable review.
+
+When comparison rules improve, reclassify the already-stored raw values without
+re-querying any provider:
+
+~~~bash
+bibreview --config bibreview.yml --dry-run audit --reclassify
+bibreview --config bibreview.yml audit --reclassify
+~~~
+
+Reclassification rewrites only the audit report. It preserves campaign
+progress, batch history, attempt counts, canonical bibliography, and stored
+provider/canonical values. The dry run reports before/after classification
+counts without writing.
+
 The audit currently compares evidence from **CrossRef** and **OpenAlex**, plus
 **Semantic Scholar** when that provider is enabled. Authenticated Semantic
 Scholar audit requests are paced at a minimum interval of 1.1 seconds to stay
@@ -120,6 +146,14 @@ Audit writes only the configured audit campaign/report files. It never writes
 to **bibliography.json**, **collected.json**, DOI queues, BibTeX, author
 mappings, or generated site files. The report is evidence for human review and
 is never merge-ready staging.
+
+Current comparison normalization treats common bibliographic representation
+differences conservatively: LaTeX page ranges such as `1128--1144` versus
+provider `1128-1144`, compatible contributor-name variants (initials,
+diacritics, and hyphenation without reordering), common TeX/Unicode title
+variants, and near-identical abstracts with markup/prefix differences are
+formatting-only. Contributor reordering, truncated abstracts, identifier
+conflicts, and genuinely different values remain substantive.
 
 ## discover
 
