@@ -270,6 +270,10 @@ _ABSTRACT_PREFIX = re.compile(r"^(?:abstract|summary)\s*[:.\-]?\s*", re.IGNORECA
 _TEX_COMMAND = re.compile(r"\\([A-Za-z]+)")
 _TEX_MATH_DELIMITER = re.compile(r"(?:\$\$?|\\\(|\\\)|\\\[|\\\])")
 _NAME_PUNCTUATION = re.compile(r"[^a-z0-9 ]+")
+_FAMILY_PARTICLES = frozenset({
+    "da", "de", "del", "della", "den", "der", "di", "du",
+    "la", "le", "van", "von",
+})
 
 
 _TEX_SYMBOLS = {
@@ -333,32 +337,57 @@ def _normalized_value(field: str, value: AuditValue) -> tuple[str, ...]:
     return normalized
 
 
-def _name_parts(value: str) -> tuple[str, str, str]:
+def _name_parts(value: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
     text = _strip_diacritics(value).casefold()
     text = _DASH.sub(" ", text)
     text = _NAME_PUNCTUATION.sub(" ", text)
     tokens = tuple(item for item in _SPACE.sub(" ", text).strip().split(" ") if item)
     if not tokens:
-        return "", "", ""
-    family = tokens[-1]
-    given_tokens = tokens[:-1]
-    given_joined = "".join(given_tokens)
-    initials = "".join(token[0] for token in given_tokens if token)
-    return family, given_joined, initials
+        return (), ()
+
+    family_start = len(tokens) - 1
+    while family_start > 0 and tokens[family_start - 1] in _FAMILY_PARTICLES:
+        family_start -= 1
+    return tokens[:family_start], tokens[family_start:]
+
+
+def _compatible_given_names(
+    left: tuple[str, ...],
+    right: tuple[str, ...],
+) -> bool:
+    if left == right:
+        return True
+    if not left or not right:
+        return False
+
+    left_joined = "".join(left)
+    right_joined = "".join(right)
+    if left_joined == right_joined:
+        return True
+
+    left_all_initials = all(len(token) == 1 for token in left)
+    right_all_initials = all(len(token) == 1 for token in right)
+    if left_all_initials and right_all_initials:
+        return left == right
+
+    if left_all_initials:
+        return left[0] == right[0][0]
+    if right_all_initials:
+        return right[0] == left[0][0]
+
+    return False
 
 
 def _compatible_name(left: str, right: str) -> bool:
     if _normalize_text(left, field="authors") == _normalize_text(right, field="authors"):
         return True
-    left_family, left_given, left_initials = _name_parts(left)
-    right_family, right_given, right_initials = _name_parts(right)
-    if not left_family or left_family != right_family:
-        return False
-    if left_given == right_given:
-        return True
-    if not left_given or not right_given:
-        return False
-    return bool(left_initials and left_initials == right_initials)
+    left_given, left_family = _name_parts(left)
+    right_given, right_family = _name_parts(right)
+    return bool(
+        left_family
+        and left_family == right_family
+        and _compatible_given_names(left_given, right_given)
+    )
 
 
 def _compatible_contributors(
@@ -389,6 +418,22 @@ def _near_equal_abstract(canonical: AuditValue, provider: AuditValue) -> bool:
     return SequenceMatcher(None, left, right).ratio() >= 0.98
 
 
+def _equivalent_values(
+    field: str,
+    left: AuditValue,
+    right: AuditValue,
+) -> bool:
+    if left == right:
+        return True
+    if _normalized_value(field, left) == _normalized_value(field, right):
+        return True
+    if field in {"authors", "editors"}:
+        return _compatible_contributors(left, right)
+    if field == "abstract":
+        return _near_equal_abstract(left, right)
+    return False
+
+
 def _is_empty(value: AuditValue) -> bool:
     if isinstance(value, str):
         return not value.strip()
@@ -410,14 +455,7 @@ def _classify_pair(
         return "provider-missing"
     if canonical == provider:
         return "equal"
-    if _normalized_value(field, canonical) == _normalized_value(field, provider):
-        return "formatting-only"
-    if field in {"authors", "editors"} and _compatible_contributors(
-        canonical,
-        provider,
-    ):
-        return "formatting-only"
-    if field == "abstract" and _near_equal_abstract(canonical, provider):
+    if _equivalent_values(field, canonical, provider):
         return "formatting-only"
     return "identity-problem" if identity else "substantive-difference"
 
@@ -436,11 +474,14 @@ def _provider_disagreements(
             for item in available
             if field in item.fields and not _is_empty(item.fields[field])
         )
-        normalized = {
-            _normalized_value(field, value)
-            for _, value in values
-        }
-        if len(values) >= 2 and len(normalized) > 1:
+        representatives: list[AuditValue] = []
+        for _, value in values:
+            if not any(
+                _equivalent_values(field, value, existing)
+                for existing in representatives
+            ):
+                representatives.append(value)
+        if len(values) >= 2 and len(representatives) > 1:
             disagreements.append(
                 AuditDisagreement(field=field, provider_values=values)
             )
@@ -457,11 +498,14 @@ def _provider_disagreements(
             for item in available
             if name in item.identifiers
         )
-        normalized = {
-            _normalized_value(field, value)
-            for _, value in values
-        }
-        if len(values) >= 2 and len(normalized) > 1:
+        representatives: list[AuditValue] = []
+        for _, value in values:
+            if not any(
+                _equivalent_values(field, value, existing)
+                for existing in representatives
+            ):
+                representatives.append(value)
+        if len(values) >= 2 and len(representatives) > 1:
             disagreements.append(
                 AuditDisagreement(field=field, provider_values=values)
             )
