@@ -20,7 +20,7 @@ arxiv:
   max_results: 25
   sort_by: lastUpdatedDate
   sort_order: descending
-  output: site/data/arxiv.json
+  output: docs/assets/data/arxiv.json
 
 paths:
   bibliography: data/bibliography.json
@@ -52,6 +52,7 @@ discovery:
 refresh:
   types:
     - journal-article
+    - proceedings-article
   when_missing_any:
     - volume
     - issue
