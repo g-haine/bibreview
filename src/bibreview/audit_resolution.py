@@ -12,7 +12,7 @@ from typing import Any, Mapping
 from .config import BibReviewConfig
 from .pipeline.audit import AuditReviewFinding, AuditValue
 from .project import ProjectStateError
-from .project_audit import AuditPublicationReview, ProjectAuditReview
+from .project_audit import ProjectAuditReview
 from .storage import read_json, write_json
 
 
@@ -39,16 +39,13 @@ class AuditResolutionCandidate:
 
 @dataclass(frozen=True)
 class AuditResolutionDecision:
-    """Persisted human decision for one actionable audit finding."""
+    """Persisted decision for one actionable finding."""
 
     key: str
     publication_id: str
-    identifiers: Mapping[str, str]
+    doi: str
     title: str
     field: str
-    classification: str
-    canonical_value: AuditValue
-    provider_values: tuple[tuple[str, AuditValue], ...]
     decision: str
     resolved_value: AuditValue | None
 
@@ -56,21 +53,11 @@ class AuditResolutionDecision:
         return {
             "key": self.key,
             "publication_id": self.publication_id,
-            "identifiers": dict(self.identifiers),
+            "doi": self.doi,
             "title": self.title,
             "field": self.field,
-            "classification": self.classification,
-            "canonical_value": _json_value(self.canonical_value),
-            "provider_values": [
-                [provider, _json_value(value)]
-                for provider, value in self.provider_values
-            ],
             "decision": self.decision,
-            "resolved_value": (
-                None
-                if self.resolved_value is None
-                else _json_value(self.resolved_value)
-            ),
+            "resolved_value": _json_value(self.resolved_value),
         }
 
 
@@ -87,7 +74,7 @@ class AuditResolutionState:
             "schema_version": AUDIT_RESOLUTION_SCHEMA_VERSION,
             "review_fingerprint": self.review_fingerprint,
             "total_actionable": self.total_actionable,
-            "decisions": [decision.data() for decision in self.decisions],
+            "decisions": [item.data() for item in self.decisions],
         }
 
     def summary(self) -> str:
@@ -107,11 +94,16 @@ def audit_resolution_path(config: BibReviewConfig) -> Path:
     """Return the resolution state path beside the configured audit report."""
     if not isinstance(config, BibReviewConfig):
         raise ProjectStateError("config must be a BibReviewConfig")
-    return config.audit.report.with_name("resolutions.json")
+    path = config.audit.report.with_name("resolutions.json")
+    if path in {config.audit.report, config.audit.campaign}:
+        raise ProjectStateError(
+            "audit resolution path would collide with configured audit state"
+        )
+    return path
 
 
-def _json_value(value: AuditValue) -> str | list[str]:
-    if isinstance(value, str):
+def _json_value(value: AuditValue | None) -> str | list[str] | None:
+    if value is None or isinstance(value, str):
         return value
     return list(value)
 
@@ -125,19 +117,19 @@ def _audit_value(value: Any, *, name: str) -> AuditValue:
 
 
 def _optional_audit_value(value: Any, *, name: str) -> AuditValue | None:
-    if value is None:
-        return None
-    return _audit_value(value, name=name)
+    return None if value is None else _audit_value(value, name=name)
 
 
-def _proposed_value(finding: AuditReviewFinding) -> AuditValue | None:
-    """Return one exact common provider value, never an arbitrary representative."""
+def _exact_proposal(finding: AuditReviewFinding) -> AuditValue | None:
+    """Return a common raw provider value without choosing a representative."""
     if not finding.provider_values:
         return None
     first = finding.provider_values[0][1]
-    if all(value == first for _, value in finding.provider_values[1:]):
-        return first
-    return None
+    return (
+        first
+        if all(value == first for _, value in finding.provider_values[1:])
+        else None
+    )
 
 
 def actionable_resolution_candidates(
@@ -147,22 +139,19 @@ def actionable_resolution_candidates(
     if not isinstance(review, ProjectAuditReview):
         raise ProjectStateError("review must be a ProjectAuditReview")
 
-    raw: list[tuple[AuditPublicationReview, AuditReviewFinding]] = []
-    seen: set[str] = set()
-    for item in review.items:
-        for finding in item.findings:
-            if not finding.actionable:
-                continue
-            key = f"{item.publication_id}:{finding.field}"
-            if key in seen:
-                raise ProjectStateError(
-                    "actionable audit review contains duplicate publication/field "
-                    f"key: {key}"
-                )
-            seen.add(key)
-            raw.append((item, finding))
+    findings = [
+        (item, finding)
+        for item in review.items
+        for finding in item.findings
+        if finding.actionable
+    ]
+    keys = [f"{item.publication_id}:{finding.field}" for item, finding in findings]
+    if len(keys) != len(set(keys)):
+        raise ProjectStateError(
+            "actionable audit review contains duplicate publication/field keys"
+        )
 
-    total = len(raw)
+    total = len(findings)
     return tuple(
         AuditResolutionCandidate(
             position=index,
@@ -171,14 +160,14 @@ def actionable_resolution_candidates(
             identifiers=item.identifiers,
             title=item.title,
             finding=finding,
-            proposed_value=_proposed_value(finding),
+            proposed_value=_exact_proposal(finding),
         )
-        for index, (item, finding) in enumerate(raw, 1)
+        for index, (item, finding) in enumerate(findings, 1)
     )
 
 
 def audit_review_fingerprint(review: ProjectAuditReview) -> str:
-    """Fingerprint only the actionable evidence that human decisions depend on."""
+    """Fingerprint the actionable evidence that resolution decisions depend on."""
     payload = [
         {
             "publication_id": candidate.publication_id,
@@ -204,95 +193,6 @@ def audit_review_fingerprint(review: ProjectAuditReview) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
-def _decision_from_data(value: Any, *, index: int) -> AuditResolutionDecision:
-    if not isinstance(value, Mapping):
-        raise ProjectStateError(f"audit resolution decision {index} must be an object")
-
-    def required_string(name: str) -> str:
-        raw = value.get(name)
-        if not isinstance(raw, str) or not raw:
-            raise ProjectStateError(
-                f"audit resolution decision {index}.{name} must be a non-empty string"
-            )
-        return raw
-
-    identifiers_raw = value.get("identifiers")
-    if not isinstance(identifiers_raw, Mapping) or any(
-        not isinstance(key, str)
-        or not key
-        or not isinstance(item, str)
-        or not item
-        for key, item in identifiers_raw.items()
-    ):
-        raise ProjectStateError(
-            f"audit resolution decision {index}.identifiers must map strings to strings"
-        )
-
-    provider_values_raw = value.get("provider_values")
-    if not isinstance(provider_values_raw, list):
-        raise ProjectStateError(
-            f"audit resolution decision {index}.provider_values must be a list"
-        )
-    provider_values: list[tuple[str, AuditValue]] = []
-    for provider_index, pair in enumerate(provider_values_raw, 1):
-        if (
-            not isinstance(pair, list)
-            or len(pair) != 2
-            or not isinstance(pair[0], str)
-            or not pair[0]
-        ):
-            raise ProjectStateError(
-                "audit resolution decision "
-                f"{index}.provider_values[{provider_index}] must be [provider, value]"
-            )
-        provider_values.append(
-            (
-                pair[0],
-                _audit_value(
-                    pair[1],
-                    name=(
-                        "audit resolution decision "
-                        f"{index}.provider_values[{provider_index}][1]"
-                    ),
-                ),
-            )
-        )
-
-    decision = required_string("decision")
-    if decision not in _DECISIONS:
-        raise ProjectStateError(
-            f"audit resolution decision {index}.decision is unsupported: {decision}"
-        )
-    resolved_value = _optional_audit_value(
-        value.get("resolved_value"),
-        name=f"audit resolution decision {index}.resolved_value",
-    )
-    if decision in {"accepted", "custom"} and resolved_value is None:
-        raise ProjectStateError(
-            f"audit resolution decision {index} requires resolved_value"
-        )
-    if decision in {"rejected", "deferred"} and resolved_value is not None:
-        raise ProjectStateError(
-            f"audit resolution decision {index} must not define resolved_value"
-        )
-
-    return AuditResolutionDecision(
-        key=required_string("key"),
-        publication_id=required_string("publication_id"),
-        identifiers=MappingProxyType(dict(identifiers_raw)),
-        title=required_string("title"),
-        field=required_string("field"),
-        classification=required_string("classification"),
-        canonical_value=_audit_value(
-            value.get("canonical_value"),
-            name=f"audit resolution decision {index}.canonical_value",
-        ),
-        provider_values=tuple(provider_values),
-        decision=decision,
-        resolved_value=resolved_value,
-    )
-
-
 def audit_resolution_state_from_data(value: Any) -> AuditResolutionState:
     """Strictly validate one persisted audit-resolution document."""
     if not isinstance(value, Mapping):
@@ -302,23 +202,73 @@ def audit_resolution_state_from_data(value: Any) -> AuditResolutionState:
             "unsupported audit resolution schema_version: "
             f"{value.get('schema_version')!r}"
         )
+
     fingerprint = value.get("review_fingerprint")
+    total = value.get("total_actionable")
+    raw_decisions = value.get("decisions")
     if not isinstance(fingerprint, str) or len(fingerprint) != 64:
         raise ProjectStateError(
             "audit resolutions review_fingerprint must be a SHA-256 string"
         )
-    total = value.get("total_actionable")
     if not isinstance(total, int) or isinstance(total, bool) or total < 0:
         raise ProjectStateError(
             "audit resolutions total_actionable must be a non-negative integer"
         )
-    raw_decisions = value.get("decisions")
     if not isinstance(raw_decisions, list):
         raise ProjectStateError("audit resolutions decisions must be a list")
-    decisions = tuple(
-        _decision_from_data(item, index=index)
-        for index, item in enumerate(raw_decisions, 1)
-    )
+
+    decisions: list[AuditResolutionDecision] = []
+    for index, raw in enumerate(raw_decisions, 1):
+        if not isinstance(raw, Mapping):
+            raise ProjectStateError(
+                f"audit resolution decision {index} must be an object"
+            )
+
+        strings: dict[str, str] = {}
+        for name in ("key", "publication_id", "doi", "title", "field", "decision"):
+            item = raw.get(name)
+            if not isinstance(item, str) or not item:
+                raise ProjectStateError(
+                    f"audit resolution decision {index}.{name} "
+                    "must be a non-empty string"
+                )
+            strings[name] = item
+
+        decision = strings["decision"]
+        if decision not in _DECISIONS:
+            raise ProjectStateError(
+                f"audit resolution decision {index}.decision is unsupported: "
+                f"{decision}"
+            )
+        resolved = _optional_audit_value(
+            raw.get("resolved_value"),
+            name=f"audit resolution decision {index}.resolved_value",
+        )
+        if decision in {"accepted", "custom"} and resolved is None:
+            raise ProjectStateError(
+                f"audit resolution decision {index} requires resolved_value"
+            )
+        if decision in {"rejected", "deferred"} and resolved is not None:
+            raise ProjectStateError(
+                f"audit resolution decision {index} must not define resolved_value"
+            )
+        if strings["key"] != f"{strings['publication_id']}:{strings['field']}":
+            raise ProjectStateError(
+                f"audit resolution decision {index}.key is inconsistent"
+            )
+
+        decisions.append(
+            AuditResolutionDecision(
+                key=strings["key"],
+                publication_id=strings["publication_id"],
+                doi=strings["doi"],
+                title=strings["title"],
+                field=strings["field"],
+                decision=decision,
+                resolved_value=resolved,
+            )
+        )
+
     keys = [item.key for item in decisions]
     if len(keys) != len(set(keys)):
         raise ProjectStateError("audit resolutions contain duplicate decision keys")
@@ -329,7 +279,7 @@ def audit_resolution_state_from_data(value: Any) -> AuditResolutionState:
     return AuditResolutionState(
         review_fingerprint=fingerprint,
         total_actionable=total,
-        decisions=decisions,
+        decisions=tuple(decisions),
     )
 
 
@@ -337,33 +287,45 @@ def load_project_audit_resolutions(
     config: BibReviewConfig,
     review: ProjectAuditReview,
 ) -> AuditResolutionState:
-    """Load/resume decisions, rejecting stale state after review evidence changes."""
+    """Load/resume decisions and reject stale state after review changes."""
+    candidates = actionable_resolution_candidates(review)
     fingerprint = audit_review_fingerprint(review)
-    total = len(actionable_resolution_candidates(review))
     path = audit_resolution_path(config)
+
     if not path.exists():
         return AuditResolutionState(
             review_fingerprint=fingerprint,
-            total_actionable=total,
+            total_actionable=len(candidates),
         )
 
     state = audit_resolution_state_from_data(read_json(path, dict))
     if (
         state.review_fingerprint != fingerprint
-        or state.total_actionable != total
+        or state.total_actionable != len(candidates)
     ):
         raise ProjectStateError(
             f"{path}: audit resolutions do not match the current actionable review; "
             "archive or remove the stale resolution file before starting a new review"
         )
 
-    valid_keys = {candidate.key for candidate in actionable_resolution_candidates(review)}
-    unknown = [decision.key for decision in state.decisions if decision.key not in valid_keys]
-    if unknown:
-        raise ProjectStateError(
-            f"{path}: audit resolutions contain finding(s) absent from current review: "
-            + ", ".join(unknown)
-        )
+    candidates_by_key = {item.key: item for item in candidates}
+    for decision in state.decisions:
+        candidate = candidates_by_key.get(decision.key)
+        if candidate is None:
+            raise ProjectStateError(
+                f"{path}: resolution finding is absent from the current review: "
+                f"{decision.key}"
+            )
+        doi = candidate.identifiers.get("doi", candidate.publication_id)
+        if (
+            decision.publication_id != candidate.publication_id
+            or decision.doi != doi
+            or decision.title != candidate.title
+            or decision.field != candidate.finding.field
+        ):
+            raise ProjectStateError(
+                f"{path}: resolution metadata is inconsistent for {decision.key}"
+            )
     return state
 
 
@@ -393,16 +355,12 @@ def record_audit_resolution(
     item = AuditResolutionDecision(
         key=candidate.key,
         publication_id=candidate.publication_id,
-        identifiers=candidate.identifiers,
+        doi=candidate.identifiers.get("doi", candidate.publication_id),
         title=candidate.title,
         field=candidate.finding.field,
-        classification=candidate.finding.classification,
-        canonical_value=candidate.finding.canonical_value,
-        provider_values=candidate.finding.provider_values,
         decision=decision,
         resolved_value=resolved_value,
     )
-
     decisions = list(state.decisions)
     for index, existing in enumerate(decisions):
         if existing.key == item.key:
@@ -411,6 +369,7 @@ def record_audit_resolution(
     else:
         decisions.append(item)
     return replace(state, decisions=tuple(decisions))
+
 
 def save_project_audit_resolutions(
     config: BibReviewConfig,
@@ -425,8 +384,13 @@ def resolution_counts(state: AuditResolutionState) -> Mapping[str, int]:
     counts = {name: 0 for name in sorted(_DECISIONS)}
     for item in state.decisions:
         counts[item.decision] += 1
-    terminal = counts["accepted"] + counts["custom"] + counts["rejected"]
-    counts["unresolved"] = state.total_actionable - terminal - counts["deferred"]
+    counts["unresolved"] = (
+        state.total_actionable
+        - counts["accepted"]
+        - counts["custom"]
+        - counts["rejected"]
+        - counts["deferred"]
+    )
     return MappingProxyType(counts)
 
 
@@ -461,20 +425,21 @@ def format_audit_resolution_candidate(candidate: AuditResolutionCandidate) -> st
         "",
         "Evidence:",
     ]
-    for provider, value in finding.provider_values:
-        lines.append(f"  {provider}: {_format_value(value)}")
+    lines.extend(
+        f"  {provider}: {_format_value(value)}"
+        for provider, value in finding.provider_values
+    )
     lines.append("")
     if candidate.proposed_value is None:
-        lines.append("Proposed: no single exact provider representation")
-        lines.append(
-            "Use f VALUE to choose the canonical representation explicitly."
+        lines.extend(
+            [
+                "Proposed: no single exact provider representation",
+                "Use f VALUE to choose the canonical representation explicitly.",
+            ]
         )
     else:
         lines.extend(
-            [
-                "Proposed:",
-                f"  {_format_value(candidate.proposed_value)}",
-            ]
+            ["Proposed:", f"  {_format_value(candidate.proposed_value)}"]
         )
     if finding.detail:
         lines.extend(["", f"Reason: {finding.detail}"])
@@ -506,7 +471,7 @@ def parse_custom_resolution_value(
         value = json.loads(text)
     except json.JSONDecodeError as error:
         raise ProjectStateError(
-            'tuple-valued corrections require a JSON string array, '
+            "tuple-valued corrections require a JSON string array, "
             'for example f ["Ada Lovelace", "Alan Turing"]'
         ) from error
     if not isinstance(value, list) or not value or any(
