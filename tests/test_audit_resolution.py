@@ -99,6 +99,43 @@ class AuditResolutionTests(unittest.TestCase):
         self.assertEqual(state.decisions[0].decision, "accepted")
         self.assertEqual(state.decisions[0].resolved_value, "48")
 
+    def test_page_proposal_uses_bibtex_double_hyphen(self):
+        review = review_with(
+            finding(
+                "pages",
+                "",
+                ("crossref", "8793-8805"),
+                ("openalex", "8793-8805"),
+            )
+        )
+        candidate = actionable_resolution_candidates(review)[0]
+        self.assertEqual(candidate.proposed_value, "8793--8805")
+
+    def test_page_proposal_normalizes_unicode_and_mixed_provider_dashes(self):
+        review = review_with(
+            finding(
+                "pages",
+                "",
+                ("crossref", "8793-8805"),
+                ("openalex", "8793–8805"),
+                ("semantic_scholar", "8793—8805"),
+            )
+        )
+        candidate = actionable_resolution_candidates(review)[0]
+        self.assertEqual(candidate.proposed_value, "8793--8805")
+
+    def test_page_proposal_preserves_existing_bibtex_double_hyphen(self):
+        review = review_with(
+            finding(
+                "pages",
+                "",
+                ("crossref", "8793--8805"),
+                ("openalex", "8793--8805"),
+            )
+        )
+        candidate = actionable_resolution_candidates(review)[0]
+        self.assertEqual(candidate.proposed_value, "8793--8805")
+
     def test_equivalent_but_nonidentical_provider_values_require_custom_value(self):
         review = review_with(
             finding(
