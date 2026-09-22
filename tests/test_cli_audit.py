@@ -556,6 +556,119 @@ class AuditCliTests(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("interactive --resolve", stderr.getvalue())
 
+    def test_apply_dry_run_plans_without_writing(self):
+        plan = SimpleNamespace(
+            changed=True,
+            bibtex_backups=(),
+            summary=lambda: (
+                "Audit resolution application\n"
+                "  Actionable findings   : 1\n"
+                "  Accepted              : 1\n"
+                "  Custom                : 0\n"
+                "  Rejected              : 0\n"
+                "  Changes to stage      : 1\n"
+                "  Publications affected : 1\n"
+                "  BibTeX files affected : 1"
+            ),
+            data=lambda: {
+                "actionable_findings": 1,
+                "accepted": 1,
+                "custom": 0,
+                "rejected": 0,
+                "deferred": 0,
+                "unresolved": 0,
+                "changes_to_stage": 1,
+                "publications_affected": 1,
+                "bibtex_files_affected": 1,
+                "changes": [],
+            },
+        )
+        stdout = StringIO()
+        stderr = StringIO()
+        with patch(
+            "bibreview.cli.plan_project_audit_apply",
+            return_value=plan,
+        ), patch(
+            "bibreview.cli.apply_project_audit_apply",
+        ) as apply_plan, redirect_stdout(stdout), redirect_stderr(stderr):
+            code = main([
+                "--config",
+                str(self.config_path),
+                "--dry-run",
+                "audit",
+                "--apply",
+            ])
+
+        self.assertEqual(code, 0, stderr.getvalue())
+        apply_plan.assert_not_called()
+        self.assertIn(
+            "Dry run: Audit resolution application",
+            stdout.getvalue(),
+        )
+        self.assertIn("Staging:", stdout.getvalue())
+
+    def test_apply_json_applies_plan_and_returns_metrics(self):
+        plan = SimpleNamespace(
+            changed=True,
+            bibtex_backups=(),
+            summary=lambda: "Audit resolution application",
+            data=lambda: {
+                "actionable_findings": 92,
+                "accepted": 55,
+                "custom": 24,
+                "rejected": 13,
+                "deferred": 0,
+                "unresolved": 0,
+                "changes_to_stage": 79,
+                "publications_affected": 60,
+                "bibtex_files_affected": 42,
+                "changes": [],
+            },
+        )
+        stdout = StringIO()
+        stderr = StringIO()
+        with patch(
+            "bibreview.cli.plan_project_audit_apply",
+            return_value=plan,
+        ), patch(
+            "bibreview.cli.apply_project_audit_apply",
+        ) as apply_plan, redirect_stdout(stdout), redirect_stderr(stderr):
+            code = main([
+                "--config",
+                str(self.config_path),
+                "audit",
+                "--apply",
+                "--json",
+            ])
+
+        self.assertEqual(code, 0, stderr.getvalue())
+        apply_plan.assert_called_once_with(plan)
+        payload = json.loads(stdout.getvalue())
+        self.assertFalse(payload["dry_run"])
+        self.assertEqual(payload["accepted"], 55)
+        self.assertEqual(payload["custom"], 24)
+        self.assertEqual(payload["rejected"], 13)
+        self.assertEqual(payload["changes_to_stage"], 79)
+
+    def test_apply_rejects_batch_size(self):
+        stdout = StringIO()
+        stderr = StringIO()
+        with patch("bibreview.cli.plan_project_audit_apply") as planner, redirect_stdout(
+            stdout
+        ), redirect_stderr(stderr):
+            code = main([
+                "--config",
+                str(self.config_path),
+                "audit",
+                "--apply",
+                "--batch-size",
+                "1",
+            ])
+
+        self.assertEqual(code, 1)
+        planner.assert_not_called()
+        self.assertIn("--batch-size cannot be used with --apply", stderr.getvalue())
+
     def test_dry_run_selects_batch_without_provider_or_state_writes(self):
         before = self.snapshot()
         stdout = StringIO()
