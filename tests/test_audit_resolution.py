@@ -237,8 +237,73 @@ class AuditResolutionTests(unittest.TestCase):
             ),
             ("Ada Lovelace", "Alan Turing"),
         )
-        with self.assertRaisesRegex(ProjectStateError, "JSON string array"):
-            parse_custom_resolution_value("Ada Lovelace", candidate)
+        self.assertEqual(
+            parse_custom_resolution_value("Ada Lovelace", candidate),
+            ("Ada Lovelace",),
+        )
+
+    def test_custom_tuple_values_accept_semicolon_separated_input(self):
+        review = review_with(
+            finding(
+                "authors",
+                (),
+                ("crossref", ("Nguyen Thanh Sang", "Tan Chee Keong")),
+                ("openalex", ("Nguyen Thanh Sang", "Tan Chee Keong")),
+            )
+        )
+        candidate = actionable_resolution_candidates(review)[0]
+        self.assertEqual(
+            parse_custom_resolution_value(
+                "Nguyen Thanh Sang; Tan Chee Keong; Hussain Mohd Azlan",
+                candidate,
+            ),
+            (
+                "Nguyen Thanh Sang",
+                "Tan Chee Keong",
+                "Hussain Mohd Azlan",
+            ),
+        )
+
+    def test_custom_tuple_values_strip_whitespace_and_reject_empty_items(self):
+        review = review_with(
+            finding(
+                "authors",
+                (),
+                ("crossref", ("Ada Lovelace",)),
+                ("openalex", ("Ada Lovelace",)),
+            )
+        )
+        candidate = actionable_resolution_candidates(review)[0]
+        self.assertEqual(
+            parse_custom_resolution_value(
+                "  Ada Lovelace  ;  Alan Turing  ",
+                candidate,
+            ),
+            ("Ada Lovelace", "Alan Turing"),
+        )
+        with self.assertRaisesRegex(ProjectStateError, "semicolon-separated"):
+            parse_custom_resolution_value(
+                "Ada Lovelace; ; Alan Turing",
+                candidate,
+            )
+
+    def test_custom_tuple_json_input_remains_supported(self):
+        review = review_with(
+            finding(
+                "authors",
+                (),
+                ("crossref", ("Ada Lovelace",)),
+                ("openalex", ("Ada Lovelace",)),
+            )
+        )
+        candidate = actionable_resolution_candidates(review)[0]
+        self.assertEqual(
+            parse_custom_resolution_value(
+                '["Ada Lovelace", "Alan Turing"]',
+                candidate,
+            ),
+            ("Ada Lovelace", "Alan Turing"),
+        )
 
     def test_resolution_document_validation_rejects_duplicate_keys(self):
         review = review_with(
