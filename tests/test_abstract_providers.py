@@ -24,6 +24,56 @@ class SemanticScholarProviderTests(unittest.TestCase):
         )
         self.assertEqual(call.kwargs["headers"], {"x-api-key": "secret-key"})
 
+    def test_fetches_multiple_papers_by_doi_in_one_request(self):
+        transport = Mock()
+        transport.post_json.return_value = [
+            {
+                "title": "One",
+                "externalIds": {"DOI": "10.1/ONE"},
+            },
+            None,
+            {
+                "title": "Three",
+                "externalIds": {"DOI": "10.1/three"},
+            },
+        ]
+        provider = SemanticScholarProvider(
+            transport,
+            api_key="secret-key",
+        )
+
+        result = provider.papers(("10.1/one", "10.1/two", "10.1/three"))
+
+        self.assertEqual(tuple(result), ("10.1/one", "10.1/three"))
+        call = transport.post_json.call_args
+        self.assertEqual(
+            call.args[0],
+            "https://api.semanticscholar.org/graph/v1/paper/batch",
+        )
+        self.assertEqual(
+            call.kwargs["json_body"],
+            {"ids": ["DOI:10.1/one", "DOI:10.1/two", "DOI:10.1/three"]},
+        )
+        self.assertEqual(
+            call.kwargs["params"]["fields"],
+            "title,abstract,year,authors,venue,externalIds",
+        )
+        self.assertEqual(call.kwargs["headers"], {"x-api-key": "secret-key"})
+        self.assertEqual(transport.post_json.call_count, 1)
+
+    def test_batch_lookup_enforces_limit_and_rejects_bad_shape(self):
+        transport = Mock()
+        provider = SemanticScholarProvider(transport)
+        with self.assertRaisesRegex(ValueError, "at most 500"):
+            provider.papers(
+                tuple(f"10.1/item-{index}" for index in range(501))
+            )
+        for data in (None, {}, [1]):
+            with self.subTest(data=data):
+                transport.post_json.return_value = data
+                with self.assertRaisesRegex(ValueError, "unexpected batch response"):
+                    provider.papers(("10.1/test",))
+
     def test_returns_abstract_and_encodes_doi(self):
         transport = Mock()
         transport.json.return_value = {"abstract": "  A useful abstract.  "}
