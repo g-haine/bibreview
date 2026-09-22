@@ -10,6 +10,7 @@ from __future__ import annotations
 from collections import Counter
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
+from difflib import SequenceMatcher
 import html
 import re
 from types import MappingProxyType
@@ -179,6 +180,19 @@ class AuditDisagreement:
 
 
 @dataclass(frozen=True)
+class AuditReviewFinding:
+    """Derived human-review finding without changing stored provider evidence."""
+
+    field: str
+    classification: str
+    providers: tuple[str, ...]
+    canonical_value: AuditValue
+    provider_values: tuple[tuple[str, AuditValue], ...]
+    actionable: bool = True
+    detail: str = ""
+
+
+@dataclass(frozen=True)
 class AuditResult:
     """Complete offline comparison result for one canonical publication."""
 
@@ -252,13 +266,58 @@ def publication_audit_record(publication: Publication) -> AuditRecord:
 _TAG = re.compile(r"<[^>]+>")
 _DASH = re.compile(r"(?:--+|[‐‑‒–—−])")
 _SPACE = re.compile(r"\s+")
+_ABSTRACT_PREFIX = re.compile(r"^(?:abstract|summary)\s*[:.\-]?\s*", re.IGNORECASE)
+_TEX_COMMAND = re.compile(r"\\([A-Za-z]+)")
+_TEX_MATH_DELIMITER = re.compile(r"(?:\$\$?|\\\(|\\\)|\\\[|\\\])")
+_NAME_PUNCTUATION = re.compile(r"[^a-z0-9 ]+")
+
+
+_TEX_SYMBOLS = {
+    "le": "≤",
+    "leq": "≤",
+    "ge": "≥",
+    "geq": "≥",
+    "theta": "θ",
+    "alpha": "α",
+    "beta": "β",
+    "gamma": "γ",
+    "delta": "δ",
+    "lambda": "λ",
+    "mu": "μ",
+    "phi": "φ",
+    "psi": "ψ",
+    "omega": "ω",
+}
+
+
+def _strip_diacritics(value: str) -> str:
+    return "".join(
+        char
+        for char in unicodedata.normalize("NFKD", value)
+        if not unicodedata.combining(char)
+    )
+
+
+def _normalize_tex(value: str) -> str:
+    text = _TEX_MATH_DELIMITER.sub("", value)
+
+    def replace_command(match: re.Match[str]) -> str:
+        command = match.group(1)
+        return _TEX_SYMBOLS.get(command.casefold(), "")
+
+    text = _TEX_COMMAND.sub(replace_command, text)
+    return text.replace("{", "").replace("}", "")
 
 
 def _normalize_text(value: str, *, field: str) -> str:
     text = html.unescape(value)
     text = _TAG.sub("", text)
+    if field in {"title", "abstract"}:
+        text = _normalize_tex(text)
     text = unicodedata.normalize("NFKC", text)
     text = _DASH.sub("-", text)
+    if field == "abstract":
+        text = _ABSTRACT_PREFIX.sub("", text)
     text = _SPACE.sub(" ", text).strip().casefold()
     if field == "pages":
         text = text.replace(" ", "")
@@ -272,6 +331,62 @@ def _normalized_value(field: str, value: AuditValue) -> tuple[str, ...]:
     if field == "keywords":
         return tuple(sorted(set(normalized)))
     return normalized
+
+
+def _name_parts(value: str) -> tuple[str, str, str]:
+    text = _strip_diacritics(value).casefold()
+    text = _DASH.sub(" ", text)
+    text = _NAME_PUNCTUATION.sub(" ", text)
+    tokens = tuple(item for item in _SPACE.sub(" ", text).strip().split(" ") if item)
+    if not tokens:
+        return "", "", ""
+    family = tokens[-1]
+    given_tokens = tokens[:-1]
+    given_joined = "".join(given_tokens)
+    initials = "".join(token[0] for token in given_tokens if token)
+    return family, given_joined, initials
+
+
+def _compatible_name(left: str, right: str) -> bool:
+    if _normalize_text(left, field="authors") == _normalize_text(right, field="authors"):
+        return True
+    left_family, left_given, left_initials = _name_parts(left)
+    right_family, right_given, right_initials = _name_parts(right)
+    if not left_family or left_family != right_family:
+        return False
+    if left_given == right_given:
+        return True
+    if not left_given or not right_given:
+        return False
+    return bool(left_initials and left_initials == right_initials)
+
+
+def _compatible_contributors(
+    canonical: AuditValue,
+    provider: AuditValue,
+) -> bool:
+    if not isinstance(canonical, tuple) or not isinstance(provider, tuple):
+        return False
+    if len(canonical) != len(provider):
+        return False
+    return all(
+        _compatible_name(left, right)
+        for left, right in zip(canonical, provider, strict=True)
+    )
+
+
+def _near_equal_abstract(canonical: AuditValue, provider: AuditValue) -> bool:
+    if not isinstance(canonical, str) or not isinstance(provider, str):
+        return False
+    left = _normalize_text(canonical, field="abstract")
+    right = _normalize_text(provider, field="abstract")
+    if not left or not right:
+        return False
+    shorter = min(len(left), len(right))
+    longer = max(len(left), len(right))
+    if longer == 0 or shorter / longer < 0.95:
+        return False
+    return SequenceMatcher(None, left, right).ratio() >= 0.98
 
 
 def _is_empty(value: AuditValue) -> bool:
@@ -296,6 +411,13 @@ def _classify_pair(
     if canonical == provider:
         return "equal"
     if _normalized_value(field, canonical) == _normalized_value(field, provider):
+        return "formatting-only"
+    if field in {"authors", "editors"} and _compatible_contributors(
+        canonical,
+        provider,
+    ):
+        return "formatting-only"
+    if field == "abstract" and _near_equal_abstract(canonical, provider):
         return "formatting-only"
     return "identity-problem" if identity else "substantive-difference"
 
@@ -424,6 +546,166 @@ def compare_audit_record(
         provider_issues=tuple(issues),
         disagreements=_provider_disagreements(record, evidences),
     )
+
+
+def _disagreements_from_comparisons(
+    comparisons: tuple[AuditComparison, ...],
+) -> tuple[AuditDisagreement, ...]:
+    grouped: dict[str, list[tuple[str, AuditValue]]] = {}
+    for item in comparisons:
+        if _is_empty(item.provider_value):
+            continue
+        grouped.setdefault(item.field, []).append(
+            (item.provider, item.provider_value)
+        )
+
+    disagreements: list[AuditDisagreement] = []
+    for field in sorted(grouped):
+        values = tuple(grouped[field])
+        normalized = {
+            _normalized_value(field, value)
+            for _, value in values
+        }
+        if len(values) >= 2 and len(normalized) > 1:
+            disagreements.append(
+                AuditDisagreement(field=field, provider_values=values)
+            )
+    return tuple(disagreements)
+
+
+def reclassify_audit_result(result: AuditResult) -> AuditResult:
+    """Reapply current offline comparison rules to persisted raw values."""
+    if not isinstance(result, AuditResult):
+        raise AuditError("result must be an AuditResult")
+    comparisons = tuple(
+        AuditComparison(
+            provider=item.provider,
+            field=item.field,
+            classification=_classify_pair(
+                item.field,
+                item.canonical_value,
+                item.provider_value,
+                identity=item.field.startswith("identifiers.")
+                and not _is_empty(item.canonical_value),
+            ),
+            canonical_value=item.canonical_value,
+            provider_value=item.provider_value,
+        )
+        for item in result.comparisons
+    )
+    return AuditResult(
+        publication_id=result.publication_id,
+        identifiers=result.identifiers,
+        permalink=result.permalink,
+        title=result.title,
+        comparisons=comparisons,
+        provider_issues=result.provider_issues,
+        disagreements=_disagreements_from_comparisons(comparisons),
+    )
+
+
+def _canonical_field_value(
+    comparisons: tuple[AuditComparison, ...],
+    field: str,
+) -> AuditValue:
+    values = [
+        item.canonical_value
+        for item in comparisons
+        if item.field == field and not _is_empty(item.canonical_value)
+    ]
+    if not values:
+        return ""
+    return values[0]
+
+
+def audit_review_findings(result: AuditResult) -> tuple[AuditReviewFinding, ...]:
+    """Derive concise human-review findings from a full raw audit result."""
+    if not isinstance(result, AuditResult):
+        raise AuditError("result must be an AuditResult")
+
+    comparisons = result.comparisons
+    canonical_editors = _canonical_field_value(comparisons, "editors")
+    equal_fields = {
+        item.field
+        for item in comparisons
+        if item.classification == "equal"
+    }
+    findings: list[AuditReviewFinding] = []
+    handled_role_pairs: set[tuple[str, str]] = set()
+
+    for item in comparisons:
+        if item.classification in {"equal", "formatting-only", "provider-missing"}:
+            continue
+
+        if (
+            item.field == "authors"
+            and item.classification == "canonical-missing"
+            and not _is_empty(canonical_editors)
+            and _compatible_contributors(canonical_editors, item.provider_value)
+        ):
+            key = (item.provider, item.field)
+            if key not in handled_role_pairs:
+                findings.append(
+                    AuditReviewFinding(
+                        field="contributors",
+                        classification="role-disagreement",
+                        providers=(item.provider,),
+                        canonical_value=canonical_editors,
+                        provider_values=((item.provider, item.provider_value),),
+                        actionable=False,
+                        detail="provider authors match canonical editors",
+                    )
+                )
+                handled_role_pairs.add(key)
+            continue
+
+        if (
+            item.classification == "substantive-difference"
+            and item.field in {"publication_year", "container_title"}
+            and item.field in equal_fields
+        ):
+            continue
+
+        findings.append(
+            AuditReviewFinding(
+                field=item.field,
+                classification=item.classification,
+                providers=(item.provider,),
+                canonical_value=item.canonical_value,
+                provider_values=((item.provider, item.provider_value),),
+                actionable=True,
+            )
+        )
+
+    existing_fields = {
+        (finding.field, finding.classification)
+        for finding in findings
+    }
+    for disagreement in result.disagreements:
+        if (
+            disagreement.field in {"publication_year", "container_title"}
+            and disagreement.field in equal_fields
+        ):
+            continue
+        if (disagreement.field, "substantive-difference") in existing_fields:
+            continue
+        findings.append(
+            AuditReviewFinding(
+                field=disagreement.field,
+                classification="provider-disagreement",
+                providers=tuple(
+                    provider for provider, _ in disagreement.provider_values
+                ),
+                canonical_value=_canonical_field_value(
+                    comparisons,
+                    disagreement.field,
+                ),
+                provider_values=disagreement.provider_values,
+                actionable=False,
+            )
+        )
+
+    return tuple(findings)
 
 
 def _json_value(value: AuditValue) -> str | list[str]:
