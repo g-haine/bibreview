@@ -33,6 +33,49 @@ class OpenAlexProviderTests(unittest.TestCase):
         with self.assertRaisesRegex(OpenAlexError, "unexpected work response"):
             provider.work("10.1000/test")
 
+    def test_fetches_multiple_works_by_doi_in_one_request(self) -> None:
+        self.transport.json.return_value = {
+            "results": [
+                {"doi": "https://doi.org/10.1000/A", "title": "A"},
+                {"doi": "10.1000/b", "title": "B"},
+            ],
+            "meta": {},
+        }
+        provider = OpenAlexProvider(self.transport, api_key="secret")
+
+        result = provider.works(("10.1000/A", "10.1000/b"))
+
+        self.assertEqual(tuple(result), ("10.1000/a", "10.1000/b"))
+        call = self.transport.json.call_args
+        self.assertEqual(call.args[0], "https://api.openalex.org/works")
+        self.assertEqual(
+            call.kwargs["params"]["filter"],
+            "doi:https://doi.org/10.1000/a|https://doi.org/10.1000/b",
+        )
+        self.assertEqual(call.kwargs["params"]["per-page"], 2)
+        self.assertEqual(call.kwargs["params"]["api_key"], "secret")
+        self.assertEqual(self.transport.json.call_count, 1)
+
+    def test_batch_lookup_omits_absent_records_and_enforces_limit(self) -> None:
+        self.transport.json.return_value = {"results": [], "meta": {}}
+        provider = OpenAlexProvider(self.transport)
+        self.assertEqual(
+            provider.works(("10.1000/missing", "10.1000/missing")),
+            {},
+        )
+        with self.assertRaisesRegex(ValueError, "at most 100"):
+            provider.works(
+                tuple(f"10.1000/item-{index}" for index in range(101))
+            )
+
+    def test_batch_lookup_rejects_bad_shape(self) -> None:
+        provider = OpenAlexProvider(self.transport)
+        for data in (None, [], {}, {"results": {}}):
+            with self.subTest(data=data):
+                self.transport.json.return_value = data
+                with self.assertRaisesRegex(OpenAlexError, "unexpected batch response"):
+                    provider.works(("10.1000/test",))
+
     def test_discovers_unique_normalized_dois_across_pages(self) -> None:
         self.transport.json.side_effect = [
             {
