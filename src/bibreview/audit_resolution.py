@@ -402,48 +402,15 @@ def record_audit_resolution(
         decision=decision,
         resolved_value=resolved_value,
     )
-    decisions = [entry for entry in state.decisions if entry.key != item.key]
-    decisions.append(item)
 
-    order = {
-        candidate.key: candidate.position
-        for candidate in actionable_resolution_candidates_for_state_guard(state, candidate)
-    }
-    decisions.sort(key=lambda entry: order.get(entry.key, state.total_actionable + 1))
+    decisions = list(state.decisions)
+    for index, existing in enumerate(decisions):
+        if existing.key == item.key:
+            decisions[index] = item
+            break
+    else:
+        decisions.append(item)
     return replace(state, decisions=tuple(decisions))
-
-
-def actionable_resolution_candidates_for_state_guard(
-    state: AuditResolutionState,
-    current: AuditResolutionCandidate,
-) -> tuple[AuditResolutionCandidate, ...]:
-    """Small ordering guard for isolated decision updates.
-
-    Decisions are normally appended in review order by the CLI. Existing decisions keep
-    their relative order; the current candidate receives its known review position.
-    """
-    placeholders = [
-        AuditResolutionCandidate(
-            position=index,
-            total=state.total_actionable,
-            publication_id=decision.publication_id,
-            identifiers=decision.identifiers,
-            title=decision.title,
-            finding=AuditReviewFinding(
-                field=decision.field,
-                classification=decision.classification,
-                providers=tuple(provider for provider, _ in decision.provider_values),
-                canonical_value=decision.canonical_value,
-                provider_values=decision.provider_values,
-                actionable=True,
-            ),
-            proposed_value=None,
-        )
-        for index, decision in enumerate(state.decisions, 1)
-    ]
-    placeholders.append(current)
-    return tuple(placeholders)
-
 
 def save_project_audit_resolutions(
     config: BibReviewConfig,
