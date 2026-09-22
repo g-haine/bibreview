@@ -10,7 +10,7 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
-from bibreview.cli import main
+from bibreview.cli import _enable_interactive_line_editing, main
 from bibreview.config import load_config
 from bibreview.identity import new_publication_id
 from bibreview.model import Author, Publication
@@ -62,6 +62,18 @@ class FakeAuditSource:
                 "publication_year": "2026",
             },
         )
+
+
+class AuditResolverLineEditingTests(unittest.TestCase):
+    def test_readline_is_loaded_for_interactive_line_editing(self):
+        with patch("bibreview.cli.import_module") as import_module_mock:
+            _enable_interactive_line_editing()
+
+        import_module_mock.assert_called_once_with("readline")
+
+    def test_missing_readline_is_a_graceful_fallback(self):
+        with patch("bibreview.cli.import_module", side_effect=ImportError):
+            _enable_interactive_line_editing()
 
 
 class AuditCliTests(unittest.TestCase):
@@ -294,6 +306,8 @@ class AuditCliTests(unittest.TestCase):
             "bibreview.cli.project_audit_review",
             return_value=review,
         ), patch(
+            "bibreview.cli._enable_interactive_line_editing",
+        ) as line_editing, patch(
             "builtins.input",
             side_effect=["", "f Preferred title", "n", "s"],
         ), redirect_stdout(stdout), redirect_stderr(stderr):
@@ -305,6 +319,7 @@ class AuditCliTests(unittest.TestCase):
             ])
 
         self.assertEqual(code, 0, stderr.getvalue())
+        line_editing.assert_called_once_with()
         self.assertIn("[1/4] 10.1000/audit", stdout.getvalue())
         self.assertIn("Proposed: no single exact provider representation", stdout.getvalue())
         resolution_path = self.root / "state/resolutions.json"
