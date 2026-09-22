@@ -43,6 +43,11 @@ from .project_audit import (
     plan_project_audit_reclassify,
     project_audit_review,
 )
+from .project_audit_apply import (
+    apply_project_audit_apply,
+    format_project_audit_apply_plan,
+    plan_project_audit_apply,
+)
 from .project_refresh import apply_project_refresh, plan_project_refresh
 from .project_render import apply_project_render, plan_project_render
 from .reporting import Reporter
@@ -122,6 +127,11 @@ def _parser() -> argparse.ArgumentParser:
         "--resolve",
         action="store_true",
         help="Interactively resolve actionable audit findings without changing canonical metadata",
+    )
+    audit_actions.add_argument(
+        "--apply",
+        action="store_true",
+        help="Apply completed audit resolutions to reviewable staging and tracked BibTeX",
     )
     audit.add_argument(
         "--json",
@@ -327,6 +337,54 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "audit":
         reporter = Reporter(-1 if args.quiet else args.verbose)
+
+        if args.apply:
+            try:
+                if args.batch_size is not None:
+                    raise ProjectStateError(
+                        "--batch-size cannot be used with --apply"
+                    )
+                apply_plan = plan_project_audit_apply(config)
+                if not args.dry_run:
+                    apply_project_audit_apply(apply_plan)
+            except (
+                OSError,
+                StorageError,
+                ProjectStateError,
+                ValueError,
+                TypeError,
+            ) as error:
+                print(f"bibreview audit: {error}", file=sys.stderr)
+                return 1
+
+            payload = {
+                "dry_run": bool(args.dry_run),
+                "changed": apply_plan.changed,
+                "staging": str(config.paths.collected),
+                "bibtex_backups": [
+                    str(path) for path in apply_plan.bibtex_backups
+                ],
+                **apply_plan.data(),
+            }
+            if args.json_output:
+                print(json.dumps(payload, ensure_ascii=False, indent=2))
+            elif not args.quiet:
+                prefix = "Dry run: " if args.dry_run else ""
+                report = (
+                    format_project_audit_apply_plan(apply_plan)
+                    if args.verbose
+                    else apply_plan.summary()
+                )
+                print(prefix + report)
+                print(f"Staging: {config.paths.collected}")
+                for backup in apply_plan.bibtex_backups:
+                    label = (
+                        "Would create BibTeX backup"
+                        if args.dry_run
+                        else "BibTeX backup"
+                    )
+                    print(f"{label}: {backup}")
+            return 0
 
         if args.resolve:
             try:

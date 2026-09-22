@@ -8,7 +8,7 @@ Always make corrections in a clean Git working tree when possible.
 
 ## Wrong metadata detected before merge
 
-After **collect** or **refresh**, inspect the configured collected.json.
+After **collect**, **refresh**, or **audit --apply**, inspect the configured collected.json.
 
 If a provider returned an incorrect title, author, journal, date, volume, issue,
 pages, abstract, event or keyword:
@@ -61,6 +61,22 @@ Then recollect the affected staging data using the remaining providers.
 CrossRef is the core DOI metadata provider and cannot be disabled for DOI-backed
 collection. If CrossRef itself contains incorrect bibliographic metadata, use a
 reviewed manual correction.
+
+## Applying reviewed historical-audit corrections
+
+When a completed historical audit already contains explicit human resolutions,
+prefer the audited staging path instead of editing canonical JSON directly:
+
+~~~bash
+bibreview --config bibreview.yml --dry-run audit --apply
+bibreview --config bibreview.yml audit --apply
+~~~
+
+Inspect **collected.json**, every changed tracked BibTeX file, and the reported
+BibTeX backups. If the plan is correct, promote it with the normal
+`bibreview merge` command. BibReview refuses to apply a resolution if the
+canonical value has changed since the audit, so newer manual/provider work is
+not silently overwritten.
 
 ## Correction after a publication was already merged
 

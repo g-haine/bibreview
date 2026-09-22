@@ -135,6 +135,14 @@ ambiguous representations require an explicit custom value. Rejected and
 deferred findings remain distinguishable, and the session can be stopped and
 resumed safely.
 
+After every actionable finding has a final decision, `bibreview audit --apply`
+promotes accepted/custom resolutions into the normal reviewable
+`collected.json` staging while synchronizing applicable tracked BibTeX fields.
+Changed BibTeX files are backed up first. The command refuses non-empty staging,
+stale canonical values, incomplete resolutions, or unsafe BibTeX edits. Use
+`bibreview --dry-run audit --apply` before applying, inspect JSON/BibTeX diffs,
+then use the ordinary explicit `bibreview merge` step.
+
 By default, `bibreview audit --review` prints only the aggregate review summary
 so long-running campaigns remain readable. Use the existing global verbose form,
 `bibreview -v audit --review`, for the complete publication-by-publication
@@ -153,14 +161,14 @@ BibReview keeps canonical and intermediate state visible in ordinary files:
 
 ~~~text
 bibliography.json    canonical reviewed bibliography
-collected.json       current collection/refresh staging batch
+collected.json       current collect/refresh/audit-apply staging batch
 known.txt            accepted DOI state
 pending.txt          DOI values waiting for collection
 review.txt           DOI values requiring human relevance review
 rejected.txt         deliberately excluded DOI values
 authors.json         reviewed author-name mappings
 bib/                 tracked BibTeX sources
-archive/             backups created by refresh/merge
+archive/             backups created by refresh/audit-apply/merge
 ~~~
 
 The canonical bibliography is a versioned JSON document with global metadata,
