@@ -2,6 +2,27 @@
 
 All notable BibReview releases are documented here.
 
+## 1.6.1 — 2026-09-22
+
+### Explicit audit-apply no-op reporting
+
+- report accepted/custom audit resolutions whose resolved value is already equal
+  to the current canonical value instead of silently omitting them from the
+  application summary;
+- add a `No-op resolutions` count to human-readable `audit --apply` output;
+- expose structured no-op details in JSON application plans;
+- show DOI, title, field, unchanged value, and decision source in verbose
+  application output;
+- keep no-op resolutions out of `collected.json`, BibTeX updates, backups, and
+  affected-publication counts.
+
+### Validation
+
+- add regression coverage for accepted and custom no-op resolutions;
+- verify summary, verbose, and JSON reporting while preserving write-free no-op
+  behavior;
+- validate the correction with 366 passing tests before release.
+
 ## 1.6.0 — 2026-09-22
 
 ### Audited correction promotion
