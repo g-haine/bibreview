@@ -17,6 +17,7 @@ from bibreview.project import ProjectStateError
 from bibreview.project_audit import AuditPublicationReview, ProjectAuditReview
 from bibreview.project_audit_apply import (
     apply_project_audit_apply,
+    format_project_audit_apply_plan,
     plan_project_audit_apply,
 )
 from bibreview.storage import read_bibliography, write_bibliography
@@ -327,6 +328,45 @@ class ProjectAuditApplyTests(unittest.TestCase):
             self.bibtex_path.read_text(encoding="utf-8"),
         )
 
+    def test_equal_custom_resolution_is_reported_as_explicit_no_op(self):
+        review = self.review(
+            self.finding("title", "Old title", "New title"),
+        )
+        state = self.state(
+            self.decision("title", "custom", "Old title"),
+        )
+
+        plan = self.patched_plan(review, state)
+
+        self.assertFalse(plan.changed)
+        self.assertEqual(plan.changes, ())
+        self.assertEqual(len(plan.no_ops), 1)
+        self.assertEqual(plan.no_ops[0].field, "title")
+        self.assertEqual(plan.no_ops[0].decision, "custom")
+        self.assertEqual(plan.no_ops[0].value, "Old title")
+        self.assertEqual(plan.data()["no_op_resolutions"], 1)
+        self.assertEqual(plan.data()["changes_to_stage"], 0)
+        self.assertIn("No-op resolutions     : 1", plan.summary())
+        verbose = format_project_audit_apply_plan(plan)
+        self.assertIn("source  : custom (no-op)", verbose)
+        self.assertIn("staged  : unchanged", verbose)
+        self.assertIn("BibTeX  : unchanged", verbose)
+
+    def test_equal_accepted_resolution_is_reported_as_explicit_no_op(self):
+        review = self.review(
+            self.finding("volume", "1", "1"),
+        )
+        state = self.state(
+            self.decision("volume", "accepted", "1"),
+        )
+
+        plan = self.patched_plan(review, state)
+
+        self.assertFalse(plan.changed)
+        self.assertEqual(len(plan.no_ops), 1)
+        self.assertEqual(plan.no_ops[0].decision, "accepted")
+        self.assertEqual(plan.no_ops[0].value, "1")
+
     def test_rejected_only_review_is_a_noop(self):
         review = self.review(
             self.finding("volume", "1", "2"),
@@ -339,6 +379,7 @@ class ProjectAuditApplyTests(unittest.TestCase):
 
         self.assertFalse(plan.changed)
         self.assertEqual(plan.changes, ())
+        self.assertEqual(plan.no_ops, ())
         self.assertEqual(plan.affected_publication_ids, ())
         self.assertEqual(plan.bibtex_backups, ())
 

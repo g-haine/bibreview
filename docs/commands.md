@@ -220,8 +220,11 @@ BibTeX file or an unsafe field edit aborts the complete plan before any output i
 written. Fields with no meaningful tracked BibTeX representation remain JSON
 only and are reported as such.
 
-By default the command prints aggregate counts. Use the global `-v` option to
-show each current/staged value and its mapped BibTeX field, or `--json` for the
+By default the command prints aggregate counts, including explicit
+**no-op resolutions** when an accepted/custom resolved value is already equal
+to the current canonical value. No-op resolutions are not staged and never
+trigger BibTeX writes. Use the global `-v` option to show each current/staged
+change plus each no-op decision and its unchanged value, or `--json` for the
 complete machine-readable application plan. `--dry-run` performs all safety
 checks and computes the same JSON/BibTeX changes without writing files.
 

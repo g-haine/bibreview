@@ -566,6 +566,7 @@ class AuditCliTests(unittest.TestCase):
                 "  Accepted              : 1\n"
                 "  Custom                : 0\n"
                 "  Rejected              : 0\n"
+                "  No-op resolutions     : 0\n"
                 "  Changes to stage      : 1\n"
                 "  Publications affected : 1\n"
                 "  BibTeX files affected : 1"
@@ -577,10 +578,12 @@ class AuditCliTests(unittest.TestCase):
                 "rejected": 0,
                 "deferred": 0,
                 "unresolved": 0,
+                "no_op_resolutions": 0,
                 "changes_to_stage": 1,
                 "publications_affected": 1,
                 "bibtex_files_affected": 1,
                 "changes": [],
+                "no_ops": [],
             },
         )
         stdout = StringIO()
@@ -619,10 +622,21 @@ class AuditCliTests(unittest.TestCase):
                 "rejected": 13,
                 "deferred": 0,
                 "unresolved": 0,
-                "changes_to_stage": 79,
+                "no_op_resolutions": 1,
+                "changes_to_stage": 78,
                 "publications_affected": 60,
                 "bibtex_files_affected": 42,
                 "changes": [],
+                "no_ops": [
+                    {
+                        "publication_id": "example",
+                        "doi": "10.1000/example",
+                        "title": "Example",
+                        "field": "title",
+                        "decision": "custom",
+                        "value": "Example",
+                    }
+                ],
             },
         )
         stdout = StringIO()
@@ -648,7 +662,9 @@ class AuditCliTests(unittest.TestCase):
         self.assertEqual(payload["accepted"], 55)
         self.assertEqual(payload["custom"], 24)
         self.assertEqual(payload["rejected"], 13)
-        self.assertEqual(payload["changes_to_stage"], 79)
+        self.assertEqual(payload["no_op_resolutions"], 1)
+        self.assertEqual(payload["changes_to_stage"], 78)
+        self.assertEqual(payload["no_ops"][0]["decision"], "custom")
 
     def test_apply_rejects_batch_size(self):
         stdout = StringIO()
