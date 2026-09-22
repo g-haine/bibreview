@@ -15,6 +15,7 @@ rendering bibliographic content into a static Jekyll site.
 - [GitHub Pages](github-pages.md) — build and deploy a Jekyll site with GitHub Actions.
 - [GoatCounter](goatcounter.md) — recommended optional privacy-friendly analytics.
 - [Changelog](../CHANGELOG.md) — released versions and notable changes.
+- [Release checklist](releasing.md) — required version, documentation, validation and tagging checks.
 
 ## Design principle
 
