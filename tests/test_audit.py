@@ -449,6 +449,217 @@ class AuditComparisonTests(unittest.TestCase):
 
         self.assertEqual(audit_review_findings(result), ())
 
+    def test_single_provider_difference_is_informational(self):
+        result = compare_audit_record(
+            self.record(publisher="Canonical Press"),
+            (
+                ProviderEvidence(
+                    provider="crossref",
+                    fields={"publisher": "Provider Press"},
+                ),
+            ),
+        )
+
+        findings = audit_review_findings(result)
+
+        self.assertEqual(len(findings), 1)
+        self.assertFalse(findings[0].actionable)
+        self.assertEqual(
+            findings[0].detail,
+            "single-provider difference; corroboration required",
+        )
+
+    def test_corroborated_canonical_missing_is_actionable(self):
+        result = compare_audit_record(
+            self.record(issue=""),
+            (
+                ProviderEvidence(
+                    provider="crossref",
+                    fields={"issue": "8"},
+                ),
+                ProviderEvidence(
+                    provider="openalex",
+                    fields={"issue": "8"},
+                ),
+            ),
+        )
+
+        findings = audit_review_findings(result)
+
+        self.assertEqual(len(findings), 1)
+        self.assertTrue(findings[0].actionable)
+        self.assertEqual(findings[0].providers, ("crossref", "openalex"))
+        self.assertEqual(
+            findings[0].detail,
+            "corroborated by 2 independent providers",
+        )
+
+    def test_corroborated_substantive_difference_is_actionable(self):
+        result = compare_audit_record(
+            self.record(title="Canonical title"),
+            (
+                ProviderEvidence(
+                    provider="crossref",
+                    fields={"title": "Corrected title"},
+                ),
+                ProviderEvidence(
+                    provider="openalex",
+                    fields={"title": "Corrected title"},
+                ),
+            ),
+        )
+
+        findings = audit_review_findings(result)
+
+        self.assertEqual(len(findings), 1)
+        self.assertTrue(findings[0].actionable)
+        self.assertEqual(findings[0].providers, ("crossref", "openalex"))
+
+    def test_corroborated_alternative_is_informational_when_canonical_is_confirmed(self):
+        result = compare_audit_record(
+            self.record(title="Canonical title"),
+            (
+                ProviderEvidence(
+                    provider="crossref",
+                    fields={"title": "Canonical title"},
+                ),
+                ProviderEvidence(
+                    provider="openalex",
+                    fields={"title": "Alternative title"},
+                ),
+                ProviderEvidence(
+                    provider="semantic_scholar",
+                    fields={"title": "Alternative title"},
+                ),
+            ),
+        )
+
+        findings = audit_review_findings(result)
+
+        self.assertEqual(len(findings), 1)
+        self.assertFalse(findings[0].actionable)
+        self.assertEqual(
+            findings[0].detail,
+            "alternative is corroborated, but another provider confirms the canonical value",
+        )
+
+    def test_review_groups_tex_and_unicode_title_alternatives_before_corroboration(self):
+        result = compare_audit_record(
+            self.record(
+                title="Discrete Gradient theta-Methods for Port-Hamiltonian Systems",
+            ),
+            (
+                ProviderEvidence(
+                    provider="crossref",
+                    fields={
+                        "title": r"Discrete Gradient $$\theta $$-Methods for Port-Hamiltonian Systems",
+                    },
+                ),
+                ProviderEvidence(
+                    provider="openalex",
+                    fields={
+                        "title": r"Discrete Gradient $$\theta $$-Methods for Port-Hamiltonian Systems",
+                    },
+                ),
+                ProviderEvidence(
+                    provider="semantic_scholar",
+                    fields={
+                        "title": "Discrete Gradient θ-Methods for Port-Hamiltonian Systems",
+                    },
+                ),
+            ),
+        )
+
+        findings = audit_review_findings(result)
+
+        self.assertEqual(len(findings), 1)
+        self.assertTrue(findings[0].actionable)
+        self.assertEqual(
+            findings[0].providers,
+            ("crossref", "openalex", "semantic_scholar"),
+        )
+        self.assertEqual(
+            findings[0].detail,
+            "corroborated by 3 independent providers",
+        )
+
+    def test_created_date_one_day_difference_is_informational(self):
+        result = compare_audit_record(
+            self.record(created_date="2018-12-05"),
+            (
+                ProviderEvidence(
+                    provider="crossref",
+                    fields={"created_date": "2018-12-04"},
+                ),
+                ProviderEvidence(
+                    provider="openalex",
+                    fields={"created_date": "2018-12-04"},
+                ),
+            ),
+        )
+
+        findings = audit_review_findings(result)
+
+        self.assertEqual(len(findings), 1)
+        self.assertFalse(findings[0].actionable)
+        self.assertEqual(
+            findings[0].detail,
+            "created_date differs from canonical by one day",
+        )
+
+    def test_truncated_provider_abstract_is_informational_even_when_corroborated(self):
+        canonical = (
+            "This first paragraph contains enough bibliographic abstract text "
+            "to identify the result and explain the model in a meaningful way. "
+            "This second paragraph contains the main conclusion and additional "
+            "details that are absent from the provider response."
+        )
+        truncated = (
+            "This first paragraph contains enough bibliographic abstract text "
+            "to identify the result and explain the model in a meaningful way."
+        )
+        result = compare_audit_record(
+            self.record(abstract=canonical),
+            (
+                ProviderEvidence(
+                    provider="openalex",
+                    fields={"abstract": truncated},
+                ),
+                ProviderEvidence(
+                    provider="semantic_scholar",
+                    fields={"abstract": truncated},
+                ),
+            ),
+        )
+
+        findings = audit_review_findings(result)
+
+        self.assertEqual(len(findings), 1)
+        self.assertFalse(findings[0].actionable)
+        self.assertEqual(
+            findings[0].detail,
+            "provider abstract is an apparent truncation of the canonical abstract",
+        )
+
+    def test_isolated_author_cardinality_difference_is_informational(self):
+        result = compare_audit_record(
+            self.record(
+                authors=("Ada Lovelace", "Alan Turing", "Grace Hopper"),
+            ),
+            (
+                ProviderEvidence(
+                    provider="openalex",
+                    fields={"authors": ("Ada Lovelace", "Alan Turing")},
+                ),
+            ),
+        )
+
+        findings = audit_review_findings(result)
+
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].field, "authors")
+        self.assertFalse(findings[0].actionable)
+
     def test_persisted_result_can_be_reclassified_without_provider_evidence(self):
         result = AuditResult(
             publication_id=PUBLICATION_ID,

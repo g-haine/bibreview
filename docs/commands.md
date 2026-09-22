@@ -116,9 +116,16 @@ bibreview --config bibreview.yml audit --review
 ~~~
 
 The review view applies the current comparison rules in memory, hides pairwise
-`equal`, `formatting-only`, and `provider-missing` noise, groups providers
-that corroborate the same candidate correction, and keeps informational
-provider-role disagreements separate from actionable canonical findings.
+`equal`, `formatting-only`, and `provider-missing` noise, then groups
+review-equivalent provider values before deciding whether a finding is
+actionable. A provider-only difference is informational by default.
+`canonical-missing` and substantive alternatives become actionable only when
+at least two independent providers corroborate the same value; a corroborated
+substantive alternative remains informational when another provider confirms
+the canonical value. Review-level equivalence also joins harmless TeX/Unicode
+and spacing variants before provider support is counted. One-day
+`created_date` offsets and obvious provider truncations of a fuller canonical
+abstract remain informational. Provider-role disagreements stay informational.
 Use `--json` for a machine-readable review.
 
 When comparison rules improve, reclassify the already-stored raw values without

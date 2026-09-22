@@ -10,6 +10,7 @@ from __future__ import annotations
 from collections import Counter
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
+from datetime import date
 from difflib import SequenceMatcher
 import html
 import re
@@ -734,6 +735,83 @@ def _canonical_field_value(
     return values[0]
 
 
+def _review_equivalent_values(
+    field: str,
+    left: AuditValue,
+    right: AuditValue,
+) -> bool:
+    """Return review-level equivalence without changing raw pair classifications."""
+    if _equivalent_values(field, left, right):
+        return True
+    if field not in {"title", "abstract"}:
+        return False
+    if not isinstance(left, str) or not isinstance(right, str):
+        return False
+
+    def review_text(value: str) -> str:
+        text = _normalize_text(value, field=field)
+        text = re.sub(r"\s*-\s*", "-", text)
+        text = re.sub(r"\s+([,.;:!?])", r"\1", text)
+        return text
+
+    return review_text(left) == review_text(right)
+
+
+def _created_dates_within_one_day(
+    canonical: AuditValue,
+    provider: AuditValue,
+) -> bool:
+    if not isinstance(canonical, str) or not isinstance(provider, str):
+        return False
+    try:
+        canonical_date = date.fromisoformat(canonical.strip())
+        provider_date = date.fromisoformat(provider.strip())
+    except ValueError:
+        return False
+    return abs((canonical_date - provider_date).days) == 1
+
+
+def _truncated_provider_abstract(
+    canonical: AuditValue,
+    provider: AuditValue,
+) -> bool:
+    """Recognize an obvious provider prefix/truncation of a fuller canonical abstract."""
+    if not isinstance(canonical, str) or not isinstance(provider, str):
+        return False
+
+    canonical_text = _normalize_text(canonical, field="abstract")
+    provider_text = _normalize_text(provider, field="abstract")
+    if not canonical_text or not provider_text or len(provider_text) >= len(canonical_text):
+        return False
+
+    canonical_tokens = re.findall(r"\w+", canonical_text, flags=re.UNICODE)
+    provider_tokens = re.findall(r"\w+", provider_text, flags=re.UNICODE)
+    if len(provider_tokens) < 8 or len(provider_tokens) >= len(canonical_tokens):
+        return False
+    if len(provider_tokens) / len(canonical_tokens) > 0.9:
+        return False
+
+    prefix = canonical_tokens[: len(provider_tokens)]
+    return SequenceMatcher(None, prefix, provider_tokens).ratio() >= 0.98
+
+
+def _canonical_support_providers(
+    comparisons: tuple[AuditComparison, ...],
+    field: str,
+) -> tuple[str, ...]:
+    return tuple(
+        dict.fromkeys(
+            item.provider
+            for item in comparisons
+            if (
+                item.field == field
+                and item.classification in {"equal", "formatting-only"}
+                and not _is_empty(item.provider_value)
+            )
+        )
+    )
+
+
 def _merge_review_findings(
     findings: list[AuditReviewFinding],
 ) -> tuple[AuditReviewFinding, ...]:
@@ -751,13 +829,13 @@ def _merge_review_findings(
                 and existing.classification == finding.classification
                 and existing.actionable == finding.actionable
                 and existing.detail == finding.detail
-                and _equivalent_values(
+                and _review_equivalent_values(
                     finding.field,
                     existing.canonical_value,
                     finding.canonical_value,
                 )
                 and existing.provider_values
-                and _equivalent_values(
+                and _review_equivalent_values(
                     finding.field,
                     existing.provider_values[0][1],
                     representative,
@@ -783,17 +861,83 @@ def _merge_review_findings(
     return tuple(merged)
 
 
+def _review_actionability(
+    finding: AuditReviewFinding,
+    comparisons: tuple[AuditComparison, ...],
+) -> tuple[bool, str]:
+    if finding.classification not in {
+        "canonical-missing",
+        "substantive-difference",
+        "identity-problem",
+    }:
+        return False, finding.detail
+
+    providers = tuple(dict.fromkeys(finding.providers))
+
+    if (
+        finding.field == "publication_id"
+        and "bibreview" in providers
+        and finding.classification == "identity-problem"
+    ):
+        return True, "canonical publication is missing from current bibliography"
+
+    if (
+        finding.field == "created_date"
+        and any(
+            _created_dates_within_one_day(
+                finding.canonical_value,
+                value,
+            )
+            for _, value in finding.provider_values
+        )
+    ):
+        return False, "created_date differs from canonical by one day"
+
+    if (
+        finding.field == "abstract"
+        and finding.provider_values
+        and all(
+            _truncated_provider_abstract(
+                finding.canonical_value,
+                value,
+            )
+            for _, value in finding.provider_values
+        )
+    ):
+        return False, "provider abstract is an apparent truncation of the canonical abstract"
+
+    if len(providers) < 2:
+        return False, "single-provider difference; corroboration required"
+
+    if finding.classification in {"substantive-difference", "identity-problem"}:
+        confirmations = tuple(
+            provider
+            for provider in _canonical_support_providers(
+                comparisons,
+                finding.field,
+            )
+            if provider not in providers
+        )
+        if confirmations:
+            return (
+                False,
+                "alternative is corroborated, but another provider confirms the canonical value",
+            )
+
+    return True, f"corroborated by {len(providers)} independent providers"
+
+
 def audit_review_findings(result: AuditResult) -> tuple[AuditReviewFinding, ...]:
-    """Derive concise human-review findings from a full raw audit result."""
+    """Derive concise, corroboration-aware human-review findings."""
     if not isinstance(result, AuditResult):
         raise AuditError("result must be an AuditResult")
 
     comparisons = result.comparisons
     canonical_editors = _canonical_field_value(comparisons, "editors")
-    equal_fields = {
+    canonical_supported_fields = {
         item.field
         for item in comparisons
-        if item.classification == "equal"
+        if item.classification in {"equal", "formatting-only"}
     }
     findings: list[AuditReviewFinding] = []
     handled_role_pairs: set[tuple[str, str]] = set()
@@ -834,7 +978,7 @@ def audit_review_findings(result: AuditResult) -> tuple[AuditReviewFinding, ...]
         if (
             item.classification == "substantive-difference"
             and item.field in {"publication_year", "container_title"}
-            and item.field in equal_fields
+            and item.field in canonical_supported_fields
         ):
             continue
 
@@ -845,7 +989,7 @@ def audit_review_findings(result: AuditResult) -> tuple[AuditReviewFinding, ...]
                 providers=(item.provider,),
                 canonical_value=item.canonical_value,
                 provider_values=((item.provider, item.provider_value),),
-                actionable=True,
+                actionable=False,
             )
         )
 
@@ -856,7 +1000,7 @@ def audit_review_findings(result: AuditResult) -> tuple[AuditReviewFinding, ...]
     for disagreement in result.disagreements:
         if (
             disagreement.field in {"publication_year", "container_title"}
-            and disagreement.field in equal_fields
+            and disagreement.field in canonical_supported_fields
         ):
             continue
         if (disagreement.field, "substantive-difference") in existing_fields:
@@ -877,7 +1021,25 @@ def audit_review_findings(result: AuditResult) -> tuple[AuditReviewFinding, ...]
             )
         )
 
-    return _merge_review_findings(findings)
+    merged = _merge_review_findings(findings)
+    reviewed: list[AuditReviewFinding] = []
+    for finding in merged:
+        if finding.classification in {"role-disagreement", "provider-disagreement"}:
+            reviewed.append(finding)
+            continue
+        actionable, detail = _review_actionability(finding, comparisons)
+        reviewed.append(
+            AuditReviewFinding(
+                field=finding.field,
+                classification=finding.classification,
+                providers=finding.providers,
+                canonical_value=finding.canonical_value,
+                provider_values=finding.provider_values,
+                actionable=actionable,
+                detail=detail,
+            )
+        )
+    return tuple(reviewed)
 
 
 def _json_value(value: AuditValue) -> str | list[str]:
