@@ -11,7 +11,7 @@ feed.
 BibReview is designed so that provider output remains inspectable and ambiguous
 decisions remain human decisions.
 
-Current stable release: **v1.4.3**.
+Current stable release: **v1.4.4**.
 
 ## What BibReview provides
 
@@ -39,7 +39,7 @@ BibReview currently requires **Python 3.12 or newer**.
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.4.3"
+python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.4.4"
 
 bibreview --version
 ~~~
@@ -126,6 +126,11 @@ One-day `created_date` offsets, obvious provider truncations of a fuller
 canonical abstract, contributor-role disagreements, and isolated contributor
 anomalies remain informational evidence rather than automatic corrections. The
 raw audit comparisons are preserved separately from this review interpretation.
+
+By default, `bibreview audit --review` prints only the aggregate review summary
+so long-running campaigns remain readable. Use the existing global verbose form,
+`bibreview -v audit --review`, for the complete publication-by-publication
+human-readable findings; `--json` remains complete regardless of verbosity.
 
 During networked audit runs, BibReview batches DOI lookups whenever the provider
 supports an exact multi-DOI API. CrossRef uses repeated exact DOI filters in
