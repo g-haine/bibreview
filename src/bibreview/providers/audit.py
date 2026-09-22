@@ -132,6 +132,7 @@ class CrossRefAuditSource:
     """Normalize CrossRef work metadata into audit evidence."""
 
     name = "crossref"
+    batch_size = 1
 
     def __init__(self, provider: CrossRefProvider) -> None:
         self.provider = provider
@@ -241,19 +242,12 @@ class OpenAlexAuditSource:
     """Normalize OpenAlex work metadata into audit evidence."""
 
     name = "openalex"
+    batch_size = OpenAlexProvider.BATCH_SIZE
 
     def __init__(self, provider: OpenAlexProvider) -> None:
         self.provider = provider
 
-    def evidence(self, doi: str) -> ProviderEvidence:
-        data = self.provider.work(doi)
-        if data is None:
-            return ProviderEvidence(
-                provider=self.name,
-                status="unavailable",
-                detail="record not found",
-            )
-
+    def _from_data(self, data: Mapping[str, object]) -> ProviderEvidence:
         identifiers: dict[str, str] = {}
         raw_doi = data.get("doi")
         if isinstance(raw_doi, str) and raw_doi.strip():
@@ -284,6 +278,35 @@ class OpenAlexAuditSource:
             },
         )
 
+    def evidence(self, doi: str) -> ProviderEvidence:
+        data = self.provider.work(doi)
+        if data is None:
+            return ProviderEvidence(
+                provider=self.name,
+                status="unavailable",
+                detail="record not found",
+            )
+        return self._from_data(data)
+
+    def evidence_many(
+        self,
+        dois: tuple[str, ...],
+    ) -> Mapping[str, ProviderEvidence]:
+        normalized = tuple(dict.fromkeys(normalize_doi(doi) for doi in dois))
+        records = self.provider.works(normalized)
+        return {
+            doi: (
+                self._from_data(records[doi])
+                if doi in records
+                else ProviderEvidence(
+                    provider=self.name,
+                    status="unavailable",
+                    detail="record not found",
+                )
+            )
+            for doi in normalized
+        }
+
 
 def _semantic_authors(value: object) -> tuple[str, ...]:
     if not isinstance(value, list):
@@ -302,19 +325,12 @@ class SemanticScholarAuditSource:
     """Normalize Semantic Scholar paper metadata into audit evidence."""
 
     name = "semantic_scholar"
+    batch_size = SemanticScholarProvider.BATCH_SIZE
 
     def __init__(self, provider: SemanticScholarProvider) -> None:
         self.provider = provider
 
-    def evidence(self, doi: str) -> ProviderEvidence:
-        data = self.provider.paper(doi)
-        if data is None:
-            return ProviderEvidence(
-                provider=self.name,
-                status="unavailable",
-                detail="record not found",
-            )
-
+    def _from_data(self, data: Mapping[str, object]) -> ProviderEvidence:
         identifiers: dict[str, str] = {}
         external_ids = data.get("externalIds")
         if isinstance(external_ids, Mapping):
@@ -342,3 +358,33 @@ class SemanticScholarAuditSource:
                 "publication_year": year,
             },
         )
+
+    def evidence(self, doi: str) -> ProviderEvidence:
+        data = self.provider.paper(doi)
+        if data is None:
+            return ProviderEvidence(
+                provider=self.name,
+                status="unavailable",
+                detail="record not found",
+            )
+        return self._from_data(data)
+
+    def evidence_many(
+        self,
+        dois: tuple[str, ...],
+    ) -> Mapping[str, ProviderEvidence]:
+        normalized = tuple(dict.fromkeys(normalize_doi(doi) for doi in dois))
+        records = self.provider.papers(normalized)
+        return {
+            doi: (
+                self._from_data(records[doi])
+                if doi in records
+                else ProviderEvidence(
+                    provider=self.name,
+                    status="unavailable",
+                    detail="record not found",
+                )
+            )
+            for doi in normalized
+        }
+
