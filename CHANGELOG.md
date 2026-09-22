@@ -2,6 +2,24 @@
 
 All notable BibReview releases are documented here.
 
+## 1.6.2 — 2026-09-22
+
+### Audit page-range normalization
+
+- treat singleton page ranges such as `261--261` and `261` as
+  review-equivalent formatting variants during audit comparison;
+- preserve raw canonical and provider page values unchanged in persisted audit
+  evidence;
+- keep genuine non-singleton ranges distinct from single-page values;
+- allow existing audit reports to adopt the corrected comparison rule through
+  the offline `bibreview audit --reclassify` workflow.
+
+### Validation
+
+- add regression coverage for the singleton page-range forms observed in the
+  PHRAISE audit and for a genuine non-singleton range;
+- validate the correction with 368 passing tests before release.
+
 ## 1.6.1 — 2026-09-22
 
 ### Explicit audit-apply no-op reporting
