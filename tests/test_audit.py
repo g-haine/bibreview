@@ -404,6 +404,10 @@ class AuditComparisonTests(unittest.TestCase):
             ),
             (
                 ProviderEvidence(
+                    provider="crossref",
+                    fields={"editors": ("Ada Lovelace", "Alan Turing")},
+                ),
+                ProviderEvidence(
                     provider="semantic-scholar",
                     fields={"authors": ("Unrelated Person",)},
                 ),
