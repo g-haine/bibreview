@@ -101,6 +101,84 @@ class CliTests(unittest.TestCase):
             enrichment_lookup=None,
         )
 
+    def test_audit_review_is_summary_only_by_default_and_verbose_for_details(self):
+        review = SimpleNamespace(
+            summary=lambda: (
+                "Audit review\n"
+                "  Audited publications : 1500\n"
+                "  Flagged publications : 1200\n"
+                "  Actionable findings   : 30\n"
+                "  Informational findings: 1400\n"
+                "  Provider issues       : 120"
+            ),
+            data=lambda: {"audited_publications": 1500},
+        )
+
+        stdout = StringIO()
+        stderr = StringIO()
+        with patch(
+            "bibreview.cli.project_audit_review",
+            return_value=review,
+        ), patch(
+            "bibreview.cli.format_project_audit_review",
+            return_value="DETAILED REVIEW\n10.1/example — Example",
+        ) as formatter, redirect_stdout(stdout), redirect_stderr(stderr):
+            code = main([
+                "--config", str(self.config_path),
+                "audit", "--review",
+            ])
+
+        self.assertEqual(code, 0, stderr.getvalue())
+        self.assertIn("Audited publications : 1500", stdout.getvalue())
+        self.assertNotIn("DETAILED REVIEW", stdout.getvalue())
+        formatter.assert_not_called()
+
+        stdout = StringIO()
+        stderr = StringIO()
+        with patch(
+            "bibreview.cli.project_audit_review",
+            return_value=review,
+        ), patch(
+            "bibreview.cli.format_project_audit_review",
+            return_value="DETAILED REVIEW\n10.1/example — Example",
+        ) as formatter, redirect_stdout(stdout), redirect_stderr(stderr):
+            code = main([
+                "--config", str(self.config_path),
+                "-v",
+                "audit", "--review",
+            ])
+
+        self.assertEqual(code, 0, stderr.getvalue())
+        self.assertIn("DETAILED REVIEW", stdout.getvalue())
+        formatter.assert_called_once_with(review)
+
+    def test_audit_review_json_remains_complete_without_verbose(self):
+        review = SimpleNamespace(
+            summary=lambda: "Audit review summary",
+            data=lambda: {
+                "audited_publications": 1500,
+                "items": [{"publication_id": "example"}],
+            },
+        )
+
+        stdout = StringIO()
+        stderr = StringIO()
+        with patch(
+            "bibreview.cli.project_audit_review",
+            return_value=review,
+        ), patch(
+            "bibreview.cli.format_project_audit_review",
+        ) as formatter, redirect_stdout(stdout), redirect_stderr(stderr):
+            code = main([
+                "--config", str(self.config_path),
+                "audit", "--review", "--json",
+            ])
+
+        self.assertEqual(code, 0, stderr.getvalue())
+        self.assertIn('"items"', stdout.getvalue())
+        self.assertIn('"publication_id": "example"', stdout.getvalue())
+        formatter.assert_not_called()
+
     def test_discover_dry_run_then_apply_updates_only_queue_state(self):
         before = self.snapshot()
         stdout = StringIO()
