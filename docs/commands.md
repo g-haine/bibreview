@@ -109,10 +109,23 @@ bibreview --config bibreview.yml audit --json
 ~~~
 
 Review the current report offline without making provider requests or changing
-project files:
+project files. By default, only the aggregate review summary is printed:
 
 ~~~bash
 bibreview --config bibreview.yml audit --review
+~~~
+
+Show the complete publication-by-publication findings with the existing global
+verbose option:
+
+~~~bash
+bibreview --config bibreview.yml -v audit --review
+~~~
+
+The JSON form remains complete regardless of verbosity:
+
+~~~bash
+bibreview --config bibreview.yml audit --review --json
 ~~~
 
 The review view applies the current comparison rules in memory, hides pairwise
@@ -126,7 +139,7 @@ the canonical value. Review-level equivalence also joins harmless TeX/Unicode
 and spacing variants before provider support is counted. One-day
 `created_date` offsets and obvious provider truncations of a fuller canonical
 abstract remain informational. Provider-role disagreements stay informational.
-Use `--json` for a machine-readable review.
+Use `--json` for the complete machine-readable review.
 
 When comparison rules improve, reclassify the already-stored raw values without
 re-querying any provider:
