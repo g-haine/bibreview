@@ -68,6 +68,42 @@ class AuditComparisonTests(unittest.TestCase):
         self.assertEqual(by_field["volume"], "provider-missing")
         self.assertEqual(by_field["abstract"], "canonical-missing")
 
+    def test_singleton_page_ranges_are_formatting_only(self):
+        for canonical, provider in (
+            ("261--261", "261"),
+            ("84 (5 pp.)--84 (5 pp.)", "84 (5 pp.)"),
+            ("1--1", "1"),
+            ("20230516--20230516", "20230516"),
+        ):
+            with self.subTest(canonical=canonical, provider=provider):
+                result = compare_audit_record(
+                    self.record(pages=canonical),
+                    (
+                        ProviderEvidence(
+                            provider="crossref",
+                            fields={"pages": provider},
+                        ),
+                    ),
+                )
+                comparison = result.comparisons[0]
+                self.assertEqual(comparison.field, "pages")
+                self.assertEqual(comparison.classification, "formatting-only")
+
+    def test_non_singleton_page_range_remains_distinct(self):
+        result = compare_audit_record(
+            self.record(pages="10--20"),
+            (
+                ProviderEvidence(
+                    provider="crossref",
+                    fields={"pages": "10"},
+                ),
+            ),
+        )
+
+        comparison = result.comparisons[0]
+        self.assertEqual(comparison.field, "pages")
+        self.assertEqual(comparison.classification, "substantive-difference")
+
     def test_substantive_difference_does_not_decide_which_value_is_correct(self):
         result = compare_audit_record(
             self.record(publication_year="2020"),
