@@ -156,7 +156,9 @@ def _run_audit_resolution(config, args) -> int:
     path = audit_resolution_path(config)
 
     if not candidates:
-        print(state.summary())
+        prefix = "Dry run: " if args.dry_run else ""
+        print(prefix + state.summary())
+        print("No unresolved actionable findings.")
         print(f"Resolutions: {path}")
         return 0
 
