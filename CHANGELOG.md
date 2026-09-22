@@ -2,6 +2,34 @@
 
 All notable BibReview releases are documented here.
 
+## 1.4.1 — 2026-09-22
+
+### Corroborated audit review
+
+- make external metadata differences informational by default and require at
+  least two independent providers to corroborate the same alternative before a
+  review finding becomes actionable;
+- group review-equivalent provider values before counting support, including
+  harmless TeX/Unicode and spacing variants that represent the same candidate
+  correction;
+- keep a corroborated substantive alternative informational when another
+  provider confirms the canonical value;
+- keep one-day `created_date` offsets and obvious provider truncations of a
+  fuller canonical abstract informational;
+- preserve provider disagreements and single-provider author anomalies as
+  review evidence without promoting them automatically to corrections.
+
+### Validation and compatibility
+
+- leave the raw pairwise comparator and offline `audit --reclassify` behavior
+  unchanged;
+- validate the review rules on the fixed 225-publication reference corpus,
+  reducing 31 actionable findings to 4 while preserving the intended
+  corroborated corrections;
+- extend regression coverage for corroborated missing metadata, substantive
+  alternatives, canonical confirmation, TeX/Unicode grouping, date offsets,
+  truncated abstracts, and isolated contributor differences.
+
 ## 1.4.0 — 2026-09-22
 
 ### Actionable audit review
