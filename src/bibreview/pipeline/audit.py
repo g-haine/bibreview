@@ -337,12 +337,27 @@ def _normalized_value(field: str, value: AuditValue) -> tuple[str, ...]:
     return normalized
 
 
-def _name_parts(value: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
+def _name_tokens(value: str) -> tuple[str, ...]:
     text = _strip_diacritics(value).casefold()
-    text = _DASH.sub("", text)
+    text = _DASH.sub("", text).replace("-", "")
     text = text.replace("'", "").replace("’", "")
     text = _NAME_PUNCTUATION.sub(" ", text)
-    tokens = tuple(item for item in _SPACE.sub(" ", text).strip().split(" ") if item)
+    return tuple(
+        item
+        for item in _SPACE.sub(" ", text).strip().split(" ")
+        if item
+    )
+
+
+def _name_parts(value: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    if "," in value:
+        family_text, given_text = value.split(",", 1)
+        family = _name_tokens(family_text)
+        given = _name_tokens(given_text)
+        if family:
+            return given, family
+
+    tokens = _name_tokens(value)
     if not tokens:
         return (), ()
 
@@ -786,10 +801,13 @@ def audit_review_findings(result: AuditResult) -> tuple[AuditReviewFinding, ...]
             item.field == "authors"
             and item.classification == "canonical-missing"
             and not _is_empty(canonical_editors)
-            and _compatible_contributor_set(canonical_editors, item.provider_value)
         ):
             key = (item.provider, item.field)
             if key not in handled_role_pairs:
+                matches_editors = _compatible_contributor_set(
+                    canonical_editors,
+                    item.provider_value,
+                )
                 findings.append(
                     AuditReviewFinding(
                         field="contributors",
@@ -798,7 +816,11 @@ def audit_review_findings(result: AuditResult) -> tuple[AuditReviewFinding, ...]
                         canonical_value=canonical_editors,
                         provider_values=((item.provider, item.provider_value),),
                         actionable=False,
-                        detail="provider authors match canonical editors",
+                        detail=(
+                            "provider authors match canonical editors"
+                            if matches_editors
+                            else "provider reports authors for canonical editor-only record"
+                        ),
                     )
                 )
                 handled_role_pairs.add(key)
