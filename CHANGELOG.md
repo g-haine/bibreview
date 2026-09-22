@@ -2,6 +2,27 @@
 
 All notable BibReview releases are documented here.
 
+## 1.5.3 — 2026-09-22
+
+### Interactive terminal line editing
+
+- initialize Python's standard `readline` module before interactive
+  `bibreview audit --resolve` input when available;
+- restore normal terminal editing on supported terminals, including left/right
+  arrows, Home/End, Backspace/Delete, and input history;
+- fall back gracefully to the platform's default input behavior when
+  `readline` is unavailable;
+- add no runtime dependency and preserve audit, resolution, fingerprint, and
+  canonical/staging semantics unchanged.
+
+### Validation
+
+- add regression coverage for readline initialization and unavailable-module
+  fallback;
+- verify that interactive audit resolution initializes line editing before
+  reading decisions;
+- validate the correction with 349 passing tests before release.
+
 ## 1.5.2 — 2026-09-22
 
 ### Natural tuple-valued audit corrections
