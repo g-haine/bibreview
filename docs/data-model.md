@@ -209,10 +209,15 @@ still records the complete batch/attempt history.
 
 Pairwise provider/canonical values remain stored even when they are classified
 as formatting-only. The human review view is **derived**, not a second source of
-truth: it suppresses equal/formatting-only/provider-missing noise, groups
-providers that support the same candidate correction, treats provider authors
-that match canonical editors as an informational role disagreement, and avoids
-flagging year/container differences as actionable when another provider confirms
+truth: it suppresses equal/formatting-only/provider-missing noise and groups
+review-equivalent provider alternatives before counting their support. External
+metadata differences are informational by default; a candidate correction
+becomes actionable only when at least two independent providers corroborate the
+same alternative. A substantive alternative is kept informational if another
+provider confirms the canonical value. One-day `created_date` offsets, obvious
+provider truncations of a fuller canonical abstract, and provider-author versus
+canonical-editor role disagreements are also informational. Existing
+year/container suppression remains conservative when another provider confirms
 the canonical value.
 
 Comparison rules may improve after a long audit has started. BibReview can
