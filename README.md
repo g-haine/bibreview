@@ -11,7 +11,7 @@ feed.
 BibReview is designed so that provider output remains inspectable and ambiguous
 decisions remain human decisions.
 
-Current stable release: **v1.4.0**.
+Current stable release: **v1.4.1**.
 
 ## What BibReview provides
 
@@ -20,7 +20,7 @@ Current stable release: **v1.4.0**.
 - optional publisher and abstract enrichment providers;
 - safe provider/credential diagnostics with optional live checks;
 - resumable, non-destructive audits of existing canonical metadata;
-- offline audit reclassification and actionable human-review views;
+- offline audit reclassification and corroboration-aware human-review views;
 - explicit pending, review, rejected and collected states;
 - persistent publication UUIDs independent from DOI representation;
 - reviewed author-name mapping with safe and ambiguous proposals;
@@ -39,7 +39,7 @@ BibReview currently requires **Python 3.12 or newer**.
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.4.0"
+python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.4.1"
 
 bibreview --version
 ~~~
@@ -113,6 +113,19 @@ Use **--dry-run** with mutating workflows when you want to inspect the plan
 without writing project files.
 
 Full details: [command reference](docs/commands.md).
+
+### Conservative audit review
+
+`bibreview audit --review` is a read-only view derived from persisted audit
+evidence. A provider-only difference remains informational by default. A
+canonical-missing or substantive alternative becomes actionable only when the
+same candidate value is corroborated by at least two independent providers
+after review-equivalent representations are grouped.
+
+One-day `created_date` offsets, obvious provider truncations of a fuller
+canonical abstract, contributor-role disagreements, and isolated contributor
+anomalies remain informational evidence rather than automatic corrections. The
+raw audit comparisons are preserved separately from this review interpretation.
 
 ## Project state is explicit
 
@@ -197,6 +210,7 @@ See [GoatCounter analytics](docs/goatcounter.md).
 - [GitHub Pages](docs/github-pages.md)
 - [GoatCounter](docs/goatcounter.md)
 - [Changelog](CHANGELOG.md)
+- [Release checklist](docs/releasing.md)
 
 ## Showcase
 
@@ -210,5 +224,7 @@ Run the test suite with:
 ~~~bash
 python -m unittest discover -s tests -v
 ~~~
+
+Before preparing a release, follow the [release checklist](docs/releasing.md).
 
 BibReview is licensed under the GNU GPLv3.
