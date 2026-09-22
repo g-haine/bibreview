@@ -187,6 +187,33 @@ class AuditCliTests(unittest.TestCase):
         )
         self.assertEqual(self.config.audit.campaign.read_bytes(), campaign_before)
 
+    def test_review_is_read_only_and_uses_current_rules_in_memory(self):
+        self.seed_legacy_reclassifiable_report()
+        report_before = self.config.audit.report.read_bytes()
+        campaign_before = self.config.audit.campaign.read_bytes()
+        stdout = StringIO()
+        stderr = StringIO()
+
+        with patch("bibreview.cli.build_audit_services") as services, redirect_stdout(
+            stdout
+        ), redirect_stderr(stderr):
+            code = main([
+                "--config",
+                str(self.config_path),
+                "audit",
+                "--review",
+                "--json",
+            ])
+
+        self.assertEqual(code, 0, stderr.getvalue())
+        services.assert_not_called()
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(payload["audited_publications"], 1)
+        self.assertEqual(payload["flagged_publications"], 0)
+        self.assertEqual(payload["actionable_findings"], 0)
+        self.assertEqual(self.config.audit.report.read_bytes(), report_before)
+        self.assertEqual(self.config.audit.campaign.read_bytes(), campaign_before)
+
     def test_dry_run_selects_batch_without_provider_or_state_writes(self):
         before = self.snapshot()
         stdout = StringIO()
