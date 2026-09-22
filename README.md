@@ -11,7 +11,7 @@ feed.
 BibReview is designed so that provider output remains inspectable and ambiguous
 decisions remain human decisions.
 
-Current stable release: **v1.5.3**.
+Current stable release: **v1.6.0**.
 
 ## What BibReview provides
 
@@ -22,6 +22,7 @@ Current stable release: **v1.5.3**.
 - resumable, non-destructive audits of existing canonical metadata;
 - offline audit reclassification and corroboration-aware human-review views;
 - resumable interactive resolution of actionable audit findings;
+- conservative promotion of completed audit resolutions into reviewable staging;
 - explicit pending, review, rejected and collected states;
 - persistent publication UUIDs independent from DOI representation;
 - reviewed author-name mapping with safe and ambiguous proposals;
@@ -40,7 +41,7 @@ BibReview currently requires **Python 3.12 or newer**.
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.5.3"
+python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.0"
 
 bibreview --version
 ~~~
