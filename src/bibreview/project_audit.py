@@ -554,7 +554,7 @@ def _format_audit_value(value: Any) -> str:
 
 
 def format_project_audit_review(review: ProjectAuditReview) -> str:
-    """Format a compact human-readable audit review."""
+    """Format the detailed human-readable audit review."""
     lines = [review.summary()]
     for item in review.items:
         doi = item.identifiers.get("doi", item.publication_id)
