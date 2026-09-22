@@ -339,7 +339,8 @@ def _normalized_value(field: str, value: AuditValue) -> tuple[str, ...]:
 
 def _name_parts(value: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
     text = _strip_diacritics(value).casefold()
-    text = _DASH.sub(" ", text)
+    text = _DASH.sub("", text)
+    text = text.replace("'", "").replace("’", "")
     text = _NAME_PUNCTUATION.sub(" ", text)
     tokens = tuple(item for item in _SPACE.sub(" ", text).strip().split(" ") if item)
     if not tokens:
@@ -349,6 +350,14 @@ def _name_parts(value: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
     while family_start > 0 and tokens[family_start - 1] in _FAMILY_PARTICLES:
         family_start -= 1
     return tokens[:family_start], tokens[family_start:]
+
+
+def _compatible_name_token(left: str, right: str) -> bool:
+    return (
+        left == right
+        or (len(left) == 1 and right.startswith(left))
+        or (len(right) == 1 and left.startswith(right))
+    )
 
 
 def _compatible_given_names(
@@ -365,6 +374,12 @@ def _compatible_given_names(
     if left_joined == right_joined:
         return True
 
+    if len(left) == len(right) and all(
+        _compatible_name_token(a, b)
+        for a, b in zip(left, right, strict=True)
+    ):
+        return True
+
     left_all_initials = all(len(token) == 1 for token in left)
     right_all_initials = all(len(token) == 1 for token in right)
     if left_all_initials and right_all_initials:
@@ -374,6 +389,14 @@ def _compatible_given_names(
         return left[0] == right[0][0]
     if right_all_initials:
         return right[0] == left[0][0]
+
+    if left[0] == right[0]:
+        left_extra = left[1:]
+        right_extra = right[1:]
+        if not left_extra and all(len(token) == 1 for token in right_extra):
+            return True
+        if not right_extra and all(len(token) == 1 for token in left_extra):
+            return True
 
     return False
 
@@ -404,6 +427,31 @@ def _compatible_contributors(
     )
 
 
+def _compatible_contributor_set(
+    canonical: AuditValue,
+    provider: AuditValue,
+) -> bool:
+    if not isinstance(canonical, tuple) or not isinstance(provider, tuple):
+        return False
+    if len(canonical) != len(provider):
+        return False
+
+    remaining = list(provider)
+    for canonical_name in canonical:
+        match = next(
+            (
+                index
+                for index, provider_name in enumerate(remaining)
+                if _compatible_name(canonical_name, provider_name)
+            ),
+            None,
+        )
+        if match is None:
+            return False
+        remaining.pop(match)
+    return True
+
+
 def _near_equal_abstract(canonical: AuditValue, provider: AuditValue) -> bool:
     if not isinstance(canonical, str) or not isinstance(provider, str):
         return False
@@ -411,6 +459,10 @@ def _near_equal_abstract(canonical: AuditValue, provider: AuditValue) -> bool:
     right = _normalize_text(provider, field="abstract")
     if not left or not right:
         return False
+    compact_left = re.sub(r"[^\\w]+", "", left, flags=re.UNICODE)
+    compact_right = re.sub(r"[^\\w]+", "", right, flags=re.UNICODE)
+    if compact_left == compact_right:
+        return True
     shorter = min(len(left), len(right))
     longer = max(len(left), len(right))
     if longer == 0 or shorter / longer < 0.95:
@@ -734,7 +786,7 @@ def audit_review_findings(result: AuditResult) -> tuple[AuditReviewFinding, ...]
             item.field == "authors"
             and item.classification == "canonical-missing"
             and not _is_empty(canonical_editors)
-            and _compatible_contributors(canonical_editors, item.provider_value)
+            and _compatible_contributor_set(canonical_editors, item.provider_value)
         ):
             key = (item.provider, item.field)
             if key not in handled_role_pairs:
