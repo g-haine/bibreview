@@ -142,12 +142,20 @@ provider/canonical values. The dry run reports before/after classification
 counts without writing.
 
 The audit currently compares evidence from **CrossRef** and **OpenAlex**, plus
-**Semantic Scholar** when that provider is enabled. Authenticated Semantic
-Scholar audit requests are paced at a minimum interval of 1.1 seconds to stay
-below the provider's introductory one-request-per-second API-key limit. Provider
-failures are recorded separately from canonical metadata discrepancies. A
-failed/rate-limited provider makes that publication retryable; it does not
-modify the canonical record.
+**Semantic Scholar** when that provider is enabled. Provider requests are
+batched whenever the upstream API supports exact multi-DOI lookup: OpenAlex
+uses one OR-filter request for up to 100 DOI values, and Semantic Scholar uses
+the paper batch endpoint for up to 500 DOI values. CrossRef remains an
+individual DOI lookup because its REST API does not provide an equivalent
+arbitrary-DOI batch endpoint.
+
+Authenticated Semantic Scholar requests retain a minimum 1.1-second interval
+between batch requests. With BibReview's default audit batch size of 50, one
+audit batch therefore normally needs one OpenAlex request, one Semantic Scholar
+batch request, and individual CrossRef requests. Provider failures are recorded
+separately from canonical metadata discrepancies. If one provider batch fails,
+only the DOI values in that provider chunk become retryable; it does not modify
+the canonical record.
 
 Audit writes only the configured audit campaign/report files. It never writes
 to **bibliography.json**, **collected.json**, DOI queues, BibTeX, author
