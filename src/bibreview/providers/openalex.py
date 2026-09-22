@@ -16,6 +16,11 @@ class OpenAlexProvider:
     """Discover DOI-backed works from OpenAlex using cursor pagination."""
 
     BASE_URL = "https://api.openalex.org/works"
+    BATCH_SIZE = 100
+    SELECT_FIELDS = (
+        "id,doi,title,type,publication_year,authorships,"
+        "primary_location,biblio,abstract_inverted_index"
+    )
 
     def __init__(self, transport: HttpTransport, *, api_key: str = "") -> None:
         self.transport = transport
@@ -24,12 +29,7 @@ class OpenAlexProvider:
     def work(self, doi: str) -> dict | None:
         """Return one OpenAlex work by DOI, or None when it is absent."""
         normalized = normalize_doi(doi)
-        params: dict[str, object] = {
-            "select": (
-                "id,doi,title,type,publication_year,authorships,"
-                "primary_location,biblio,abstract_inverted_index"
-            )
-        }
+        params: dict[str, object] = {"select": self.SELECT_FIELDS}
         if self.api_key:
             params["api_key"] = self.api_key
         data = self.transport.json(
@@ -42,6 +42,49 @@ class OpenAlexProvider:
         if not isinstance(data, dict):
             raise OpenAlexError("OpenAlex: unexpected work response")
         return data
+
+    def works(self, dois: tuple[str, ...]) -> dict[str, dict]:
+        """Return OpenAlex works for multiple DOI values in one request."""
+        normalized = tuple(dict.fromkeys(normalize_doi(doi) for doi in dois))
+        if not normalized:
+            return {}
+        if len(normalized) > self.BATCH_SIZE:
+            raise ValueError(
+                f"OpenAlex batch lookup supports at most {self.BATCH_SIZE} DOI values"
+            )
+
+        params: dict[str, object] = {
+            "filter": "doi:" + "|".join(
+                f"https://doi.org/{doi}" for doi in normalized
+            ),
+            "per-page": len(normalized),
+            "select": self.SELECT_FIELDS,
+        }
+        if self.api_key:
+            params["api_key"] = self.api_key
+        data = self.transport.json(
+            self.BASE_URL,
+            params=params,
+            context=f"OpenAlex batch metadata for {len(normalized)} DOI values",
+        )
+        if not isinstance(data, dict) or not isinstance(data.get("results"), list):
+            raise OpenAlexError("OpenAlex: unexpected batch response")
+
+        requested = set(normalized)
+        result: dict[str, dict] = {}
+        for work in data["results"]:
+            if not isinstance(work, dict):
+                continue
+            raw_doi = work.get("doi")
+            if not isinstance(raw_doi, str) or not raw_doi.strip():
+                continue
+            try:
+                doi = normalize_doi(raw_doi)
+            except IdentityError:
+                continue
+            if doi in requested:
+                result[doi] = work
+        return result
 
     def discover(self, query: str, *, max_pages: int = 20) -> tuple[str, ...]:
         """Return unique normalized DOI candidates in provider order."""
