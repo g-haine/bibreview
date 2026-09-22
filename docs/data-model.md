@@ -59,10 +59,11 @@ publication.
 ## Collected staging
 
 **collected.json** uses the same document envelope and is temporary staging for
-**collect** and **refresh**.
+**collect**, **refresh**, and explicit **audit --apply** promotion.
 
 Only one staging batch is allowed at a time. This is intentional: inspect and
-resolve the current batch before starting another collection or refresh.
+resolve the current batch before starting another collection, refresh, or audit
+application. Audit application refuses to overwrite non-empty staging.
 
 ## DOI queues
 
@@ -245,9 +246,9 @@ author mappings, or generated site files.
 
 ## Archive
 
-Refresh creates backups of changed stored BibTeX before replacement in the
-configured archive directory. Merge also backs up the previous bibliography
-before replacement when appropriate.
+Refresh and `audit --apply` create backups of changed stored BibTeX before
+replacement in the configured archive directory. Merge also backs up the
+previous bibliography before replacement when appropriate.
 
 Keep the archive under version control only if that matches your project's
 retention policy; otherwise ensure you still have reliable Git history or an
