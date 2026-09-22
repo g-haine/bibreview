@@ -175,6 +175,12 @@ ambiguous:
 f ["Ada Lovelace", "Alan Turing"]
 ~~~
 
+On terminals where Python's standard `readline` module is available, the
+interactive resolver enables normal command-line editing for `input()`,
+including left/right arrows, Home/End, Backspace/Delete, and shell-style input
+history. If `readline` is unavailable, BibReview falls back gracefully to the
+platform's default input behavior without adding a runtime dependency.
+
 When corroborating providers agree only after review normalization but retain
 different raw representations, BibReview deliberately offers no default **Y**
 choice. Use `f VALUE` to choose the canonical representation explicitly, or
