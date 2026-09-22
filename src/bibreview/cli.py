@@ -28,7 +28,10 @@ from .project_arxiv import apply_project_arxiv, plan_project_arxiv
 from .project_audit import (
     apply_project_audit_plan,
     execute_project_audit_batch,
+    format_project_audit_review,
     plan_project_audit_batch,
+    plan_project_audit_reclassify,
+    project_audit_review,
 )
 from .project_refresh import apply_project_refresh, plan_project_refresh
 from .project_render import apply_project_render, plan_project_render
@@ -86,11 +89,22 @@ def _parser() -> argparse.ArgumentParser:
         default=None,
         help="Override the size of the next new audit batch; campaign default otherwise",
     )
+    audit_actions = audit.add_mutually_exclusive_group()
+    audit_actions.add_argument(
+        "--reclassify",
+        action="store_true",
+        help="Reclassify the existing audit report offline using current rules",
+    )
+    audit_actions.add_argument(
+        "--review",
+        action="store_true",
+        help="Show the current actionable audit review without provider requests",
+    )
     audit.add_argument(
         "--json",
         dest="json_output",
         action="store_true",
-        help="Print the batch result as JSON",
+        help="Print the audit result as JSON",
     )
     commands.add_parser("discover", help="Discover and screen new DOI candidates")
     commands.add_parser("collect", help="Collect pending DOI metadata into canonical staging state")
@@ -172,6 +186,51 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "audit":
         reporter = Reporter(-1 if args.quiet else args.verbose)
+
+        if args.review:
+            try:
+                if args.batch_size is not None:
+                    raise ProjectStateError(
+                        "--batch-size cannot be used with --review"
+                    )
+                review = project_audit_review(config)
+            except (OSError, StorageError, ProjectStateError, ValueError, TypeError) as error:
+                print(f"bibreview audit: {error}", file=sys.stderr)
+                return 1
+
+            if args.json_output:
+                print(json.dumps(review.data(), ensure_ascii=False, indent=2))
+            elif not args.quiet:
+                print(format_project_audit_review(review))
+            return 0
+
+        if args.reclassify:
+            try:
+                if args.batch_size is not None:
+                    raise ProjectStateError(
+                        "--batch-size cannot be used with --reclassify"
+                    )
+                reclassify_plan = plan_project_audit_reclassify(config)
+                if not args.dry_run:
+                    apply_project_audit_plan(reclassify_plan)
+            except (OSError, StorageError, ProjectStateError, ValueError, TypeError) as error:
+                print(f"bibreview audit: {error}", file=sys.stderr)
+                return 1
+
+            payload = {
+                "dry_run": bool(args.dry_run),
+                "changed": reclassify_plan.changed,
+                "report": str(config.audit.report),
+                **reclassify_plan.summary_metrics.data(),
+            }
+            if args.json_output:
+                print(json.dumps(payload, ensure_ascii=False, indent=2))
+            elif not args.quiet:
+                prefix = "Dry run: " if args.dry_run else ""
+                print(prefix + reclassify_plan.summary())
+                print(f"Report: {config.audit.report}")
+            return 0
+
         try:
             plan = plan_project_audit_batch(
                 config,

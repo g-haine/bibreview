@@ -5,13 +5,17 @@ import unittest
 
 from bibreview.model import Author, Editor, Publication
 from bibreview.pipeline.audit import (
+    AuditComparison,
     AuditError,
     AuditRecord,
+    AuditResult,
     ProviderEvidence,
     audit_result_data,
     audit_result_from_data,
+    audit_review_findings,
     compare_audit_record,
     publication_audit_record,
+    reclassify_audit_result,
 )
 
 
@@ -192,6 +196,292 @@ class AuditComparisonTests(unittest.TestCase):
         }
         self.assertEqual(by_field["keywords"], "formatting-only")
         self.assertEqual(by_field["authors"], "substantive-difference")
+
+    def test_contributor_format_variants_are_not_substantive(self):
+        record = self.record(
+            authors=(
+                "Ai-Rong Wei",
+                "Arjan van der Schaft",
+                "José García",
+                "Carlos Aguilar-Ibañez",
+                "Brigitte d’Andréa-Novel",
+                "Kirsten Morris",
+            ),
+        )
+        result = compare_audit_record(
+            record,
+            (
+                ProviderEvidence(
+                    provider="provider-a",
+                    fields={
+                        "authors": (
+                            "Airong Wei",
+                            "A. van der Schaft",
+                            "Jose Garcia",
+                            "C. Aguilar-Ibáñez",
+                            "B. d'Andréa-Novel",
+                            "Kirsten A. Morris",
+                        ),
+                    },
+                ),
+            ),
+        )
+
+        self.assertEqual(
+            result.comparisons[0].classification,
+            "formatting-only",
+        )
+
+    def test_surname_first_provider_names_are_compatible(self):
+        result = compare_audit_record(
+            self.record(
+                authors=(
+                    "Peter Benner",
+                    "E. Jan W. ter Maten",
+                ),
+            ),
+            (
+                ProviderEvidence(
+                    provider="openalex",
+                    fields={
+                        "authors": (
+                            "Benner, Peter",
+                            "ter Maten, E. Jan W.",
+                        ),
+                    },
+                ),
+            ),
+        )
+
+        self.assertEqual(
+            result.comparisons[0].classification,
+            "formatting-only",
+        )
+
+    def test_contributor_reorder_remains_substantive(self):
+        record = self.record(
+            authors=("Ada Lovelace", "Alan Turing"),
+        )
+        result = compare_audit_record(
+            record,
+            (
+                ProviderEvidence(
+                    provider="provider-a",
+                    fields={"authors": ("Alan Turing", "Ada Lovelace")},
+                ),
+            ),
+        )
+
+        self.assertEqual(
+            result.comparisons[0].classification,
+            "substantive-difference",
+        )
+
+    def test_abstract_prefix_and_near_identical_markup_are_formatting_only(self):
+        canonical = (
+            "We establish a structure-preserving formulation for the model. "
+            "The resulting method conserves the relevant energy balance."
+        )
+        provider = (
+            "ABSTRACT We establish a structure-preserving formulation for the model. "
+            "The resulting method conserves the relevant energy balance!"
+        )
+        result = compare_audit_record(
+            self.record(abstract=canonical),
+            (
+                ProviderEvidence(
+                    provider="provider-a",
+                    fields={"abstract": provider},
+                ),
+            ),
+        )
+
+        self.assertEqual(
+            result.comparisons[0].classification,
+            "formatting-only",
+        )
+
+    def test_truncated_abstract_remains_substantive(self):
+        canonical = (
+            "This first sentence introduces the model. "
+            "This second sentence contains the principal result. "
+            "This third sentence explains the numerical validation."
+        )
+        result = compare_audit_record(
+            self.record(abstract=canonical),
+            (
+                ProviderEvidence(
+                    provider="provider-a",
+                    fields={"abstract": "This first sentence introduces the model."},
+                ),
+            ),
+        )
+
+        self.assertEqual(
+            result.comparisons[0].classification,
+            "substantive-difference",
+        )
+
+    def test_title_tex_and_unicode_math_are_formatting_only(self):
+        result = compare_audit_record(
+            self.record(title=r"Index $\le 1$ and $\theta$-methods"),
+            (
+                ProviderEvidence(
+                    provider="provider-a",
+                    fields={"title": "Index ≤ 1 and θ-methods"},
+                ),
+            ),
+        )
+
+        self.assertEqual(
+            result.comparisons[0].classification,
+            "formatting-only",
+        )
+
+    def test_title_smallcap_and_math_index_artifacts_are_formatting_only(self):
+        result = compare_audit_record(
+            self.record(
+                title="A Port-<scp>H</scp>amiltonian C 0-semigroup",
+            ),
+            (
+                ProviderEvidence(
+                    provider="openalex",
+                    fields={
+                        "title": "A Port- H amiltonian C0-semigroup",
+                    },
+                ),
+            ),
+        )
+
+        self.assertEqual(
+            result.comparisons[0].classification,
+            "formatting-only",
+        )
+
+    def test_review_findings_mask_non_actionable_pairwise_noise(self):
+        result = compare_audit_record(
+            self.record(pages="10--20", volume="12"),
+            (
+                ProviderEvidence(
+                    provider="provider-a",
+                    fields={"pages": "10-20", "volume": ""},
+                ),
+            ),
+        )
+
+        self.assertEqual(audit_review_findings(result), ())
+
+    def test_editor_author_role_disagreement_is_informational(self):
+        result = compare_audit_record(
+            self.record(
+                authors=(),
+                editors=("Ada Lovelace", "Alan Turing"),
+            ),
+            (
+                ProviderEvidence(
+                    provider="crossref",
+                    fields={"editors": ("Ada Lovelace", "Alan Turing")},
+                ),
+                ProviderEvidence(
+                    provider="openalex",
+                    fields={"authors": ("A. Turing", "A. Lovelace")},
+                ),
+            ),
+        )
+
+        findings = audit_review_findings(result)
+
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].classification, "role-disagreement")
+        self.assertEqual(findings[0].field, "contributors")
+        self.assertFalse(findings[0].actionable)
+
+    def test_editor_only_provider_authors_are_informational_even_when_names_disagree(self):
+        result = compare_audit_record(
+            self.record(
+                authors=(),
+                editors=("Ada Lovelace", "Alan Turing"),
+            ),
+            (
+                ProviderEvidence(
+                    provider="crossref",
+                    fields={"editors": ("Ada Lovelace", "Alan Turing")},
+                ),
+                ProviderEvidence(
+                    provider="semantic-scholar",
+                    fields={"authors": ("Unrelated Person",)},
+                ),
+            ),
+        )
+        findings = audit_review_findings(result)
+
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].classification, "role-disagreement")
+        self.assertFalse(findings[0].actionable)
+        self.assertEqual(
+            findings[0].detail,
+            "provider reports authors for canonical editor-only record",
+        )
+
+    def test_year_and_container_difference_is_not_actionable_when_canon_is_confirmed(self):
+        result = compare_audit_record(
+            self.record(
+                publication_year="2024",
+                container_title="Journal of Examples",
+            ),
+            (
+                ProviderEvidence(
+                    provider="crossref",
+                    fields={
+                        "publication_year": "2024",
+                        "container_title": "Journal of Examples",
+                    },
+                ),
+                ProviderEvidence(
+                    provider="openalex",
+                    fields={
+                        "publication_year": "2023",
+                        "container_title": "Proceedings of Examples",
+                    },
+                ),
+            ),
+        )
+
+        self.assertEqual(audit_review_findings(result), ())
+
+    def test_persisted_result_can_be_reclassified_without_provider_evidence(self):
+        result = AuditResult(
+            publication_id=PUBLICATION_ID,
+            identifiers={"doi": "10.1000/example"},
+            permalink="example",
+            title="Example",
+            comparisons=(
+                AuditComparison(
+                    provider="crossref",
+                    field="pages",
+                    classification="substantive-difference",
+                    canonical_value="10--20",
+                    provider_value="10-20",
+                ),
+                AuditComparison(
+                    provider="semantic-scholar",
+                    field="authors",
+                    classification="substantive-difference",
+                    canonical_value=("Ai-Rong Wei",),
+                    provider_value=("Airong Wei",),
+                ),
+            ),
+            provider_issues=(),
+            disagreements=(),
+        )
+
+        updated = reclassify_audit_result(result)
+
+        self.assertEqual(
+            tuple(item.classification for item in updated.comparisons),
+            ("formatting-only", "formatting-only"),
+        )
+        self.assertEqual(updated.provider_issues, result.provider_issues)
 
     def test_unsupported_provider_field_is_rejected(self):
         with self.assertRaisesRegex(AuditError, "unsupported audit field"):
