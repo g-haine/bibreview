@@ -203,6 +203,9 @@ class AuditComparisonTests(unittest.TestCase):
                 "Ai-Rong Wei",
                 "Arjan van der Schaft",
                 "José García",
+                "Carlos Aguilar-Ibañez",
+                "Brigitte d’Andréa-Novel",
+                "Kirsten Morris",
             ),
         )
         result = compare_audit_record(
@@ -215,6 +218,9 @@ class AuditComparisonTests(unittest.TestCase):
                             "Airong Wei",
                             "A. van der Schaft",
                             "Jose Garcia",
+                            "C. Aguilar-Ibáñez",
+                            "B. d'Andréa-Novel",
+                            "Kirsten A. Morris",
                         ),
                     },
                 ),
@@ -332,7 +338,7 @@ class AuditComparisonTests(unittest.TestCase):
                 ),
                 ProviderEvidence(
                     provider="openalex",
-                    fields={"authors": ("A. Lovelace", "A. Turing")},
+                    fields={"authors": ("A. Turing", "A. Lovelace")},
                 ),
             ),
         )
