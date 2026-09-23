@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date
 import unittest
 
@@ -171,6 +172,59 @@ fluid-structure, energy
         )[0].content
         self.assertIn(r"An \\( H \\) abstract.", content)
         self.assertIn(r'"A \\\\( x \\\\) title"', content)
+
+    def test_tex_closing_braces_are_preserved_in_abstract(self) -> None:
+        item = replace(
+            publication(),
+            abstract=(
+                r"Let \\(\\lambda_{\\mathrm{out}}\\) and "
+                r"\\({\\mathcal H}_2\\) be unchanged."
+            ),
+        )
+        content = render_jekyll_publication_posts(
+            model(item),
+            {"pub-id": "@article{x}\n"},
+            options=options(),
+        )[0].content
+        self.assertIn(
+            r"Let \\(\\lambda_{\\mathrm{out}}\\) and "
+            r"\\({\\mathcal H}_2\\) be unchanged.",
+            content,
+        )
+        self.assertNotIn("[[:space:]]", content)
+
+    def test_literal_liquid_openers_are_escaped_reversibly_in_body(self) -> None:
+        item = replace(
+            publication(),
+            abstract="Literal {{ value }} and {% tag %}.",
+        )
+        content = render_jekyll_publication_posts(
+            model(item),
+            {"pub-id": "@article{x}\n"},
+            options=options(),
+        )[0].content
+        self.assertIn(
+            "Literal {% raw %}{{{% endraw %} value }} and "
+            "{% raw %}{%{% endraw %} tag %}.",
+            content,
+        )
+        self.assertNotIn("[[:space:]]", content)
+
+    def test_front_matter_title_keeps_literal_braces_as_data(self) -> None:
+        item = replace(
+            publication(),
+            title=r"A \\(\\lambda_{\\mathrm{out}}\\) {{title}}",
+        )
+        content = render_jekyll_publication_posts(
+            model(item),
+            {"pub-id": "@article{x}\n"},
+            options=options(),
+        )[0].content
+        self.assertIn(
+            r'title: "A \\\\(\\lambda_{\\mathrm{out}}\\) {{title}}"',
+            content,
+        )
+        self.assertNotIn("[[:space:]]", content.split("---", 2)[1])
 
     def test_event_rule_can_override_type_category(self) -> None:
         item = publication(event="Presented at Example Conference 2025")
