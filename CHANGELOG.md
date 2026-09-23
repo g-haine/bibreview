@@ -47,7 +47,8 @@ All notable BibReview releases are documented here.
   replace tracked BibTeX;
 - cover safe missing-field proposals, collateral non-promotion, offline review,
   interactive resolution, stale-proposal blocking, targeted BibTeX editing and
-  backups, and preserved reviewed title/author metadata.
+  backups, and preserved reviewed title/author metadata;
+- validate the release with 405 passing tests.
 
 ## 1.6.5 — 2026-09-23
 
