@@ -1,9 +1,9 @@
-"""Fill selected missing canonical scalar fields without replacing reviewed metadata."""
+"""Propose selected missing canonical scalar fields without replacing reviewed metadata."""
 
 from __future__ import annotations
 
 from collections.abc import Iterable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 
 from ..model import Publication
 from ..reporting import Reporter
@@ -24,20 +24,27 @@ BACKFILL_FIELDS = frozenset({
 
 
 @dataclass(frozen=True)
-class BackfillItem:
-    """One canonical publication with selected previously-empty fields filled."""
+class BackfillCandidate:
+    """One proposed value for one currently-empty canonical field."""
 
-    publication: Publication
-    fields: tuple[str, ...]
+    publication_id: str
+    doi: str
+    title: str
+    field: str
+    proposed_value: str
+
+    @property
+    def key(self) -> str:
+        return f"{self.publication_id}:{self.field}"
 
 
 @dataclass(frozen=True)
 class BackfillResult:
-    """Complete read-only result of one missing-field backfill pass."""
+    """Complete read-only result of one missing-field proposal pass."""
 
     scanned_count: int
     eligible_count: int
-    items: tuple[BackfillItem, ...]
+    candidates: tuple[BackfillCandidate, ...]
     unavailable: tuple[str, ...]
     no_value: tuple[str, ...]
 
@@ -51,10 +58,10 @@ def backfill(
     enrichment_lookup: EnrichmentLookup | None = None,
     reporter: Reporter | None = None,
 ) -> BackfillResult:
-    """Fill only requested empty scalar fields on existing DOI-backed records.
+    """Propose values only for requested empty scalar fields.
 
-    Existing non-empty canonical values are never replaced. When *types* is
-    empty, all publication types are eligible.
+    Existing non-empty canonical values are never proposed for replacement.
+    When *types* is empty, all publication types are eligible.
     """
     publication_values = tuple(publications)
     requested_fields = tuple(dict.fromkeys(fields))
@@ -68,7 +75,7 @@ def backfill(
 
     selected_types = set(types)
     progress = reporter or Reporter(-1)
-    items: list[BackfillItem] = []
+    candidates: list[BackfillCandidate] = []
     unavailable: list[str] = []
     no_value: list[str] = []
     eligible_count = 0
@@ -77,9 +84,7 @@ def backfill(
         if selected_types and publication.type not in selected_types:
             continue
         missing = tuple(
-            field
-            for field in requested_fields
-            if not getattr(publication, field)
+            field for field in requested_fields if not getattr(publication, field)
         )
         if not missing:
             continue
@@ -87,41 +92,41 @@ def backfill(
         if doi is None:
             continue
         eligible_count += 1
-        progress.detail(
-            f"{doi}: backfill candidate ({', '.join(missing)})"
-        )
+        progress.detail(f"{doi}: backfill candidate ({', '.join(missing)})")
 
         message = provider.work(doi)
         if message is None:
             unavailable.append(doi)
             continue
 
-        candidate = build_publication(
+        proposed = build_publication(
             doi,
             message,
             publication.permalink,
             enrichment_lookup=enrichment_lookup,
         )
-        updates = {
-            field: getattr(candidate, field)
-            for field in missing
-            if getattr(candidate, field)
-        }
-        if not updates:
-            no_value.append(doi)
-            continue
-
-        items.append(
-            BackfillItem(
-                publication=replace(publication, **updates),
-                fields=tuple(field for field in missing if field in updates),
+        found = False
+        for field in missing:
+            value = getattr(proposed, field)
+            if not value:
+                continue
+            found = True
+            candidates.append(
+                BackfillCandidate(
+                    publication_id=publication.id,
+                    doi=doi,
+                    title=publication.title,
+                    field=field,
+                    proposed_value=value,
+                )
             )
-        )
+        if not found:
+            no_value.append(doi)
 
     return BackfillResult(
         scanned_count=len(publication_values),
         eligible_count=eligible_count,
-        items=tuple(items),
+        candidates=tuple(candidates),
         unavailable=tuple(unavailable),
         no_value=tuple(no_value),
     )
