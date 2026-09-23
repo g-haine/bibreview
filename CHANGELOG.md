@@ -2,6 +2,29 @@
 
 All notable BibReview releases are documented here.
 
+## 1.6.14 — 2026-09-23
+
+### Lossless Jekyll Liquid escaping
+
+- stop rewriting every closing `}}` sequence in rendered scholarly text;
+- preserve ordinary TeX constructs such as `\\lambda_{\\mathrm{out}}`,
+  `{\\mathcal H}_2`, and `A_{\\text{ext}}` byte-for-byte in generated
+  publication body text;
+- protect only actual Liquid openers (`{{` and `{%`) in page-body content
+  with self-contained Liquid `raw` blocks, so the rendered website recovers
+  the original literal characters;
+- keep front-matter values as YAML data instead of injecting Liquid escape
+  markup into titles or tags;
+- leave canonical bibliography data untouched: the fix is confined to the
+  deterministic Jekyll presentation layer.
+
+### Validation
+
+- cover TeX closing-brace preservation in abstracts;
+- cover reversible escaping of literal Liquid output/tag openers;
+- cover literal braces in front-matter titles;
+- validate the release with 449 passing tests.
+
 ## 1.6.13 — 2026-09-23
 
 ### Batched backfill enrichment
