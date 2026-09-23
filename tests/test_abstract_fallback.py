@@ -64,13 +64,31 @@ class AbstractFallbackTests(unittest.TestCase):
             "Useful text from provider.",
         )
 
-    def test_returns_explicit_unavailable_text_when_empty(self):
+    def test_returns_empty_string_when_all_fallbacks_are_unavailable(self):
         fallback = AbstractFallback(
             semantic_scholar=SequenceProvider(""),
             mendeley=SequenceProvider("  "),
             reporter=Reporter(-1),
         )
-        self.assertEqual(fallback.abstract("10.1/test"), "Not available")
+        self.assertEqual(fallback.abstract("10.1/test"), "")
+
+    def test_provider_placeholder_is_ignored_in_favor_of_real_abstract(self):
+        fallback = AbstractFallback(
+            semantic_scholar=SequenceProvider("NOT AVAILABLE"),
+            openalex=SequenceProvider("A real fallback abstract."),
+            reporter=Reporter(-1),
+        )
+        self.assertEqual(
+            fallback.abstract("10.1/test"),
+            "A real fallback abstract.",
+        )
+
+    def test_custom_unavailable_placeholder_is_collapsed_to_empty(self):
+        fallback = AbstractFallback(
+            unavailable_text="Not Available",
+            reporter=Reporter(-1),
+        )
+        self.assertEqual(fallback.abstract("10.1/test"), "")
 
     def test_semantic_scholar_429_disables_only_that_provider_for_run(self):
         semantic = SequenceProvider(
