@@ -169,29 +169,36 @@ Optional provider examples:
 providers:
   crossref:
     enabled: true
+    min_interval_seconds: 0.0
 
   openalex:
     enabled: true
+    min_interval_seconds: 0.0
     api_key_env: OPENALEX_API_KEY
 
   elsevier:
     enabled: true
+    min_interval_seconds: 0.0
     api_key_env: ELSEVIER_API_KEY
 
   springer:
     enabled: true
+    min_interval_seconds: 0.0
     api_key_env: SPRINGER_API_KEY
 
   ieee:
     enabled: true
+    min_interval_seconds: 0.0
     api_key_env: IEEE_API_KEY
 
   semantic_scholar:
     enabled: true
+    min_interval_seconds: 1.1
     api_key_env: SEMANTIC_SCHOLAR_API_KEY
 
   mendeley:
     enabled: true
+    min_interval_seconds: 0.0
     client_id_env: MENDELEY_CLIENT_ID
     client_secret_env: MENDELEY_CLIENT_SECRET
 ~~~
@@ -215,6 +222,17 @@ and CrossRef provide no abstract, enabled OpenAlex, Semantic Scholar and Mendele
 providers participate in the optional abstract fallback; BibReview keeps the
 longest valid fallback abstract returned for that DOI.
 
+Every provider block accepts `min_interval_seconds`, a non-negative number that
+sets the minimum interval between the **start times** of consecutive HTTP
+requests for that provider. The default is `0.0` (no BibReview-imposed delay).
+Intervals are provider-local: throttling Semantic Scholar does not slow CrossRef,
+OpenAlex, IEEE, or any other provider. Configure the value according to the
+provider's current API policy; changing the YAML is sufficient when upstream
+rate-limit guidance changes.
+
+The example uses `1.1` seconds for Semantic Scholar and `0.0` for the other
+providers. This is project policy, not a hard-coded BibReview special case.
+
 For Mendeley, configure the **Application ID** and **Application Secret** from
 the Mendeley Developer Portal. BibReview uses the OAuth 2.0
 `client_credentials` flow to request a short-lived bearer access token from
@@ -231,9 +249,8 @@ requests:
 bibreview --config bibreview.yml providers
 ~~~
 
-The report shows the configured environment-variable name and whether its value
-came from the configured dotenv file or the process environment. It never prints
-the secret value itself.
+The report shows the configured environment-variable name, credential source,
+and effective minimum request interval. It never prints the secret value itself.
 
 To perform one sanitized live request per provider that is ready to use:
 
