@@ -98,13 +98,16 @@ bibreview --config bibreview.yml hygiene --json
 
 The initial scanner recognizes legacy renderer markers, `inline-formula`,
 embedded graphical payloads such as JATS `inline-graphic` / `graphic` and
-HTML `img` / `image`, MathML, JATS-like tags, XML comments, escaped markup,
-generic HTML/XML tags and obviously unbalanced structured tags. Embedded
-graphics are always review-required in this read-only phase unless a later
-normalizer gains an explicitly trustworthy textual representation; BibReview
-does not infer mathematical content from an image path or filename. MathML carrying an
-`application/x-tex` annotation is marked as an apparent deterministic
-candidate because a later normalizer can preserve the embedded TeX. That label
+HTML `img` / `image`, subscript/superscript markup such as IEEE `<inf>` and
+ordinary `<sub>` / `<sup>`, MathML, JATS-like tags, XML comments, escaped
+markup, generic HTML/XML tags and obviously unbalanced structured tags.
+Embedded graphics are always review-required in this read-only phase unless a
+later normalizer gains an explicitly trustworthy textual representation;
+BibReview does not infer mathematical content from an image path or filename.
+Script markup is likewise review-required because plain unwrapping would lose
+mathematical position semantics. MathML carrying an `application/x-tex`
+annotation is marked as an apparent deterministic candidate because a later
+normalizer can preserve the embedded TeX. That label
 is diagnostic only: **`hygiene` never normalizes, stages, or mutates canonical
 metadata.**
 
