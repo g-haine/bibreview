@@ -122,20 +122,32 @@ bibreview --config bibreview.yml render
 
 ## Persistent provider error and refresh
 
-A manually corrected BibTeX may differ from the remote DOI BibTeX. Refresh only
-examines publications selected by refresh.types and refresh.when_missing_any.
+A manually corrected canonical field or BibTeX file is protected by the reviewed
+refresh workflow.
 
-If a manually corrected publication remains refresh-eligible, a later refresh
-may stage the remote provider version again. Do **not** blindly merge that
-staging batch. Either:
+Remote BibTeX is used only to detect that an eligible incomplete publication may
+be stale. It is never copied wholesale over the tracked BibTeX. The recollected
+metadata is compared field-by-field:
 
-- correct the staged record again before merge;
-- narrow or temporarily disable the refresh policy while the provider remains wrong;
-- or make the canonical record complete enough that it is no longer selected by
-  the configured missing-field policy, when that is factually correct.
+- a configured field that is canonically empty may become a safe proposal;
+- a difference on an already-populated field is recorded as collateral evidence
+  and cannot be promoted by refresh.
 
-When the remote BibTeX response is empty, BibReview retains the existing local
-BibTeX and does not overwrite it.
+Review collateral differences with:
+
+~~~bash
+bibreview --config bibreview.yml -v refresh --review
+~~~
+
+Only explicit accepted/custom missing-field decisions from
+`refresh --resolve` can be staged by `refresh --apply`. At application time,
+BibReview verifies that the canonical field is still empty. If it was manually
+filled or corrected after the refresh scan, the proposal is stale and the
+operation stops instead of overwriting it.
+
+For accepted fields with a meaningful tracked BibTeX representation, BibReview
+edits only that local field and creates a backup. Unrelated manually corrected
+BibTeX content remains untouched.
 
 ## Wrong DOI
 

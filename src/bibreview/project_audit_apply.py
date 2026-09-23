@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from datetime import date
 from pathlib import Path
-import re
 from types import MappingProxyType
 from typing import Any, Mapping
 
@@ -17,10 +15,11 @@ from .audit_resolution import (
 )
 from .bibtex_edit import BibtexEditError, bibtex_field_names, update_bibtex_fields
 from .config import BibReviewConfig
-from .model import Author, Editor, Publication
+from .model import Publication
 from .pipeline.audit import AuditValue, publication_audit_record
 from .project import ProjectStateError
 from .project_audit import project_audit_review
+from .reviewed_fields import apply_reviewed_field, bibtex_field_for, bibtex_value
 from .storage import (
     atomic_write_batch,
     backup_path,
@@ -136,161 +135,6 @@ class ProjectAuditApplyPlan:
         }
 
 
-def _display_contributor(contributor: Author | Editor) -> str:
-    if contributor.literal:
-        return contributor.literal
-    return " ".join(
-        value for value in (contributor.given, contributor.family) if value
-    ).strip()
-
-
-def _replace_contributors(
-    existing: tuple[Author, ...] | tuple[Editor, ...],
-    names: tuple[str, ...],
-    contributor_type: type[Author] | type[Editor],
-) -> tuple[Author, ...] | tuple[Editor, ...]:
-    """Preserve exact existing contributors and never infer name components."""
-    used: set[int] = set()
-    result: list[Author | Editor | None] = [None] * len(names)
-
-    for position, name in enumerate(names):
-        for index, contributor in enumerate(existing):
-            if index in used:
-                continue
-            if _display_contributor(contributor) == name:
-                used.add(index)
-                result[position] = contributor
-                break
-
-    remaining = [
-        (index, contributor)
-        for index, contributor in enumerate(existing)
-        if index not in used
-    ]
-    remaining_index = 0
-    for position, name in enumerate(names):
-        if result[position] is not None:
-            continue
-        source_fields: Mapping[str, object] = {}
-        if remaining_index < len(remaining):
-            _, previous = remaining[remaining_index]
-            remaining_index += 1
-            source_fields = previous.source_fields
-        result[position] = contributor_type(
-            literal=name,
-            source_fields=source_fields,
-        )
-
-    return tuple(item for item in result if item is not None)
-
-
-def _apply_field(
-    publication: Publication,
-    field: str,
-    value: AuditValue,
-) -> Publication:
-    """Apply one reviewed audit-field value without inventing metadata."""
-    if field == "authors":
-        if not isinstance(value, tuple):
-            raise ProjectStateError("authors resolution must be a tuple")
-        return replace(
-            publication,
-            authors=_replace_contributors(publication.authors, value, Author),
-        )
-    if field == "editors":
-        if not isinstance(value, tuple):
-            raise ProjectStateError("editors resolution must be a tuple")
-        return replace(
-            publication,
-            editors=_replace_contributors(publication.editors, value, Editor),
-        )
-    if field == "keywords":
-        if not isinstance(value, tuple):
-            raise ProjectStateError("keywords resolution must be a tuple")
-        return replace(publication, keywords=value)
-    if field == "created_date":
-        if not isinstance(value, str):
-            raise ProjectStateError("created_date resolution must be a string")
-        try:
-            parsed = date.fromisoformat(value) if value else None
-        except ValueError as error:
-            raise ProjectStateError(
-                f"invalid resolved created_date: {value!r}"
-            ) from error
-        return replace(publication, created_date=parsed)
-
-    scalar_fields = {
-        "type",
-        "title",
-        "abstract",
-        "container_title",
-        "publication_year",
-        "volume",
-        "issue",
-        "pages",
-        "publisher",
-        "event",
-    }
-    if field not in scalar_fields:
-        raise ProjectStateError(f"unsupported audit apply field: {field}")
-    if not isinstance(value, str):
-        raise ProjectStateError(f"{field} resolution must be a string")
-    return replace(publication, **{field: value})
-
-
-def _bibtex_field_for(
-    field: str,
-    publication: Publication,
-    existing_fields: frozenset[str],
-) -> str | None:
-    direct = {
-        "title": "title",
-        "authors": "author",
-        "editors": "editor",
-        "publication_year": "year",
-        "volume": "volume",
-        "pages": "pages",
-        "publisher": "publisher",
-    }
-    if field in direct:
-        return direct[field]
-    if field == "issue":
-        return "issue" if "issue" in existing_fields and "number" not in existing_fields else "number"
-    if field == "container_title":
-        if "journal" in existing_fields:
-            return "journal"
-        if "booktitle" in existing_fields:
-            return "booktitle"
-        if publication.type == "journal-article":
-            return "journal"
-        if publication.type in {"proceedings-article", "book-chapter"}:
-            return "booktitle"
-        if "series" in existing_fields:
-            return "series"
-        return None
-    if field == "abstract":
-        return "abstract" if "abstract" in existing_fields else None
-    if field == "keywords":
-        return "keywords" if "keywords" in existing_fields else None
-    if field == "event":
-        return "eventtitle" if "eventtitle" in existing_fields else None
-    return None
-
-
-def _bibtex_escape(value: str) -> str:
-    value = re.sub(r"(?<!\\)&", r"\\&", value)
-    return " ".join(value.splitlines()).strip()
-
-
-def _bibtex_value(field: str, value: AuditValue) -> str:
-    if isinstance(value, tuple):
-        if field in {"authors", "editors"}:
-            return " and ".join(_bibtex_escape(item) for item in value)
-        return ", ".join(_bibtex_escape(item) for item in value)
-    rendered = _bibtex_escape(value)
-    return "{" + rendered + "}" if field == "title" else rendered
-
-
 def _optional_bibliography(path: Path) -> tuple[Publication, ...]:
     return read_bibliography(path) if path.exists() else ()
 
@@ -372,7 +216,7 @@ def plan_project_audit_apply(config: BibReviewConfig) -> ProjectAuditApplyPlan:
             )
             continue
 
-        revised = _apply_field(
+        revised = apply_reviewed_field(
             updated[candidate.publication_id],
             field,
             decision.resolved_value,
@@ -425,7 +269,7 @@ def plan_project_audit_apply(config: BibReviewConfig) -> ProjectAuditApplyPlan:
                         f"{target}: cannot inspect tracked BibTeX safely: {error}"
                     ) from error
 
-            bib_field = _bibtex_field_for(
+            bib_field = bibtex_field_for(
                 change.field,
                 publication,
                 existing_fields,
@@ -442,7 +286,7 @@ def plan_project_audit_apply(config: BibReviewConfig) -> ProjectAuditApplyPlan:
                     f"{target}: tracked BibTeX is required to synchronize "
                     f"resolved field {change.field}"
                 )
-            rendered = _bibtex_value(change.field, change.after)
+            rendered = bibtex_value(change.field, change.after)
             previous = bib_updates.get(bib_field)
             if previous is not None and previous != rendered:
                 raise ProjectStateError(

@@ -378,14 +378,76 @@ bibreview --config bibreview.yml merge
 
 ## refresh
 
-Inspect configured incomplete existing records, compare stored/current BibTeX,
-and stage stale records:
+Inspect configured incomplete existing records and use remote BibTeX only to
+detect whether provider metadata appears stale:
 
 ~~~bash
 bibreview --config bibreview.yml refresh
 ~~~
 
-A non-empty staging bibliography must be merged or otherwise resolved first.
+The networked scan does **not** write `collected.json` and does **not** replace
+tracked BibTeX. For each stale publication, BibReview recollects metadata in
+memory and compares it with the canonical record using the audit equivalence
+rules.
+
+Only configured fields that are currently empty may become safe proposals.
+Meaningful differences on any already-populated field are stored as collateral
+evidence and can never be applied by refresh.
+
+Review the persisted result offline:
+
+~~~bash
+bibreview --config bibreview.yml refresh --review
+bibreview --config bibreview.yml -v refresh --review
+~~~
+
+The default review prints aggregate counts. Verbose review shows every safe
+missing-field proposal plus every collateral current/provider difference.
+
+Resolve safe proposals interactively:
+
+~~~bash
+bibreview --config bibreview.yml refresh --resolve
+~~~
+
+The resolver reuses the backfill decision model:
+
+- **Enter** or **Y** — accept the proposed missing-field value;
+- **n** — reject it;
+- **f VALUE** — choose an explicit custom value;
+- **s** — defer it;
+- **q** — stop and resume later.
+
+Collateral differences are deliberately absent from the resolver because refresh
+has no code path that can promote them.
+
+After every safe proposal has a final decision:
+
+~~~bash
+bibreview --config bibreview.yml --dry-run refresh --apply
+bibreview --config bibreview.yml refresh --apply
+~~~
+
+`refresh --apply` rechecks that every accepted/custom canonical field is still
+empty. It stages only those reviewed fills in `collected.json`. Existing title,
+authors, container, dates, publisher, and other non-empty canonical values remain
+untouched even when the provider recollection differs.
+
+Tracked BibTeX is synchronized conservatively only for accepted fields. BibReview
+edits the existing single-entry BibTeX field-by-field and creates an archive
+backup first. The remote DOI BibTeX is **never copied wholesale**, so a manual
+BibTeX correction cannot be silently replaced merely because the provider
+continues to return different text.
+
+Inspect the staged JSON and BibTeX diff, then use the ordinary merge boundary:
+
+~~~bash
+bibreview --config bibreview.yml --dry-run merge
+bibreview --config bibreview.yml merge
+~~~
+
+A non-empty staging bibliography blocks both refresh scanning and refresh
+application.
 
 ## merge
 

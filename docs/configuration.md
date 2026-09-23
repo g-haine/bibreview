@@ -122,7 +122,15 @@ refresh:
 
 Only publications of a configured type with at least one configured empty field
 are eligible. BibReview compares the stored BibTeX with the current DOI BibTeX;
-changed or missing BibTeX can trigger recollection into staging.
+changed or missing BibTeX can trigger an in-memory recollection and persisted
+refresh review.
+
+The remote BibTeX is only a staleness detector. Refresh never stages a complete
+provider recollection. Configured fields that are currently empty may become
+human-review proposals; meaningful differences affecting already-populated
+canonical fields are stored as collateral evidence and cannot be applied through
+refresh. Only `refresh --apply`, after explicit `refresh --resolve` decisions,
+may stage accepted/custom missing-field fills.
 
 ## Audit state
 

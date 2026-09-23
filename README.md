@@ -11,7 +11,7 @@ feed.
 BibReview is designed so that provider output remains inspectable and ambiguous
 decisions remain human decisions.
 
-Current stable release: **v1.6.5**.
+Current stable release: **v1.6.6**.
 
 ## What BibReview provides
 
@@ -27,7 +27,7 @@ Current stable release: **v1.6.5**.
 - persistent publication UUIDs independent from DOI representation;
 - reviewed author-name mapping with safe and ambiguous proposals;
 - BibTeX retrieval and tracked source files;
-- refresh/recollection of selected incomplete publications;
+- human-reviewed, non-destructive refresh of selected incomplete publications;
 - human-reviewed backfill of selected missing canonical fields;
 - deterministic Jekyll publication, author and year rendering;
 - an optional arXiv feed-cache module, separate from the canonical bibliography;
@@ -42,7 +42,7 @@ BibReview currently requires **Python 3.12 or newer**.
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.5"
+python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.6"
 
 bibreview --version
 ~~~
@@ -72,6 +72,10 @@ discover
 human review of uncertain DOI candidates
    ↓
 refresh existing incomplete records
+   ↓
+review/resolve refresh proposals
+   ↓
+apply reviewed refresh fills
    ↓
 merge
    ↓
@@ -107,7 +111,7 @@ A curated project should inspect staged metadata and BibTeX before merging.
 | **discover** | Discover and screen new DOI candidates. |
 | **collect** | Collect pending DOI metadata into canonical staging. |
 | **backfill** | Propose missing-field enrichment, resolve it interactively, then stage accepted values. |
-| **refresh** | Recollect selected incomplete existing publications. |
+| **refresh** | Detect stale incomplete records, review safe fills, and stage only human-approved changes. |
 | **merge** | Merge reviewed staging into the canonical bibliography. |
 | **authors** | Analyze and safely extend author identity mappings. |
 | **render** | Reconcile generated Jekyll bibliography artifacts. |
@@ -117,6 +121,29 @@ Use **--dry-run** with mutating workflows when you want to inspect the plan
 without writing project files.
 
 Full details: [command reference](docs/commands.md).
+
+### Non-destructive reviewed refresh
+
+`refresh` uses the remote DOI BibTeX only as a staleness detector. A stale
+record is recollected in memory and compared field-by-field with canonical
+metadata. Configured fields that are currently empty become safe proposals;
+differences affecting already-reviewed non-empty fields are retained as
+**collateral evidence** and are never auto-applied.
+
+~~~bash
+bibreview refresh
+bibreview -v refresh --review
+bibreview refresh --resolve
+bibreview --dry-run refresh --apply
+bibreview refresh --apply
+~~~
+
+The resolver reuses the same resumable human decision model as backfill.
+`refresh --apply` can fill only the reviewed missing-field proposals. It
+refuses stale proposals when a field has since become non-empty. Tracked BibTeX
+is edited only for accepted fields, with backup; the remote BibTeX response is
+never copied wholesale. `bibreview merge` remains the only canonical
+promotion boundary.
 
 ### Human-reviewed missing-field backfill
 
@@ -191,7 +218,7 @@ BibReview keeps canonical and intermediate state visible in ordinary files:
 
 ~~~text
 bibliography.json    canonical reviewed bibliography
-collected.json       current collect/refresh/audit-apply/backfill-apply staging batch
+collected.json       current collect/refresh-apply/audit-apply/backfill-apply staging batch
 known.txt            accepted DOI state
 pending.txt          DOI values waiting for collection
 review.txt           DOI values requiring human relevance review

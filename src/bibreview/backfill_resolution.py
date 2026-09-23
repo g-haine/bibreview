@@ -108,7 +108,7 @@ def backfill_resolution_candidates(
     )
 
 
-def _state_from_data(value: Any) -> BackfillResolutionState:
+def backfill_resolution_state_from_data(value: Any) -> BackfillResolutionState:
     if not isinstance(value, Mapping):
         raise ProjectStateError("backfill resolutions must be an object")
     if value.get("schema_version") != BACKFILL_RESOLUTION_SCHEMA_VERSION:
@@ -207,7 +207,7 @@ def load_project_backfill_resolutions(
             total_proposals=len(candidates),
         )
 
-    state = _state_from_data(read_json(path, dict))
+    state = backfill_resolution_state_from_data(read_json(path, dict))
     if (
         state.review_fingerprint != fingerprint
         or state.total_proposals != len(candidates)

@@ -107,28 +107,46 @@ This is intentionally a human decision.
 
 ## 4. Refresh existing incomplete records
 
-Refresh, collection, and audit application share the same staging file, so handle any existing audit staging before refresh:
+Refresh is now explicitly review-first. Start with a dry run if desired, then
+persist the provider comparison:
 
 ~~~bash
 bibreview --config bibreview.yml --dry-run refresh
 bibreview --config bibreview.yml refresh
 ~~~
 
-Inspect:
+At this stage **nothing is staged and no tracked BibTeX is replaced**. Inspect
+the review, especially collateral changes on already-populated canonical fields:
 
-- collected.json;
-- any reported BibTeX backup;
-- the changed or newly created BibTeX files.
+~~~bash
+bibreview --config bibreview.yml refresh --review
+bibreview --config bibreview.yml -v refresh --review
+~~~
 
-If the staging data is correct:
+Resolve only the safe missing-field proposals:
+
+~~~bash
+bibreview --config bibreview.yml refresh --resolve
+~~~
+
+Then preview and apply the reviewed decisions:
+
+~~~bash
+bibreview --config bibreview.yml --dry-run refresh --apply
+bibreview --config bibreview.yml refresh --apply
+~~~
+
+Only accepted/custom fills are written to `collected.json`. Applicable tracked
+BibTeX fields are edited individually with backups; the remote BibTeX is never
+copied wholesale. Collateral provider differences can never be promoted by
+refresh.
+
+Inspect staging and BibTeX changes before merging:
 
 ~~~bash
 bibreview --config bibreview.yml --dry-run merge
 bibreview --config bibreview.yml merge
 ~~~
-
-If a provider response is wrong, correct it before merging. See
-[Manual corrections](corrections.md).
 
 ## Optional: backfill missing canonical fields
 

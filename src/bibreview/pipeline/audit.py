@@ -537,6 +537,22 @@ def _classify_pair(
     return "identity-problem" if identity else "substantive-difference"
 
 
+def classify_audit_pair(
+    field: str,
+    canonical: AuditValue,
+    provider: AuditValue,
+    *,
+    identity: bool = False,
+) -> str:
+    """Classify one canonical/provider field pair using audit equivalence rules."""
+    return _classify_pair(
+        field,
+        canonical,
+        provider,
+        identity=identity,
+    )
+
+
 def _provider_disagreements(
     record: AuditRecord,
     evidences: tuple[ProviderEvidence, ...],

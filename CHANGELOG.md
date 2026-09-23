@@ -2,6 +2,54 @@
 
 All notable BibReview releases are documented here.
 
+## 1.6.6 — 2026-09-23
+
+### Non-destructive reviewed refresh
+
+- stop `refresh` from writing complete recollected publications directly to
+  `collected.json`;
+- use the remote DOI BibTeX only as a staleness detector and never as a wholesale
+  replacement for tracked local BibTeX;
+- compare stale recollections field-by-field with canonical metadata using the
+  established audit-equivalence rules;
+- turn only configured fields that are currently empty into safe refresh
+  proposals;
+- retain every meaningful difference affecting an already-populated canonical
+  field as explicit collateral evidence that refresh cannot promote;
+- add offline `refresh --review` output, with verbose current/provider values
+  for every collateral difference;
+- add resumable `refresh --resolve` decisions by reusing the backfill
+  accept/reject/custom/defer/quit resolution model;
+- add `refresh --apply` to stage only accepted/custom missing-field fills after
+  rechecking that the canonical field is still empty;
+- keep `bibreview merge` as the only canonical promotion boundary.
+
+### BibTeX safety
+
+- remove the old whole-file remote BibTeX replacement behavior from refresh;
+- synchronize only reviewed accepted fields in the existing tracked BibTeX;
+- reuse the conservative single-entry field editor already used by audited
+  corrections;
+- create an archive backup before each reviewed BibTeX field-level edit;
+- leave unrelated manually corrected BibTeX content untouched.
+
+### Shared reviewed-field logic
+
+- expose audit pair classification for reuse by refresh;
+- share reviewed canonical-field application and BibTeX mapping/rendering helpers
+  between `audit --apply` and `refresh --apply`;
+- reuse backfill resolution state and decision mechanics for refresh instead of
+  maintaining a second human-decision implementation.
+
+### Validation
+
+- add regression coverage proving that refresh scanning does not write staging or
+  replace tracked BibTeX;
+- cover safe missing-field proposals, collateral non-promotion, offline review,
+  interactive resolution, stale-proposal blocking, targeted BibTeX editing and
+  backups, and preserved reviewed title/author metadata;
+- validate the release with 405 passing tests.
+
 ## 1.6.5 — 2026-09-23
 
 ### Human-reviewed missing-field backfill
