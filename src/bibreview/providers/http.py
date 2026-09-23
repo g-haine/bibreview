@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from time import monotonic, sleep
 from typing import Callable
 from urllib.parse import urlsplit
@@ -17,9 +19,40 @@ from ..reporting import Reporter
 class HttpError(ValueError):
     """Raised when an HTTP request fails or returns unusable content."""
 
-    def __init__(self, message: str, *, status_code: int | None = None):
+    def __init__(
+        self,
+        message: str,
+        *,
+        status_code: int | None = None,
+        retry_after_seconds: float | None = None,
+    ) -> None:
         super().__init__(message)
         self.status_code = status_code
+        self.retry_after_seconds = retry_after_seconds
+
+
+def _parse_retry_after(value: str | None) -> float | None:
+    """Return a non-negative Retry-After delay in seconds when parseable."""
+    if value is None:
+        return None
+    normalized = value.strip()
+    if not normalized:
+        return None
+
+    try:
+        delay = float(normalized)
+    except ValueError:
+        try:
+            retry_at = parsedate_to_datetime(normalized)
+        except (TypeError, ValueError, OverflowError):
+            return None
+        if retry_at.tzinfo is None:
+            retry_at = retry_at.replace(tzinfo=timezone.utc)
+        return max(
+            0.0,
+            (retry_at - datetime.now(timezone.utc)).total_seconds(),
+        )
+    return delay if delay >= 0 else None
 
 
 class RateLimitedTransport:
@@ -30,14 +63,18 @@ class RateLimitedTransport:
         transport: HttpTransport,
         *,
         min_interval_seconds: float = 0.0,
+        rate_limit_retries: int = 2,
         clock: Callable[[], float] = monotonic,
         sleeper: Callable[[float], None] = sleep,
     ) -> None:
         if min_interval_seconds < 0:
             raise ValueError("min_interval_seconds must be non-negative")
+        if rate_limit_retries < 0:
+            raise ValueError("rate_limit_retries must be non-negative")
         self.transport = transport
         self.reporter = transport.reporter
         self.min_interval_seconds = float(min_interval_seconds)
+        self.rate_limit_retries = int(rate_limit_retries)
         self._clock = clock
         self._sleeper = sleeper
         self._last_request_started: float | None = None
@@ -79,21 +116,74 @@ class RateLimitedTransport:
         context = kwargs.get("context")
         return context if isinstance(context, str) else None
 
+    def _rate_limit_retry_delay(
+        self,
+        error: HttpError,
+        *,
+        attempt: int,
+    ) -> tuple[float, str]:
+        if error.retry_after_seconds is not None:
+            return error.retry_after_seconds, "Retry-After"
+        base = max(1.0, self.min_interval_seconds)
+        return base * (2**attempt), "fallback backoff"
+
+    def _call_with_rate_limit_retries(
+        self,
+        method: Callable[..., object],
+        url: str,
+        kwargs: Mapping[str, object],
+    ) -> object:
+        operation = self._context(kwargs) or "HTTP request"
+        for attempt in range(self.rate_limit_retries + 1):
+            self._wait_for_request_slot(context=operation)
+            try:
+                return method(url, **kwargs)
+            except HttpError as error:
+                if (
+                    error.status_code != 429
+                    or attempt >= self.rate_limit_retries
+                ):
+                    raise
+                delay, source = self._rate_limit_retry_delay(
+                    error,
+                    attempt=attempt,
+                )
+                self.reporter.debug(
+                    f"{operation}: HTTP 429; provider retry "
+                    f"{attempt + 1}/{self.rate_limit_retries} after "
+                    f"{delay:.3f}s ({source})"
+                )
+                if delay > 0:
+                    self._sleeper(delay)
+        raise AssertionError("unreachable provider retry state")
+
     def request(self, url: str, **kwargs: object):
-        self._wait_for_request_slot(context=self._context(kwargs))
-        return self.transport.request(url, **kwargs)
+        return self._call_with_rate_limit_retries(
+            self.transport.request,
+            url,
+            kwargs,
+        )
 
     def json(self, url: str, **kwargs: object):
-        self._wait_for_request_slot(context=self._context(kwargs))
-        return self.transport.json(url, **kwargs)
+        return self._call_with_rate_limit_retries(
+            self.transport.json,
+            url,
+            kwargs,
+        )
 
     def post_json(self, url: str, **kwargs: object):
-        self._wait_for_request_slot(context=self._context(kwargs))
-        return self.transport.post_json(url, **kwargs)
+        return self._call_with_rate_limit_retries(
+            self.transport.post_json,
+            url,
+            kwargs,
+        )
 
     def post_form_json(self, url: str, **kwargs: object):
-        self._wait_for_request_slot(context=self._context(kwargs))
-        return self.transport.post_form_json(url, **kwargs)
+        return self._call_with_rate_limit_retries(
+            self.transport.post_form_json,
+            url,
+            kwargs,
+        )
 
 
 class HttpTransport:
@@ -120,9 +210,10 @@ class HttpTransport:
             retry = Retry(
                 total=retries,
                 backoff_factor=1,
-                status_forcelist=(429, 500, 502, 503, 504),
+                status_forcelist=(500, 502, 503, 504),
                 allowed_methods=frozenset({"GET", "POST"}),
                 raise_on_status=False,
+                respect_retry_after_header=False,
             )
             self.session.mount("https://", HTTPAdapter(max_retries=retry))
 
@@ -151,7 +242,7 @@ class HttpTransport:
             hints = {
                 401: "authentication required by the responding service",
                 403: "access denied by the responding service",
-                429: "rate limit reached after retries",
+                429: "rate limit reached",
             }
             if status in hints:
                 detail += ": " + hints[status]
@@ -166,9 +257,21 @@ class HttpTransport:
         else:
             detail = "HTTP transport failure"
         prefix = f"{context}: " if context else ""
+        retry_after_seconds = None
+        if status == 429 and failure is not None:
+            headers = getattr(failure, "headers", None)
+            retry_after_value = (
+                headers.get("Retry-After")
+                if hasattr(headers, "get")
+                else None
+            )
+            if isinstance(retry_after_value, str):
+                retry_after_seconds = _parse_retry_after(retry_after_value)
+
         return HttpError(
             f"{prefix}{location}: {detail}",
             status_code=status if isinstance(status, int) else None,
+            retry_after_seconds=retry_after_seconds,
         )
 
     def request(
