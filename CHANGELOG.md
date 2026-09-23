@@ -2,6 +2,34 @@
 
 All notable BibReview releases are documented here.
 
+## 1.6.10 — 2026-09-23
+
+### Abstract placeholder cleanup
+
+- treat the historical canonical abstract placeholder `Not Available` as
+  semantically missing, case- and whitespace-insensitively;
+- keep this placeholder policy specific to the `abstract` field so unrelated
+  scalar metadata is not reinterpreted;
+- make reviewed backfill propose real abstracts for historical placeholder
+  values instead of skipping them as non-empty;
+- allow reviewed backfill and refresh application to replace the placeholder
+  while preserving stale-value protection for meaningful canonical abstracts;
+- reject accepted/custom abstract values that resolve back to the placeholder;
+- normalize provider-side `Not Available` abstract values to empty before
+  collection, fallback selection, and audit comparison;
+- stop the optional abstract fallback from manufacturing `Not available` when
+  no real abstract is available;
+- reuse the same semantic missing-value policy across backfill and safe refresh.
+
+### Validation
+
+- cover case/whitespace-insensitive placeholder detection;
+- cover backfill proposal and apply from historical placeholder records;
+- cover rejection of placeholder provider/custom values;
+- cover fallback, collection, refresh, and CrossRef/OpenAlex/Semantic Scholar
+  audit normalization;
+- validate the release with 432 passing tests.
+
 ## 1.6.9 — 2026-09-23
 
 ### Configurable provider request pacing
