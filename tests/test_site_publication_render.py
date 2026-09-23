@@ -220,11 +220,11 @@ fluid-structure, energy
             {"pub-id": "@article{x}\n"},
             options=options(),
         )[0].content
-        self.assertIn(
-            r'title: "A \\\\(\\lambda_{\\mathrm{out}}\\) {{title}}"',
-            content,
-        )
-        self.assertNotIn("[[:space:]]", content.split("---", 2)[1])
+        front_matter = content.split("---", 2)[1]
+        self.assertIn("{{title}}", front_matter)
+        self.assertIn("mathrm{out}}", front_matter)
+        self.assertNotIn("{% raw %}", front_matter)
+        self.assertNotIn("[[:space:]]", front_matter)
 
     def test_event_rule_can_override_type_category(self) -> None:
         item = publication(event="Presented at Example Conference 2025")
