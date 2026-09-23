@@ -6,7 +6,7 @@ from dataclasses import asdict, dataclass
 from typing import Callable
 
 from .config import BibReviewConfig, ProviderConfig
-from .providers.http import HttpError, HttpTransport
+from .providers.http import HttpError, HttpTransport, RateLimitedTransport
 from .providers.mendeley import MendeleyProvider
 from .reporting import Reporter
 from .runtime import RuntimeEnvironment, resolve_runtime_environment
@@ -314,8 +314,18 @@ def diagnose_providers(
         can_check = enabled and status == "configured"
         if check and can_check:
             checked = True
+            provider_config = _provider_config(config, name)
+            interval = (
+                provider_config.min_interval_seconds
+                if provider_config is not None
+                else 0.0
+            )
+            probe_transport = RateLimitedTransport(
+                live_transport,
+                min_interval_seconds=interval,
+            )
             try:
-                _PROBES[name](live_transport, config, values)
+                _PROBES[name](probe_transport, config, values)
             except HttpError as error:
                 status, detail = _failure_status(name, error)
             except (OSError, ValueError, TypeError):
