@@ -8,8 +8,14 @@ import unittest
 from bibreview.config import load_config
 from bibreview.identity import new_publication_id
 from bibreview.model import Author, Publication
-from bibreview.project import apply_project_merge, plan_project_merge, ProjectStateError
-from bibreview.project_refresh import apply_project_refresh, plan_project_refresh
+from bibreview.project import ProjectStateError
+from bibreview.project_refresh import (
+    apply_project_refresh,
+    format_project_refresh_review,
+    load_project_refresh_review,
+    plan_project_refresh,
+    refresh_review_path,
+)
 from bibreview.storage import read_bibliography, write_bibliography
 
 
@@ -40,12 +46,12 @@ class FakeProvider:
         return self.records.get(doi)
 
 
-def message(title="Updated title"):
+def message(title="Provider title"):
     return {
         "type": "journal-article",
         "title": [title],
         "author": [{"given": "Ada", "family": "Lovelace"}],
-        "container-title": ["Journal"],
+        "container-title": ["Provider Journal"],
         "created": {"date-parts": [[2026, 9, 17]]},
         "published-print": {"date-parts": [[2026]]},
         "volume": "12",
@@ -64,13 +70,23 @@ class ProjectRefreshTests(unittest.TestCase):
         self.config = load_config(self.config_path)
         self.config.paths.bibliography.parent.mkdir(parents=True, exist_ok=True)
 
-    def publication(self, doi, *, permalink="paper", volume="", issue="", pages=""):
+    def publication(
+        self,
+        doi,
+        *,
+        permalink="paper",
+        volume="",
+        issue="",
+        pages="",
+        title="Reviewed title",
+    ):
         return Publication(
             id=new_publication_id(),
             identifiers={"doi": doi},
             type="journal-article",
-            title="Old title",
-            authors=(Author(literal="Example Author"),),
+            title=title,
+            authors=(Author(literal="Reviewed Author"),),
+            container_title="Reviewed Journal",
             publication_year="2025",
             volume=volume,
             issue=issue,
@@ -86,7 +102,7 @@ class ProjectRefreshTests(unittest.TestCase):
             if path.is_file()
         }
 
-    def test_plan_is_read_only_and_merge_preserves_persisted_uuid(self):
+    def test_refresh_persists_review_only_and_never_replaces_bibtex_or_stages(self):
         old = self.publication("10.1/stale", permalink="stable-paper")
         complete = self.publication(
             "10.1/complete",
@@ -101,7 +117,10 @@ class ProjectRefreshTests(unittest.TestCase):
             "10.1/stale\n10.1/complete\n10.1/orphaned\n",
             encoding="utf-8",
         )
-        self.config.paths.pending.write_text("10.1/preexisting\n", encoding="utf-8")
+        self.config.paths.pending.write_text(
+            "10.1/preexisting\n",
+            encoding="utf-8",
+        )
         self.config.paths.bibtex.mkdir(parents=True, exist_ok=True)
         old_bib = self.config.paths.bibtex / "stable-paper.bib"
         old_bib.write_text("old bibtex\n", encoding="utf-8")
@@ -115,20 +134,25 @@ class ProjectRefreshTests(unittest.TestCase):
         )
 
         self.assertEqual(before, self.snapshot())
-        self.assertEqual(plan.result.candidates, ("10.1/stale",))
+        self.assertEqual(plan.review.stale_dois, ("10.1/stale",))
+        self.assertEqual(
+            {proposal.field for proposal in plan.review.proposals},
+            {"volume", "issue", "pages"},
+        )
+        self.assertIn(
+            "title",
+            {item.field for item in plan.review.collateral},
+        )
         self.assertEqual(plan.orphaned_known, ("10.1/orphaned",))
-        self.assertEqual(len(plan.bibtex_backups), 1)
         self.assertTrue(plan.changed)
 
         apply_project_refresh(plan)
+
         self.assertEqual(read_bibliography(self.config.paths.bibliography)[0].id, old.id)
-        staged = read_bibliography(self.config.paths.collected)
-        self.assertEqual(len(staged), 1)
-        self.assertEqual(staged[0].doi, "10.1/stale")
-        self.assertEqual(staged[0].permalink, "stable-paper")
-        self.assertNotEqual(staged[0].id, old.id)
-        self.assertEqual(old_bib.read_text(encoding="utf-8"), "new bibtex\n")
-        self.assertEqual(plan.bibtex_backups[0].read_text(encoding="utf-8"), "old bibtex\n")
+        self.assertEqual(read_bibliography(self.config.paths.collected), ())
+        self.assertEqual(old_bib.read_text(encoding="utf-8"), "old bibtex\n")
+        review = load_project_refresh_review(self.config)
+        self.assertEqual(review.stale_dois, ("10.1/stale",))
         self.assertEqual(
             self.config.paths.known.read_text(encoding="utf-8"),
             "10.1/stale\n10.1/complete\n",
@@ -138,13 +162,24 @@ class ProjectRefreshTests(unittest.TestCase):
             "10.1/preexisting\n10.1/orphaned\n",
         )
 
-        merge = plan_project_merge(self.config)
-        apply_project_merge(merge)
-        refreshed = read_bibliography(self.config.paths.bibliography)
-        refreshed_stale = next(publication for publication in refreshed if publication.doi == "10.1/stale")
-        self.assertEqual(refreshed_stale.id, old.id)
-        self.assertEqual(refreshed_stale.volume, "12")
-        self.assertEqual(read_bibliography(self.config.paths.collected), ())
+    def test_verbose_review_shows_collateral_current_and_provider_values(self):
+        old = self.publication("10.1/stale")
+        write_bibliography(self.config.paths.bibliography, [old])
+        self.config.paths.bibtex.mkdir(parents=True, exist_ok=True)
+        (self.config.paths.bibtex / "paper.bib").write_text(
+            "old\n",
+            encoding="utf-8",
+        )
+        plan = plan_project_refresh(
+            self.config,
+            provider=FakeProvider({"10.1/stale": message()}),
+            bibtex_lookup=lambda doi: "new\n",
+        )
+        text = format_project_refresh_review(plan.review, verbose=True)
+        self.assertIn("COLLATERAL (never auto-applied): title", text)
+        self.assertIn("Reviewed title", text)
+        self.assertIn("Provider title", text)
+        self.assertIn("SAFE MISSING FIELD: volume", text)
 
     def test_nonempty_staging_blocks_refresh_before_network_access(self):
         write_bibliography(
@@ -152,7 +187,10 @@ class ProjectRefreshTests(unittest.TestCase):
             [self.publication("10.1/already-staged")],
         )
         provider = FakeProvider({})
-        with self.assertRaisesRegex(ProjectStateError, "merge the existing batch"):
+        with self.assertRaisesRegex(
+            ProjectStateError,
+            "merge the existing batch",
+        ):
             plan_project_refresh(
                 self.config,
                 provider=provider,
@@ -160,25 +198,29 @@ class ProjectRefreshTests(unittest.TestCase):
             )
         self.assertEqual(provider.calls, [])
 
-    def test_unavailable_candidate_does_not_replace_existing_state(self):
+    def test_unavailable_candidate_writes_review_but_does_not_touch_bibtex(self):
         old = self.publication("10.1/unavailable", permalink="paper")
         write_bibliography(self.config.paths.bibliography, [old])
         write_bibliography(self.config.paths.collected, [])
-        self.config.paths.known.write_text("10.1/unavailable\n", encoding="utf-8")
+        self.config.paths.known.write_text(
+            "10.1/unavailable\n",
+            encoding="utf-8",
+        )
         self.config.paths.bibtex.mkdir(parents=True, exist_ok=True)
         target = self.config.paths.bibtex / "paper.bib"
         target.write_text("old\n", encoding="utf-8")
-        before = self.snapshot()
 
         plan = plan_project_refresh(
             self.config,
             provider=FakeProvider({}),
             bibtex_lookup=lambda doi: "new\n",
         )
-        self.assertEqual(plan.result.unavailable, ("10.1/unavailable",))
-        self.assertFalse(plan.changed)
+        self.assertEqual(plan.review.unavailable, ("10.1/unavailable",))
         apply_project_refresh(plan)
-        self.assertEqual(before, self.snapshot())
+
+        self.assertTrue(refresh_review_path(self.config).exists())
+        self.assertEqual(target.read_text(encoding="utf-8"), "old\n")
+        self.assertEqual(read_bibliography(self.config.paths.collected), ())
 
 
 if __name__ == "__main__":
