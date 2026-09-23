@@ -107,11 +107,11 @@ class BuildPublicationTests(unittest.TestCase):
     def test_article_number_fills_pages_when_crossref_page_is_missing(self):
         data = message()
         data["page"] = ""
-        data["article-number"] = "034312"
+        data["article-number"] = "034312-A"
 
         publication = build_publication("10.1/test", data, "article-number")
 
-        self.assertEqual(publication.pages, "034312")
+        self.assertEqual(publication.pages, "034312-A")
 
     def test_editor_only_crossref_record_is_supported(self):
         data = message()
