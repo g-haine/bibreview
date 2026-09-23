@@ -21,10 +21,15 @@ class StubFallback:
     def __init__(self, value: str):
         self.value = value
         self.calls: list[str] = []
+        self.batch_calls: list[tuple[str, ...]] = []
 
     def abstract(self, doi: str) -> str:
         self.calls.append(doi)
         return self.value
+
+    def abstract_many(self, dois: tuple[str, ...]):
+        self.batch_calls.append(dois)
+        return {doi: self.value for doi in dois}
 
 
 class StubWorkProvider:
@@ -118,6 +123,39 @@ class EnrichmentServiceTests(unittest.TestCase):
         self.assertEqual(result.abstract, "Fallback abstract")
         self.assertEqual(result.keywords, ("publisher",))
         self.assertEqual(fallback.calls, ["10.1/test"])
+
+    def test_collection_many_batches_only_dois_that_still_need_fallback(self) -> None:
+        publisher = StubPublisher(Enrichment())
+        fallback = StubFallback("Fallback abstract")
+        service = EnrichmentService(
+            publisher=publisher,
+            fallback=fallback,
+        )
+
+        result = service.for_collection_many(
+            {
+                "10.1/one": {"abstract": "CrossRef abstract"},
+                "10.1/two": {},
+                "10.1/three": {},
+            }
+        )
+
+        self.assertEqual(
+            result["10.1/one"].abstract,
+            "CrossRef abstract",
+        )
+        self.assertEqual(
+            result["10.1/two"].abstract,
+            "Fallback abstract",
+        )
+        self.assertEqual(
+            fallback.batch_calls,
+            [("10.1/two", "10.1/three")],
+        )
+        self.assertEqual(
+            publisher.calls,
+            ["10.1/one", "10.1/two", "10.1/three"],
+        )
 
     def test_no_fallback_provider_leaves_abstract_empty(self) -> None:
         service = EnrichmentService()
