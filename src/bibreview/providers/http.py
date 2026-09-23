@@ -36,39 +36,63 @@ class RateLimitedTransport:
         if min_interval_seconds < 0:
             raise ValueError("min_interval_seconds must be non-negative")
         self.transport = transport
+        self.reporter = transport.reporter
         self.min_interval_seconds = float(min_interval_seconds)
         self._clock = clock
         self._sleeper = sleeper
         self._last_request_started: float | None = None
 
-    def _wait_for_request_slot(self) -> None:
+    def _wait_for_request_slot(self, *, context: str | None = None) -> None:
         if self.min_interval_seconds <= 0:
             return
+
+        operation = context or "HTTP request"
         now = self._clock()
-        if self._last_request_started is not None:
-            remaining = (
-                self.min_interval_seconds
-                - (now - self._last_request_started)
+        if self._last_request_started is None:
+            self.reporter.debug(
+                f"{operation}: rate limit request slot "
+                f"(minimum interval {self.min_interval_seconds:.3f}s; first request)"
             )
-            if remaining > 0:
-                self._sleeper(remaining)
-                now = self._clock()
+            self._last_request_started = now
+            return
+
+        elapsed = now - self._last_request_started
+        remaining = self.min_interval_seconds - elapsed
+        if remaining > 0:
+            self._sleeper(remaining)
+            now = self._clock()
+            observed_interval = now - self._last_request_started
+            self.reporter.debug(
+                f"{operation}: rate limit waited {remaining:.3f}s; "
+                f"request slot after {observed_interval:.3f}s "
+                f"(minimum interval {self.min_interval_seconds:.3f}s)"
+            )
+        else:
+            self.reporter.debug(
+                f"{operation}: rate limit request slot after {elapsed:.3f}s "
+                f"(minimum interval {self.min_interval_seconds:.3f}s; no wait)"
+            )
         self._last_request_started = now
 
+    @staticmethod
+    def _context(kwargs: Mapping[str, object]) -> str | None:
+        context = kwargs.get("context")
+        return context if isinstance(context, str) else None
+
     def request(self, url: str, **kwargs: object):
-        self._wait_for_request_slot()
+        self._wait_for_request_slot(context=self._context(kwargs))
         return self.transport.request(url, **kwargs)
 
     def json(self, url: str, **kwargs: object):
-        self._wait_for_request_slot()
+        self._wait_for_request_slot(context=self._context(kwargs))
         return self.transport.json(url, **kwargs)
 
     def post_json(self, url: str, **kwargs: object):
-        self._wait_for_request_slot()
+        self._wait_for_request_slot(context=self._context(kwargs))
         return self.transport.post_json(url, **kwargs)
 
     def post_form_json(self, url: str, **kwargs: object):
-        self._wait_for_request_slot()
+        self._wait_for_request_slot(context=self._context(kwargs))
         return self.transport.post_form_json(url, **kwargs)
 
 

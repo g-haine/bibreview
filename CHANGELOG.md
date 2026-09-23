@@ -2,6 +2,28 @@
 
 All notable BibReview releases are documented here.
 
+## 1.6.11 — 2026-09-23
+
+### Observable provider request pacing
+
+- expose provider-local request pacing in `-vv` diagnostics without changing
+  network behavior;
+- report the configured minimum request interval for the first provider request;
+- report the actual elapsed interval between consecutive request starts;
+- report the requested sleep when BibReview must wait for the configured request
+  slot, and distinguish calls that require no wait;
+- keep diagnostics tied to the existing provider request context so logs remain
+  attributable without exposing URL paths, query strings, headers, or secrets;
+- leave HTTP retry policy, provider fallback ordering, and run-scoped provider
+  disabling unchanged.
+
+### Validation
+
+- cover first-request pacing diagnostics;
+- cover an enforced wait and the resulting effective interval;
+- cover the no-wait path when unrelated work already spaces provider requests;
+- validate the release with 433 passing tests.
+
 ## 1.6.10 — 2026-09-23
 
 ### Abstract placeholder cleanup
