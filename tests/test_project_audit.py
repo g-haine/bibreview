@@ -257,7 +257,7 @@ class ProjectAuditTests(unittest.TestCase):
         self.assertEqual(by_key[self.publications[0].id].attempts, 2)
         self.assertEqual(by_key[self.publications[1].id].attempts, 2)
         self.assertEqual(by_key[self.publications[2].id].attempts, 1)
-        self.assertEqual(by_key[self.publications[2].id].state, "pending")
+        self.assertEqual(by_key[self.publications[2].id].state, "retryable")
         self.assertEqual(len(full.report.entries), 3)
 
     def test_full_rejects_reset_while_batch_is_open(self):
@@ -442,7 +442,7 @@ class ProjectAuditTests(unittest.TestCase):
                 batch_id=start.batch.id,
             )
 
-    def test_close_then_next_batch_preserves_stable_uuid_snapshot(self):
+    def test_close_then_next_batch_appends_new_canonical_uuid(self):
         start = plan_project_audit_batch(self.config)
         apply_project_audit_plan(start)
         for publication in self.publications[:2]:
@@ -475,8 +475,11 @@ class ProjectAuditTests(unittest.TestCase):
         second = plan_project_audit_batch(self.config)
 
         self.assertEqual(second.batch.id, "batch-0002")
-        self.assertEqual(second.batch.keys, (self.publications[2].id,))
-        self.assertNotIn(changed.id, second.report.campaign_items)
+        self.assertEqual(
+            second.batch.keys,
+            (self.publications[2].id, changed.id),
+        )
+        self.assertIn(changed.id, second.report.campaign_items)
 
     def test_retry_replaces_old_report_entry_after_pending_first_pass(self):
         first = plan_project_audit_batch(self.config)
