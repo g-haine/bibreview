@@ -203,7 +203,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install pinned BibReview
-        run: python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.14"
+        run: python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.15"
 
       - name: Render bibliography
         run: bibreview --config bibreview.yml render
@@ -236,7 +236,7 @@ jobs:
         uses: actions/deploy-pages@v4
 ~~~
 
-The example above pins BibReview to **v1.6.14**. Keep an exact release tag or
+The example above pins BibReview to **v1.6.15**. Keep an exact release tag or
 commit pin for reproducibility, and update it deliberately when adopting a newer
 BibReview release.
 
@@ -283,7 +283,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install pinned BibReview
-        run: python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.14"
+        run: python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.15"
 
       - name: Refresh arXiv cache
         run: bibreview --config bibreview.yml arxiv
