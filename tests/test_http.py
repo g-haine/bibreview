@@ -84,7 +84,9 @@ class HttpTransportTests(unittest.TestCase):
         self.assertEqual(set(retry.status_forcelist), {500, 502, 503, 504})
         self.assertEqual(set(retry.allowed_methods), {"GET", "POST"})
         self.assertFalse(retry.raise_on_status)
-        self.assertFalse(retry.respect_retry_after_header)
+        self.assertTrue(retry.respect_retry_after_header)
+        self.assertFalse(retry.is_retry("GET", 429, has_retry_after=True))
+        self.assertTrue(retry.is_retry("GET", 503, has_retry_after=True))
 
     def test_http_429_exposes_retry_after_to_provider_wrapper(self) -> None:
         session = Mock()
