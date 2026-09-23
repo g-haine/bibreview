@@ -115,6 +115,19 @@ class SemanticScholarProvider:
                 result[doi] = paper
         return result
 
+    def abstracts(self, dois: tuple[str, ...]) -> dict[str, str]:
+        """Return abstracts for multiple DOI values through the batch endpoint."""
+        normalized = tuple(dict.fromkeys(normalize_doi(doi) for doi in dois))
+        records = self.papers(normalized)
+        result: dict[str, str] = {}
+        for doi in normalized:
+            paper = records.get(doi)
+            if paper is None:
+                continue
+            value = paper.get("abstract")
+            result[doi] = value.strip() if isinstance(value, str) else ""
+        return result
+
     def abstract(self, doi: str) -> str:
         """Return the Semantic Scholar abstract using the minimal field request."""
         normalized = normalize_doi(doi)
