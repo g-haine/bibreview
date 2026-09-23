@@ -12,11 +12,17 @@ from bibreview.providers.http import HttpError, HttpTransport, RateLimitedTransp
 from bibreview.reporting import Reporter
 
 
-def response(status: int, url: str, content: bytes = b"{}") -> requests.Response:
+def response(
+    status: int,
+    url: str,
+    content: bytes = b"{}",
+    headers: dict[str, str] | None = None,
+) -> requests.Response:
     result = requests.Response()
     result.status_code = status
     result.url = url
     result._content = content
+    result.headers.update(headers or {})
     return result
 
 
@@ -75,9 +81,28 @@ class HttpTransportTests(unittest.TestCase):
         transport = HttpTransport()
         retry = transport.session.get_adapter("https://").max_retries
         self.assertEqual(retry.total, 3)
-        self.assertEqual(set(retry.status_forcelist), {429, 500, 502, 503, 504})
+        self.assertEqual(set(retry.status_forcelist), {500, 502, 503, 504})
         self.assertEqual(set(retry.allowed_methods), {"GET", "POST"})
         self.assertFalse(retry.raise_on_status)
+        self.assertFalse(retry.respect_retry_after_header)
+
+    def test_http_429_exposes_retry_after_to_provider_wrapper(self) -> None:
+        session = Mock()
+        session.get.return_value = response(
+            429,
+            "https://api.example.test/item",
+            headers={"Retry-After": "4"},
+        )
+        transport = HttpTransport(session)
+
+        with self.assertRaises(HttpError) as caught:
+            transport.request(
+                "https://api.example.test/item",
+                context="Metadata lookup",
+            )
+
+        self.assertEqual(caught.exception.status_code, 429)
+        self.assertEqual(caught.exception.retry_after_seconds, 4.0)
 
     def test_debug_output_is_sanitized(self) -> None:
         session = Mock()
@@ -211,6 +236,91 @@ class HttpTransportTests(unittest.TestCase):
         )
         self.assertEqual(len(sleeps), 1)
         self.assertAlmostEqual(sleeps[0], 1.1)
+
+    def test_rate_limited_transport_retries_429_with_retry_after(self) -> None:
+        base = Mock()
+        stream = io.StringIO()
+        base.reporter = Reporter(2, stream)
+        base.json.side_effect = [
+            HttpError(
+                "limited",
+                status_code=429,
+                retry_after_seconds=2.5,
+            ),
+            {"ok": True},
+        ]
+        now = [0.0]
+        sleeps = []
+
+        def clock() -> float:
+            return now[0]
+
+        def sleeper(delay: float) -> None:
+            sleeps.append(delay)
+            now[0] += delay
+
+        transport = RateLimitedTransport(
+            base,
+            min_interval_seconds=1.5,
+            clock=clock,
+            sleeper=sleeper,
+        )
+
+        result = transport.json(
+            "https://api.example.test/item",
+            context="Semantic Scholar abstract for DOI 10.1/test",
+        )
+
+        self.assertEqual(result, {"ok": True})
+        self.assertEqual(base.json.call_count, 2)
+        self.assertEqual(sleeps, [2.5])
+        output = stream.getvalue()
+        self.assertIn(
+            "HTTP 429; provider retry 1/2 after 2.500s (Retry-After)",
+            output,
+        )
+        self.assertIn(
+            "request slot after 2.500s "
+            "(minimum interval 1.500s; no wait)",
+            output,
+        )
+
+    def test_rate_limited_transport_propagates_persistent_429_after_two_retries(
+        self,
+    ) -> None:
+        base = Mock()
+        base.reporter = Reporter(-1)
+        base.json.side_effect = [
+            HttpError("limited", status_code=429),
+            HttpError("limited", status_code=429),
+            HttpError("limited", status_code=429),
+        ]
+        now = [0.0]
+        sleeps = []
+
+        def clock() -> float:
+            return now[0]
+
+        def sleeper(delay: float) -> None:
+            sleeps.append(delay)
+            now[0] += delay
+
+        transport = RateLimitedTransport(
+            base,
+            min_interval_seconds=1.5,
+            clock=clock,
+            sleeper=sleeper,
+        )
+
+        with self.assertRaises(HttpError) as caught:
+            transport.json(
+                "https://api.example.test/item",
+                context="Semantic Scholar abstract for DOI 10.1/test",
+            )
+
+        self.assertEqual(caught.exception.status_code, 429)
+        self.assertEqual(base.json.call_count, 3)
+        self.assertEqual(sleeps, [1.5, 3.0])
 
     def test_rate_limited_transport_zero_interval_never_sleeps(self) -> None:
         base = Mock()
