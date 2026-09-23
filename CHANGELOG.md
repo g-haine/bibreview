@@ -2,6 +2,35 @@
 
 All notable BibReview releases are documented here.
 
+## 1.6.17 — 2026-09-23
+
+### Semantic script-markup hygiene detection
+
+- classify inline subscript/superscript markup separately from ordinary
+  structural HTML/XML, including the IEEE-style `<inf>` tag and standard
+  `<sub>` / `<sup>` tags;
+- require human review for these records because structural unwrapping would
+  preserve the characters but lose their mathematical position semantics;
+- add regression coverage modelled on PHRAISE DOI
+  `10.1109/cdc.2005.1583059`, where equilibrium variables carry subscript zero
+  and a supply-rate expression contains a superscript transpose;
+- keep Phase 1 strictly read-only: no formula reconstruction and no canonical
+  mutation.
+
+### PHRAISE inventory refinement
+
+- keep 2,346 canonical publications, 2,326 abstracts present, and 21 suspicious
+  abstracts;
+- refine the classification from 16 to **15 apparent deterministic candidates**
+  and from 5 to **6 review-required cases**;
+- report one `script-markup` finding in addition to the existing
+  `embedded-graphic` finding.
+
+### Validation
+
+- add regression coverage for scientific subscript/superscript markup;
+- validate the release with 464 passing tests.
+
 ## 1.6.16 — 2026-09-23
 
 ### Embedded formula-image hygiene detection

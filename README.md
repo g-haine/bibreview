@@ -11,7 +11,7 @@ feed.
 BibReview is designed so that provider output remains inspectable and ambiguous
 decisions remain human decisions.
 
-Current stable release: **v1.6.16**.
+Current stable release: **v1.6.17**.
 
 ## What BibReview provides
 
@@ -42,7 +42,7 @@ BibReview currently requires **Python 3.12 or newer**.
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.16"
+python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.17"
 
 bibreview --version
 ~~~
@@ -141,7 +141,10 @@ contains the complete inventory. A deterministic-candidate label means only
 that the observed markup has an apparently lossless cleanup path (for example,
 an embedded `application/x-tex` annotation). Embedded graphics such as JATS
 `inline-graphic` are instead review-required because removing the tag could
-discard mathematical content. **Phase 1 never rewrites canonical metadata.**
+discard mathematical content. Subscript/superscript markup such as IEEE
+`<inf>` and ordinary `<sub>` / `<sup>` is also review-required because plain
+unwrapping would lose mathematical position semantics. **Phase 1 never rewrites
+canonical metadata.**
 
 ### Non-destructive reviewed refresh
 

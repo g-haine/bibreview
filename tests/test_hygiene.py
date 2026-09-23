@@ -68,6 +68,22 @@ class AbstractHygieneTests(unittest.TestCase):
         self.assertFalse(finding.deterministic_candidate)
         self.assertEqual(finding.normalization_hint, "embedded-graphic-review")
 
+    def test_subscript_and_superscript_markup_requires_review(self) -> None:
+        abstract = (
+            "The equilibrium point is "
+            "(u<inf>0</inf>,x<inf>0</inf>) and the supply rate is "
+            "(y-y<inf>0</inf>)<sup>T</sup>(u-u<inf>0</inf>)."
+        )
+        finding = scan_abstract_hygiene((publication(abstract),)).findings[0]
+
+        self.assertEqual(
+            finding.families,
+            ("script-markup", "html-xml-markup"),
+        )
+        self.assertFalse(finding.deterministic_candidate)
+        self.assertEqual(finding.normalization_hint, "script-markup-review")
+        self.assertIn("<inf>", finding.context)
+
     def test_mathml_without_tex_annotation_requires_review(self) -> None:
         abstract = (
             '<inline-formula><mml:math xmlns:mml="urn:test">'
