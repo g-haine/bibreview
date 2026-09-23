@@ -39,19 +39,8 @@ _EMBEDDED_GRAPHIC_NAMES = frozenset(
     {"inline-graphic", "graphic", "img", "image"}
 )
 _SCRIPT_MARKUP_NAMES = frozenset({"inf", "sub", "sup"})
-_BLOCK_WRAPPERS = frozenset({"p", "div"})
-_INLINE_WRAPPERS = frozenset(
-    {
-        "span",
-        "italic",
-        "bold",
-        "styled-content",
-        "em",
-        "i",
-        "b",
-        "strong",
-    }
-)
+_BLOCK_WRAPPERS = frozenset({"p"})
+_INLINE_WRAPPERS = frozenset({"italic", "bold", "styled-content"})
 _VOID_HTML_TAGS = frozenset(
     {
         "area",
@@ -171,8 +160,8 @@ def normalize_structured_abstract(value: str) -> StructuredAbstractNormalization
 
     Clean plain text and ordinary TeX are returned unchanged. Embedded graphics,
     subscript/superscript markup, escaped structured payloads, malformed markup,
-    formulas without trustworthy textual representations, and unsupported tags
-    are refused without modifying the input.
+    formulas without trustworthy textual representations, unsupported tags and
+    residual XML comments are refused without modifying the input.
     """
     if not isinstance(value, str):
         raise TypeError("abstract value must be a string")
@@ -217,11 +206,11 @@ def normalize_structured_abstract(value: str) -> StructuredAbstractNormalization
     for formula, payload in replacements:
         formula.replace_with(NavigableString(f"\\({payload}\\)"))
 
-    for comment in tuple(
-        text for text in soup.find_all(string=True)
-        if isinstance(text, Comment)
+    if any(
+        isinstance(text, Comment)
+        for text in soup.find_all(string=True)
     ):
-        comment.extract()
+        return _refused(value, "xml-comment-review")
 
     for tag in tuple(soup.find_all(True)):
         local = _local_name(tag.name)
