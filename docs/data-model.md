@@ -59,11 +59,14 @@ publication.
 ## Collected staging
 
 **collected.json** uses the same document envelope and is temporary staging for
-**collect**, **refresh**, explicit **audit --apply**, and reviewed **backfill --apply** promotion.
+**collect**, reviewed **refresh --apply**, explicit **audit --apply**, and reviewed
+**backfill --apply** promotion.
 
 Only one staging batch is allowed at a time. This is intentional: inspect and
-resolve the current batch before starting another collection, refresh, or audit
-application. Audit application refuses to overwrite non-empty staging.
+resolve the current batch before starting another collection or reviewed
+application. Refresh scanning/review itself never writes staging, while
+`refresh --apply`, `audit --apply`, and `backfill --apply` all refuse to
+overwrite non-empty staging.
 
 ## DOI queues
 
@@ -187,6 +190,33 @@ The optional per-item `detail` field is persisted verbatim and therefore must
 contain only already-sanitized diagnostic text. Credentials, authorization
 headers and raw provider responses must never be stored in campaign state.
 
+### Refresh review and resolution state
+
+Safe refresh keeps its provider-comparison evidence and human decisions beside
+the configured audit report:
+
+~~~text
+data/audit/refresh.json
+data/audit/refresh-resolutions.json
+~~~
+
+`refresh.json` records the DOI values whose remote BibTeX changed or was
+missing, safe proposals for configured fields that were canonically empty, and
+all meaningful collateral provider differences on other fields. Collateral
+differences preserve both current and provider values but are explicitly
+non-promotable.
+
+`refresh-resolutions.json` stores accepted, custom, rejected, and deferred
+human decisions only for the safe missing-field proposals. It is fingerprinted
+against the exact refresh review, so a new provider scan cannot silently reuse
+stale decisions.
+
+Neither file is canonical data or staging. Only `refresh --apply` may turn
+completed accepted/custom safe proposals into `collected.json`, after
+rechecking that the canonical field is still empty. Applicable tracked BibTeX
+fields are edited locally and backed up; the remote BibTeX is never used as a
+wholesale replacement.
+
 ### Backfill proposal and resolution state
 
 Human-reviewed missing-field backfill keeps its proposal and decision files
@@ -268,8 +298,9 @@ author mappings, or generated site files.
 
 ## Archive
 
-Refresh and `audit --apply` create backups of changed stored BibTeX before
-replacement in the configured archive directory. Merge also backs up the
+`refresh --apply` and `audit --apply` create backups of tracked BibTeX before
+reviewed field-level edits in the configured archive directory. Refresh never
+archives/replaces a complete remote BibTeX response. Merge also backs up the
 previous bibliography before replacement when appropriate.
 
 Keep the archive under version control only if that matches your project's
