@@ -21,8 +21,33 @@ All notable BibReview releases are documented here.
 - reuse the same configured OpenAlex provider across discovery and collection
   composition.
 
+### Abstract normalization
+
+- normalize every optional fallback candidate before comparing candidate lengths;
+- trim surrounding whitespace and normalize line-break whitespace in abstracts;
+- remove leading abstract labels only at the start of the text, including common
+  English, French, Spanish, Portuguese, German, Italian, and Dutch forms;
+- preserve occurrences of words such as `abstract` and `summary` inside the
+  actual abstract body instead of deleting them globally.
+
+### Incremental audit history
+
+- make normal `bibreview audit` runs persistent and incremental: completed
+  publication UUIDs stay visited while newly added canonical publications are
+  appended as pending work;
+- retain retryable provider failures and existing batch history without
+  re-requesting already completed publications;
+- add `bibreview audit --full` to deliberately requeue every publication
+  currently present in the canonical bibliography while preserving attempt and
+  report history;
+- refuse a full reset while an interrupted batch remains open, so resumability
+  stays explicit.
+
 ### Validation
 
+- add regression coverage for multilingual leading-label cleanup, body-text
+  preservation, cleaned-before-length fallback selection, incremental audit
+  extension, full requeue behavior, and CLI `--full` forwarding;
 - add regression coverage for OpenAlex inverted-index reconstruction,
   placeholder rejection, video-prefix cleanup, fallback selection, and
   run-scoped rate-limit handling;
