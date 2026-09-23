@@ -231,6 +231,10 @@ def build_publication(
         if isbn:
             identifiers["isbn"] = isbn
 
+    pages = crossref_page_locator(message)
+    if _string(message.get("page")).strip():
+        pages = pages.replace("-", "--")
+
     return Publication(
         id=new_publication_id(),
         identifiers=identifiers,
@@ -243,7 +247,7 @@ def build_publication(
         publication_year=_publication_year(message, created),
         volume=_string(message.get("volume")),
         issue=_string(message.get("issue")),
-        pages=crossref_page_locator(message).replace("-", "--"),
+        pages=pages,
         publisher=_string(message.get("publisher")),
         event=clean_metadata(enrichment.event),
         keywords=tuple(clean_metadata(keyword) for keyword in enrichment.keywords if keyword.strip()),
