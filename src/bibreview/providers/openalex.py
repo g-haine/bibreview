@@ -81,6 +81,16 @@ class OpenAlexProvider:
             return ""
         return openalex_abstract(work.get("abstract_inverted_index"))
 
+    def abstracts(self, dois: tuple[str, ...]) -> dict[str, str]:
+        """Return reconstructed abstracts for multiple DOI values."""
+        normalized = tuple(dict.fromkeys(normalize_doi(doi) for doi in dois))
+        records = self.works(normalized)
+        return {
+            doi: openalex_abstract(records[doi].get("abstract_inverted_index"))
+            for doi in normalized
+            if doi in records
+        }
+
     def works(self, dois: tuple[str, ...]) -> dict[str, dict]:
         """Return OpenAlex works for multiple DOI values in one request."""
         normalized = tuple(dict.fromkeys(normalize_doi(doi) for doi in dois))
