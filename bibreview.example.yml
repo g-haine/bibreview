@@ -47,8 +47,8 @@ discovery:
   exclude_doi_substrings: []
 
 # Existing-publication refresh is opt-in. Here, incomplete journal articles are
-# checked against their current DOI BibTeX; stale records are recollected into
-# data/collected.json and later updated through the normal merge command.
+# checked against their current DOI BibTeX; stale records become review evidence
+# and only explicitly accepted missing-field fills reach collected staging.
 refresh:
   types:
     - journal-article
@@ -73,32 +73,39 @@ relevance:
 providers:
   crossref:
     enabled: true
+    min_interval_seconds: 0.0
 
   openalex:
     enabled: true
+    min_interval_seconds: 0.0
     # Optional: discovery also works without an OpenAlex API key.
     api_key_env: OPENALEX_API_KEY
 
   # Optional enrichment providers. Enable only the services you use.
   elsevier:
     enabled: false
+    min_interval_seconds: 0.0
     api_key_env: ELSEVIER_API_KEY
 
   springer:
     enabled: false
+    min_interval_seconds: 0.0
     api_key_env: SPRINGER_API_KEY
 
   ieee:
     enabled: false
+    min_interval_seconds: 0.0
     api_key_env: IEEE_API_KEY
 
   semantic_scholar:
     enabled: false
+    min_interval_seconds: 1.1
     # Optional; authenticated requests have dedicated rate limits.
     api_key_env: SEMANTIC_SCHOLAR_API_KEY
 
   mendeley:
     enabled: false
+    min_interval_seconds: 0.0
     # Application ID + Secret from the Mendeley Developer Portal.
     # BibReview obtains and refreshes short-lived OAuth access tokens itself.
     client_id_env: MENDELEY_CLIENT_ID

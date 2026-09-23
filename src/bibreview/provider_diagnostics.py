@@ -6,7 +6,7 @@ from dataclasses import asdict, dataclass
 from typing import Callable
 
 from .config import BibReviewConfig, ProviderConfig
-from .providers.http import HttpError, HttpTransport
+from .providers.http import HttpError, HttpTransport, RateLimitedTransport
 from .providers.mendeley import MendeleyProvider
 from .reporting import Reporter
 from .runtime import RuntimeEnvironment, resolve_runtime_environment
@@ -22,6 +22,7 @@ class ProviderDiagnostic:
     credential_source: str
     status: str
     detail: str
+    min_interval_seconds: float = 0.0
     checked: bool = False
 
     def data(self) -> dict[str, object]:
@@ -314,8 +315,18 @@ def diagnose_providers(
         can_check = enabled and status == "configured"
         if check and can_check:
             checked = True
+            provider_config = _provider_config(config, name)
+            interval = (
+                provider_config.min_interval_seconds
+                if provider_config is not None
+                else 0.0
+            )
+            probe_transport = RateLimitedTransport(
+                live_transport,
+                min_interval_seconds=interval,
+            )
             try:
-                _PROBES[name](live_transport, config, values)
+                _PROBES[name](probe_transport, config, values)
             except HttpError as error:
                 status, detail = _failure_status(name, error)
             except (OSError, ValueError, TypeError):
@@ -333,6 +344,11 @@ def diagnose_providers(
                 credential_source=source,
                 status=status,
                 detail=detail,
+                min_interval_seconds=(
+                    _provider_config(config, name).min_interval_seconds
+                    if _provider_config(config, name) is not None
+                    else 0.0
+                ),
                 checked=checked,
             )
         )
@@ -344,12 +360,13 @@ def format_provider_diagnostics(items: tuple[ProviderDiagnostic, ...]) -> str:
     """Format diagnostics as a compact human-readable table."""
     if not items:
         return "No providers configured."
-    headers = ("Provider", "Credential", "Source", "Status")
+    headers = ("Provider", "Credential", "Source", "Min interval", "Status")
     rows = [
         (
             item.name,
             item.credential_variable or "-",
             item.credential_source,
+            f"{item.min_interval_seconds:g}s",
             item.status,
         )
         for item in items

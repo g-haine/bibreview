@@ -11,6 +11,7 @@ from bibreview.providers.audit import (
 )
 from bibreview.providers.crossref import CrossRefProvider
 from bibreview.providers.openalex import OpenAlexProvider
+from bibreview.providers.http import RateLimitedTransport
 from bibreview.reporting import Reporter
 from bibreview.runtime import (
     build_audit_services,
@@ -30,23 +31,29 @@ discovery:
 providers:
   crossref:
     enabled: true
+    min_interval_seconds: 0.2
   openalex:
     enabled: true
     api_key_env: OPENALEX_KEY
+    min_interval_seconds: 0.3
   elsevier:
     enabled: true
     api_key_env: ELSEVIER_KEY
+    min_interval_seconds: 0.4
   springer:
     enabled: false
   ieee:
     enabled: true
     api_key_env: IEEE_KEY
+    min_interval_seconds: 0.5
   semantic_scholar:
     enabled: true
+    min_interval_seconds: 1.1
   mendeley:
     enabled: true
     client_id_env: MENDELEY_CLIENT_ID
     client_secret_env: MENDELEY_CLIENT_SECRET
+    min_interval_seconds: 0.6
 site:
   enabled: false
 """
@@ -74,6 +81,33 @@ class RuntimeTests(unittest.TestCase):
             },
         )
         self.assertIsInstance(services.provider, CrossRefProvider)
+        self.assertIsInstance(services.provider.transport, RateLimitedTransport)
+        self.assertEqual(services.provider.transport.min_interval_seconds, 0.2)
+        enrichment = services.enrichment_lookup.__self__
+        self.assertEqual(
+            enrichment.publisher.elsevier.transport.min_interval_seconds,
+            0.4,
+        )
+        self.assertEqual(
+            enrichment.publisher.ieee.transport.min_interval_seconds,
+            0.5,
+        )
+        self.assertEqual(
+            enrichment.fallback.openalex.transport.min_interval_seconds,
+            0.3,
+        )
+        self.assertEqual(
+            enrichment.fallback.semantic_scholar.transport.min_interval_seconds,
+            1.1,
+        )
+        self.assertEqual(
+            enrichment.fallback.mendeley.transport.min_interval_seconds,
+            0.6,
+        )
+        self.assertEqual(
+            enrichment.fallback.semantic_scholar.min_interval_seconds,
+            0.0,
+        )
         self.assertTrue(callable(services.enrichment_lookup))
         self.assertTrue(callable(services.citation_lookup))
         self.assertTrue(callable(services.bibtex_lookup))
@@ -94,7 +128,12 @@ class RuntimeTests(unittest.TestCase):
         )
         self.assertIsInstance(services.discovery_provider, OpenAlexProvider)
         self.assertEqual(services.discovery_provider.api_key, "openalex-secret")
+        self.assertEqual(
+            services.discovery_provider.transport.min_interval_seconds,
+            0.3,
+        )
         self.assertIsInstance(services.provider, CrossRefProvider)
+        self.assertEqual(services.provider.transport.min_interval_seconds, 0.2)
         self.assertTrue(callable(services.enrichment_lookup))
         self.assertEqual(stream.getvalue(), "")
 
@@ -132,17 +171,33 @@ class RuntimeTests(unittest.TestCase):
             "semantic-secret",
         )
         self.assertEqual(
-            services.sources[2].provider.min_interval_seconds,
+            services.sources[0].provider.transport.min_interval_seconds,
+            0.2,
+        )
+        self.assertEqual(
+            services.sources[1].provider.transport.min_interval_seconds,
+            0.3,
+        )
+        self.assertEqual(
+            services.sources[2].provider.transport.min_interval_seconds,
             1.1,
+        )
+        self.assertEqual(
+            services.sources[2].provider.min_interval_seconds,
+            0.0,
         )
         warnings = stream.getvalue()
         self.assertNotIn("Elsevier", warnings)
         self.assertNotIn("IEEE", warnings)
         self.assertNotIn("Mendeley", warnings)
 
-    def test_unauthenticated_semantic_scholar_audit_is_not_artificially_throttled(self):
+    def test_provider_interval_defaults_to_zero_when_omitted(self):
+        config = self.config(CONFIG.replace(
+            "    min_interval_seconds: 1.1\n",
+            "",
+        ))
         services = build_audit_services(
-            self.config(),
+            config,
             reporter=Reporter(stream=StringIO()),
             environ={},
         )
@@ -152,6 +207,10 @@ class RuntimeTests(unittest.TestCase):
             if isinstance(source, SemanticScholarAuditSource)
         )
         self.assertEqual(semantic.provider.api_key, "")
+        self.assertEqual(
+            semantic.provider.transport.min_interval_seconds,
+            0.0,
+        )
         self.assertEqual(semantic.provider.min_interval_seconds, 0.0)
 
     def test_configured_environment_file_supplies_provider_secrets(self):

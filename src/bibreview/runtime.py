@@ -30,7 +30,7 @@ from .providers.crossref import CrossRefProvider
 from .providers.doi import DoiProvider
 from .providers.elsevier import ElsevierProvider
 from .providers.fallback import AbstractFallback
-from .providers.http import HttpTransport
+from .providers.http import HttpTransport, RateLimitedTransport
 from .providers.ieee import IeeeProvider
 from .providers.mendeley import MendeleyProvider
 from .providers.openalex import OpenAlexProvider
@@ -39,7 +39,6 @@ from .providers.semantic_scholar import SemanticScholarProvider
 from .providers.springer import SpringerProvider
 
 
-SEMANTIC_SCHOLAR_AUDIT_MIN_INTERVAL_SECONDS = 1.1
 from .reporting import Reporter
 
 
@@ -89,6 +88,18 @@ class _CoreServices:
 def _provider(config: BibReviewConfig, name: str) -> ProviderConfig | None:
     value = config.providers.get(name)
     return value if value is not None and value.enabled else None
+
+
+def _provider_transport(
+    transport: HttpTransport,
+    provider: ProviderConfig | None,
+) -> HttpTransport | RateLimitedTransport:
+    """Return one provider-local transport honoring configured request spacing."""
+    interval = provider.min_interval_seconds if provider is not None else 0.0
+    return RateLimitedTransport(
+        transport,
+        min_interval_seconds=interval,
+    )
 
 
 def resolve_runtime_environment(
@@ -207,7 +218,7 @@ def _build_core_services(
         default_headers={"User-Agent": user_agent},
     )
     crossref = CrossRefProvider(
-        transport,
+        _provider_transport(transport, crossref_config),
         mailto=config.project.contact_email,
     )
     doi = DoiProvider(transport)
@@ -238,9 +249,9 @@ def _build_core_services(
         reporter=reporter,
     )
 
-    elsevier = ElsevierProvider(transport, api_key=elsevier_key) if elsevier_key else None
-    springer = SpringerProvider(transport, api_key=springer_key) if springer_key else None
-    ieee = IeeeProvider(transport, api_key=ieee_key) if ieee_key else None
+    elsevier = ElsevierProvider(_provider_transport(transport, elsevier_config), api_key=elsevier_key) if elsevier_key else None
+    springer = SpringerProvider(_provider_transport(transport, springer_config), api_key=springer_key) if springer_key else None
+    ieee = IeeeProvider(_provider_transport(transport, ieee_config), api_key=ieee_key) if ieee_key else None
 
     publisher = None
     if any(provider is not None for provider in (elsevier, springer, ieee)):
@@ -260,7 +271,10 @@ def _build_core_services(
         reporter=reporter,
     )
     openalex = (
-        OpenAlexProvider(transport, api_key=openalex_key)
+        OpenAlexProvider(
+            _provider_transport(transport, openalex_config),
+            api_key=openalex_key,
+        )
         if openalex_config is not None
         else None
     )
@@ -273,7 +287,10 @@ def _build_core_services(
         reporter=reporter,
     )
     semantic = (
-        SemanticScholarProvider(transport, api_key=semantic_key)
+        SemanticScholarProvider(
+            _provider_transport(transport, semantic_config),
+            api_key=semantic_key,
+        )
         if semantic_config is not None
         else None
     )
@@ -294,7 +311,7 @@ def _build_core_services(
     )
     mendeley = (
         MendeleyProvider(
-            transport,
+            _provider_transport(transport, mendeley_config),
             client_id=mendeley_client_id,
             client_secret=mendeley_client_secret,
             user_agent=user_agent,
@@ -395,7 +412,7 @@ def build_audit_services(
         default_headers={"User-Agent": f"BibReview/{__version__}"},
     )
     crossref = CrossRefProvider(
-        transport,
+        _provider_transport(transport, crossref_config),
         mailto=config.project.contact_email,
     )
     sources: list[AuditEvidenceSource] = [
@@ -412,7 +429,10 @@ def build_audit_services(
         )
         sources.append(
             OpenAlexAuditSource(
-                OpenAlexProvider(transport, api_key=openalex_key)
+                OpenAlexProvider(
+                    _provider_transport(transport, openalex_config),
+                    api_key=openalex_key,
+                )
             )
         )
 
@@ -427,13 +447,8 @@ def build_audit_services(
         sources.append(
             SemanticScholarAuditSource(
                 SemanticScholarProvider(
-                    transport,
+                    _provider_transport(transport, semantic_config),
                     api_key=semantic_key,
-                    min_interval_seconds=(
-                        SEMANTIC_SCHOLAR_AUDIT_MIN_INTERVAL_SECONDS
-                        if semantic_key
-                        else 0.0
-                    ),
                 )
             )
         )

@@ -8,7 +8,7 @@ from unittest.mock import Mock
 
 import requests
 
-from bibreview.providers.http import HttpError, HttpTransport
+from bibreview.providers.http import HttpError, HttpTransport, RateLimitedTransport
 from bibreview.reporting import Reporter
 
 
@@ -144,6 +144,46 @@ class HttpTransportTests(unittest.TestCase):
         self.assertEqual(call.kwargs["json"], {"ids": ["DOI:10.1/test"]})
         self.assertEqual(call.kwargs["params"], {"fields": "title"})
         self.assertEqual(call.kwargs["headers"], {"x-api-key": "secret-key"})
+
+    def test_rate_limited_transport_waits_only_for_remaining_interval(self) -> None:
+        base = Mock()
+        base.json.return_value = {}
+        clock_values = iter((0.0, 0.4, 1.1))
+        sleeps = []
+
+        transport = RateLimitedTransport(
+            base,
+            min_interval_seconds=1.1,
+            clock=lambda: next(clock_values),
+            sleeper=sleeps.append,
+        )
+
+        transport.json("https://api.example.test/one")
+        transport.json("https://api.example.test/two")
+
+        self.assertEqual(base.json.call_count, 2)
+        self.assertEqual(len(sleeps), 1)
+        self.assertAlmostEqual(sleeps[0], 0.7)
+
+    def test_rate_limited_transport_zero_interval_never_sleeps(self) -> None:
+        base = Mock()
+        base.request.return_value = None
+        sleeper = Mock()
+        transport = RateLimitedTransport(
+            base,
+            min_interval_seconds=0.0,
+            sleeper=sleeper,
+        )
+
+        transport.request("https://api.example.test/one")
+        transport.request("https://api.example.test/two")
+
+        self.assertEqual(base.request.call_count, 2)
+        sleeper.assert_not_called()
+
+    def test_rate_limited_transport_rejects_negative_interval(self) -> None:
+        with self.assertRaisesRegex(ValueError, "non-negative"):
+            RateLimitedTransport(Mock(), min_interval_seconds=-0.1)
 
     def test_timeout_and_redirect_arguments_are_explicit(self) -> None:
         session = Mock()

@@ -26,6 +26,7 @@ providers:
   openalex:
     enabled: true
     api_key_env: OPENALEX_KEY
+    min_interval_seconds: 0.75
   elsevier:
     enabled: true
     api_key_env: ELSEVIER_KEY
@@ -71,6 +72,7 @@ class ProviderCliTests(unittest.TestCase):
         by_name = {item["name"]: item for item in payload}
         self.assertEqual(by_name["openalex"]["credential_source"], "dotenv")
         self.assertEqual(by_name["openalex"]["credential_variable"], "OPENALEX_KEY")
+        self.assertEqual(by_name["openalex"]["min_interval_seconds"], 0.75)
         self.assertNotIn("super-secret-openalex", stdout)
         self.assertEqual(stderr, "")
 
