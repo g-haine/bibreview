@@ -90,11 +90,18 @@ bibreview --config bibreview.yml --dry-run backfill --apply
 bibreview --config bibreview.yml backfill --apply
 ~~~
 
-The provider chain only proposes values for fields that are currently empty.
-Every proposal must receive an explicit human decision. Accepted/custom values
-are staged in `collected.json`; rejected values leave the record unchanged.
-If the canonical field becomes non-empty before application, BibReview treats
-the proposal as stale and refuses to overwrite the newer value.
+The provider chain only proposes values for fields that are semantically
+missing. Empty strings are missing for every supported scalar field. For
+`abstract`, the historical placeholder `Not Available` is also missing,
+case- and whitespace-insensitively. It can therefore be replaced through the
+normal reviewed backfill workflow.
+
+Provider/fallback values equal to that abstract placeholder are normalized to
+empty and are never proposed as real abstracts. Every proposal must receive an
+explicit human decision. Accepted/custom values are staged in
+`collected.json`; rejected values leave the record unchanged. If the canonical
+field gains a meaningful value before application, BibReview treats the proposal
+as stale and refuses to overwrite the newer value.
 
 Inspect staging and use the normal `bibreview merge` boundary only after the
 accepted values are satisfactory.
@@ -141,8 +148,9 @@ bibreview --config bibreview.yml -v refresh --review
 
 Only explicit accepted/custom missing-field decisions from
 `refresh --resolve` can be staged by `refresh --apply`. At application time,
-BibReview verifies that the canonical field is still empty. If it was manually
-filled or corrected after the refresh scan, the proposal is stale and the
+BibReview verifies that the canonical field is still semantically missing. If
+it was manually filled or corrected with a meaningful value after the refresh
+scan, the proposal is stale and the
 operation stops instead of overwriting it.
 
 For accepted fields with a meaningful tracked BibTeX representation, BibReview
