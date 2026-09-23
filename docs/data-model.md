@@ -128,10 +128,13 @@ Long-running workflows such as the planned **audit** and **init** commands share
 a small generic campaign model. Campaign state is deliberately separate from
 the canonical bibliography, DOI queues and `collected.json`.
 
-A campaign snapshots a stable ordered universe of item keys and processes that
-snapshot through bounded batches. The generic layer does not know whether a key
-is a publication UUID, a normalized external identifier or another
-command-specific identity.
+A campaign starts from a stable ordered universe of item keys and processes it
+through bounded batches. The generic layer does not know whether a key is a
+publication UUID, a normalized external identifier or another command-specific
+identity. Audit orchestration may append newly discovered canonical publication
+UUIDs between closed batches so the local audit state can serve as persistent
+incremental history; existing item order and historical batch membership remain
+unchanged.
 
 Its current versioned JSON representation has this shape:
 
@@ -166,8 +169,7 @@ open batch returns that same batch, so interrupted work resumes on stable item
 membership rather than recalculating mutable offsets. New pending items are
 processed before retryable items. The campaign `default_batch_size` is the
 default for new batches, not a structural maximum: command-specific workflows
-may choose a different size for the next unopened batch while preserving the
-same stable item snapshot. Batch identities are monotonic
+may choose a different size for the next unopened batch. Batch identities are monotonic
 (`batch-0001`, `batch-0002`, ...), and historical membership is retained so
 attempt counts and restart behavior are inspectable.
 
