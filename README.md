@@ -102,7 +102,7 @@ A curated project should inspect staged metadata and BibTeX before merging.
 | **validate** | Validate project configuration. |
 | **status** | Show the resolved project configuration summary. |
 | **providers** | Inspect credential provenance and optionally live-check providers. |
-| **audit** | Audit one stable batch of existing canonical publications. |
+| **audit** | Incrementally audit new/retryable canonical publications; use `--full` for a complete pass. |
 | **discover** | Discover and screen new DOI candidates. |
 | **collect** | Collect pending DOI metadata into canonical staging. |
 | **refresh** | Recollect selected incomplete existing publications. |
@@ -115,6 +115,13 @@ Use **--dry-run** with mutating workflows when you want to inspect the plan
 without writing project files.
 
 Full details: [command reference](docs/commands.md).
+
+### Incremental audit history
+
+Normal `bibreview audit` runs remember completed publication UUIDs in the local
+audit state, append newly added canonical publications automatically, and avoid
+repeating already visited records. Use `bibreview audit --full` only when you
+deliberately want fresh provider evidence for the entire current bibliography.
 
 ### Conservative audit review
 
