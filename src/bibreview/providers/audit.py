@@ -275,7 +275,7 @@ class OpenAlexAuditSource:
             fields={
                 "title": _string(data.get("title")),
                 "authors": _openalex_authors(data.get("authorships")),
-                "abstract": openalex_abstract(data.get("abstract_inverted_index")),
+                "abstract": clean_abstract(openalex_abstract(data.get("abstract_inverted_index"))),
                 "container_title": _openalex_container(data.get("primary_location")),
                 "publication_year": year,
                 "volume": volume,
@@ -359,7 +359,7 @@ class SemanticScholarAuditSource:
             fields={
                 "title": _string(data.get("title")),
                 "authors": _semantic_authors(data.get("authors")),
-                "abstract": _string(data.get("abstract")),
+                "abstract": clean_abstract(_string(data.get("abstract"))),
                 "container_title": _string(data.get("venue")),
                 "publication_year": year,
             },
