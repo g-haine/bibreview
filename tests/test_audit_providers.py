@@ -52,6 +52,18 @@ class CrossRefAuditSourceTests(unittest.TestCase):
         self.assertEqual(evidence.fields["keywords"], ("Control", "Energy"))
         self.assertEqual(provider.work.call_args.args, ("10.1000/example",))
 
+    def test_uses_article_number_when_crossref_page_is_missing(self):
+        provider = Mock()
+        provider.work.return_value = {
+            "DOI": "10.1000/EXAMPLE",
+            "title": ["Article number"],
+            "article-number": "034312",
+        }
+
+        evidence = CrossRefAuditSource(provider).evidence("10.1000/example")
+
+        self.assertEqual(evidence.fields["pages"], "034312")
+
     def test_batches_multiple_dois_and_marks_missing_records_unavailable(self):
         provider = Mock()
         provider.works.return_value = {

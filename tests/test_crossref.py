@@ -6,7 +6,21 @@ import unittest
 from unittest.mock import Mock
 
 from bibreview.identity import IdentityError
-from bibreview.providers.crossref import CrossRefError, CrossRefProvider
+from bibreview.providers.crossref import CrossRefError, CrossRefProvider, crossref_page_locator
+
+
+class CrossRefPageLocatorTests(unittest.TestCase):
+    def test_prefers_pages_then_falls_back_to_article_number(self):
+        cases = (
+            ({"page": "10-20", "article-number": "999"}, "10-20"),
+            ({"page": "", "article-number": "034312"}, "034312"),
+            ({"page": "   ", "article-number": "230458"}, "230458"),
+            ({}, ""),
+            ({"article-number": None}, ""),
+        )
+        for message, expected in cases:
+            with self.subTest(message=message):
+                self.assertEqual(crossref_page_locator(message), expected)
 
 
 class CrossRefProviderTests(unittest.TestCase):

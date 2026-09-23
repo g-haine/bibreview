@@ -104,6 +104,15 @@ class BuildPublicationTests(unittest.TestCase):
         self.assertEqual(publication.references[1].identifiers, {})
         self.assertEqual(publication.references[1].citation, "A, Title. (2020)")
 
+    def test_article_number_fills_pages_when_crossref_page_is_missing(self):
+        data = message()
+        data["page"] = ""
+        data["article-number"] = "034312-A"
+
+        publication = build_publication("10.1/test", data, "article-number")
+
+        self.assertEqual(publication.pages, "034312-A")
+
     def test_editor_only_crossref_record_is_supported(self):
         data = message()
         data["author"] = []

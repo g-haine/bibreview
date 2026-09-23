@@ -8,7 +8,7 @@ from typing import Protocol
 from ..identity import IdentityError, normalize_doi
 from ..pipeline.audit import ProviderEvidence
 from ..text import clean_metadata
-from .crossref import CrossRefProvider
+from .crossref import CrossRefProvider, crossref_page_locator
 from .openalex import OpenAlexProvider
 from .semantic_scholar import SemanticScholarProvider
 
@@ -164,7 +164,7 @@ class CrossRefAuditSource:
                 "publication_year": _crossref_year(message),
                 "volume": _string(message.get("volume")),
                 "issue": _string(message.get("issue")),
-                "pages": _string(message.get("page")),
+                "pages": crossref_page_locator(message),
                 "publisher": _string(message.get("publisher")),
                 "event": _crossref_event(message.get("event")),
                 "keywords": keywords,

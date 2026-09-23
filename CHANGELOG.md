@@ -2,6 +2,28 @@
 
 All notable BibReview releases are documented here.
 
+## 1.6.3 — 2026-09-23
+
+### CrossRef article-number pagination
+
+- use CrossRef `article-number` as the bibliographic page locator when the
+  ordinary `page` field is absent or blank;
+- keep an explicit CrossRef `page` value authoritative when both fields exist;
+- preserve article numbers exactly as strings, including leading zeroes such as
+  `034312`;
+- share the same CrossRef locator rule between collection and audit evidence so
+  the two workflows cannot drift;
+- keep the canonical schema unchanged: the existing `pages` field remains the
+  generic bibliographic locator.
+
+### Validation
+
+- add unit coverage for page precedence, article-number fallback, blank values,
+  and leading-zero preservation;
+- add collection and audit regression coverage for article-number-only CrossRef
+  records;
+- validate the correction with 371 passing tests before release.
+
 ## 1.6.2 — 2026-09-22
 
 ### Audit page-range normalization
