@@ -93,7 +93,7 @@ class RefreshTests(unittest.TestCase):
             (
                 ("volume", "12"),
                 ("issue", "3"),
-                ("pages", "10-20"),
+                ("pages", "10--20"),
             ),
         )
         collateral = {item.field: item for item in result.collateral}
