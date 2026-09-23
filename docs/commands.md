@@ -319,8 +319,10 @@ Collection refuses to overwrite a non-empty staging bibliography.
 
 ## backfill
 
-Propose values for selected fields that are currently empty in existing
-canonical DOI-backed publications:
+Propose values for selected fields that are semantically missing in existing
+canonical DOI-backed publications. For `abstract`, the historical
+`Not Available` placeholder is treated as missing case- and
+whitespace-insensitively:
 
 ~~~bash
 bibreview --config bibreview.yml backfill --field abstract
@@ -366,7 +368,9 @@ bibreview --config bibreview.yml backfill --apply
 `backfill --apply` stages only accepted/custom values in `collected.json`.
 It refuses non-empty staging, unresolved/deferred decisions, stale proposal
 fingerprints, missing canonical publications, or fields that are no longer
-empty. It never edits `bibliography.json` directly and does not rewrite tracked
+semantically missing. An accepted/custom abstract cannot itself be a
+`Not Available` placeholder. It never edits `bibliography.json` directly and
+does not rewrite tracked
 BibTeX as part of missing-field enrichment.
 
 Inspect the staged JSON, then use the normal canonical boundary:
@@ -429,8 +433,9 @@ bibreview --config bibreview.yml refresh --apply
 ~~~
 
 `refresh --apply` rechecks that every accepted/custom canonical field is still
-empty. It stages only those reviewed fills in `collected.json`. Existing title,
-authors, container, dates, publisher, and other non-empty canonical values remain
+semantically missing. It stages only those reviewed fills in `collected.json`.
+Existing title, authors, container, dates, publisher, and other meaningful
+canonical values remain
 untouched even when the provider recollection differs.
 
 Tracked BibTeX is synchronized conservatively only for accepted fields. BibReview
