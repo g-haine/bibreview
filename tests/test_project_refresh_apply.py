@@ -257,7 +257,7 @@ class ProjectRefreshApplyTests(unittest.TestCase):
         )
         write_bibliography(self.config.paths.bibliography, (changed,))
 
-        with self.assertRaisesRegex(ProjectStateError, "no longer empty"):
+        with self.assertRaisesRegex(ProjectStateError, "no longer missing"):
             plan_project_refresh_apply(self.config)
 
     def test_nonempty_staging_blocks_apply(self):
