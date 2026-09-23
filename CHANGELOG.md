@@ -2,6 +2,31 @@
 
 All notable BibReview releases are documented here.
 
+## 1.6.4 — 2026-09-23
+
+### OpenAlex abstract enrichment
+
+- allow enabled OpenAlex to participate in canonical abstract fallback when
+  publisher and CrossRef enrichment leave the abstract empty;
+- reuse one OpenAlex abstract reconstruction path for audit evidence and
+  collection fallback;
+- preserve the existing fallback policy of selecting the longest available
+  valid abstract across Semantic Scholar, Mendeley, and OpenAlex;
+- reject the observed OpenAlex non-abstract placeholders `Accepted version`
+  and `International audience`;
+- strip the OpenAlex `View Video Presentation` DOI prefix while retaining the
+  following abstract text;
+- disable only OpenAlex fallback for the remainder of a run after HTTP 429,
+  while continuing to try other configured fallback providers;
+- reuse the same configured OpenAlex provider across discovery and collection
+  composition.
+
+### Validation
+
+- add regression coverage for OpenAlex inverted-index reconstruction,
+  placeholder rejection, video-prefix cleanup, fallback selection, and
+  run-scoped rate-limit handling.
+
 ## 1.6.3 — 2026-09-23
 
 ### CrossRef article-number pagination
