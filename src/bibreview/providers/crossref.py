@@ -2,10 +2,23 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from urllib.parse import quote
 
 from ..identity import normalize_doi
 from .http import HttpTransport
+
+
+def crossref_page_locator(message: Mapping[str, object]) -> str:
+    """Return CrossRef pagination, falling back to an article number."""
+    for field in ("page", "article-number"):
+        value = message.get(field)
+        if value is None:
+            continue
+        locator = str(value).strip()
+        if locator:
+            return locator
+    return ""
 
 
 class CrossRefError(ValueError):
