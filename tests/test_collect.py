@@ -131,6 +131,29 @@ class BuildPublicationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "at least one author or editor"):
             build_publication("10.1/test", data, "invalid-record")
 
+    def test_build_publication_calls_optional_enrichment_once(self):
+        calls = []
+
+        def enrich(doi, work):
+            calls.append(doi)
+            return Enrichment(
+                abstract="Enriched abstract",
+                keywords=("keyword",),
+                event="Conference",
+            )
+
+        publication = build_publication(
+            "10.1/test",
+            message(),
+            "fluid-structure",
+            enrichment_lookup=enrich,
+        )
+
+        self.assertEqual(calls, ["10.1/test"])
+        self.assertEqual(publication.abstract, "Enriched abstract")
+        self.assertEqual(publication.keywords, ("keyword",))
+        self.assertEqual(publication.event, "Conference")
+
     def test_default_enrichment_uses_crossref_fields(self):
         publication = build_publication("10.1/test", message(), "fluid-structure")
         # Canonical in-memory data does not preserve incidental leading whitespace.
