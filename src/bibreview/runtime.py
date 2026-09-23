@@ -250,6 +250,19 @@ def _build_core_services(
             ieee=ieee,
         )
 
+    openalex_config = _provider(config, "openalex")
+    openalex_key = _optional_api_key(
+        openalex_config,
+        provider_name="OpenAlex",
+        environ=environ,
+        reporter=reporter,
+    )
+    openalex = (
+        OpenAlexProvider(transport, api_key=openalex_key)
+        if openalex_config is not None
+        else None
+    )
+
     semantic_config = _provider(config, "semantic_scholar")
     semantic_key = _optional_api_key(
         semantic_config,
@@ -289,10 +302,11 @@ def _build_core_services(
     )
 
     fallback = None
-    if semantic is not None or mendeley is not None:
+    if semantic is not None or mendeley is not None or openalex is not None:
         fallback = AbstractFallback(
             semantic_scholar=semantic,
             mendeley=mendeley,
+            openalex=openalex,
             reporter=reporter,
         )
 
