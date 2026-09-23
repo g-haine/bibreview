@@ -25,6 +25,7 @@ def publication(
     issue="",
     pages="",
     title="Reviewed title",
+    abstract="",
     permalink="paper",
 ):
     return Publication(
@@ -33,6 +34,7 @@ def publication(
         type="journal-article",
         title=title,
         authors=(Author(literal="Reviewed Author"),),
+        abstract=abstract,
         container_title="Reviewed Journal",
         publication_year="2025",
         volume=volume,
@@ -112,6 +114,34 @@ class RefreshTests(unittest.TestCase):
             "Reviewed Journal",
         )
         self.assertEqual(provider.calls, ["10.1/changed"])
+
+    def test_not_available_abstract_is_a_safe_missing_field_proposal(self):
+        item = publication(
+            "10.1/abstract-placeholder",
+            abstract="NOT AVAILABLE",
+        )
+        provider_message = message(title="Reviewed title")
+        provider_message["abstract"] = "Abstract: Recovered abstract."
+
+        result = refresh(
+            [item],
+            provider=FakeProvider({
+                "10.1/abstract-placeholder": provider_message
+            }),
+            stored_bibtex_lookup=lambda publication: "old\n",
+            bibtex_lookup=lambda doi: "new\n",
+            types=("journal-article",),
+            when_missing_any=("abstract",),
+        )
+
+        proposals = {
+            proposal.field: proposal.proposed_value
+            for proposal in result.proposals
+        }
+        self.assertEqual(
+            proposals["abstract"],
+            "Recovered abstract.",
+        )
 
     def test_existing_nonempty_configured_field_is_never_a_safe_proposal(self):
         item = publication(
