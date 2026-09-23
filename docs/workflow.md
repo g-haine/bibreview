@@ -26,18 +26,30 @@ are hypotheses to review, not automatic corrections. Apply any justified
 canonical/BibTeX/identity correction explicitly through the normal reviewed
 project workflow.
 
-Each later invocation processes the next stable batch. Omitting
-`--batch-size` returns to the configured default (50 in the example
-configuration):
+Each later invocation processes the next batch. Omitting `--batch-size`
+returns to the configured default (50 in the example configuration):
 
 ~~~bash
 bibreview --config bibreview.yml audit
 ~~~
 
-If a run is interrupted, invoke the same command again: the open batch is
-resumed and already checkpointed publications are not repeated. Retryable
-provider failures are revisited only after never-yet-audited publications have
-received their first pass.
+The audit directory acts as persistent local history: completed publication
+UUIDs are not revisited by default, while publications added to the canonical
+bibliography later are appended automatically as new pending work. If a run is
+interrupted, invoke the same command again: the open batch is resumed and
+already checkpointed publications are not repeated. Retryable provider failures
+are revisited only after never-yet-audited publications have received their
+first pass.
+
+When you deliberately want fresh provider evidence for the whole current
+bibliography, use:
+
+~~~bash
+bibreview --config bibreview.yml audit --full
+~~~
+
+This requeues all current canonical publication UUIDs while preserving the
+existing audit history and attempt counters.
 
 When the campaign is complete, derive the concise review and resolve every
 actionable finding explicitly:
