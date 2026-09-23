@@ -108,7 +108,13 @@ class RuntimeTests(unittest.TestCase):
             enrichment.fallback.semantic_scholar.min_interval_seconds,
             0.0,
         )
+        self.assertIs(services.batch_provider, services.provider)
         self.assertTrue(callable(services.enrichment_lookup))
+        self.assertTrue(callable(services.enrichment_many_lookup))
+        self.assertIs(
+            services.enrichment_many_lookup.__self__,
+            services.enrichment_lookup.__self__,
+        )
         self.assertTrue(callable(services.citation_lookup))
         self.assertTrue(callable(services.bibtex_lookup))
         self.assertEqual(stream.getvalue(), "")
