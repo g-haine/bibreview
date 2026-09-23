@@ -52,15 +52,16 @@ credential provenance without making network requests:
 bibreview --config bibreview.yml providers
 ~~~
 
-Run one sanitized live request per provider that is ready to use:
+Run one sanitized live probe per provider that is ready to use:
 
 ~~~bash
 bibreview --config bibreview.yml providers --check
 ~~~
 
-Common live statuses distinguish authentication failure, access/entitlement
-denial, rate limiting, and provider unavailability. Secret values are never
-printed.
+The probe uses the same provider-local pacing and bounded HTTP 429 retry policy
+as normal workflows. Common live statuses distinguish authentication failure,
+access/entitlement denial, persistent rate limiting, and provider unavailability.
+Secret values are never printed.
 
 Machine-readable diagnostics:
 
