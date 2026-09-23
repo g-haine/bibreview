@@ -823,8 +823,6 @@ def main(argv: list[str] | None = None) -> int:
                 discovery_provider=services.discovery_provider,
                 provider=services.provider,
                 enrichment_lookup=services.enrichment_lookup,
-                batch_provider=services.batch_provider,
-                enrichment_many_lookup=services.enrichment_many_lookup,
                 reporter=reporter,
             )
             if args.dry_run:
@@ -926,6 +924,8 @@ def main(argv: list[str] | None = None) -> int:
                 fields=tuple(args.backfill_fields),
                 types=tuple(args.backfill_types),
                 enrichment_lookup=services.enrichment_lookup,
+                batch_provider=services.batch_provider,
+                enrichment_many_lookup=services.enrichment_many_lookup,
                 reporter=reporter,
             )
             if not args.dry_run:
