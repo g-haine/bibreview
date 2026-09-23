@@ -46,7 +46,8 @@ All notable BibReview releases are documented here.
 - add regression coverage for proposal-only generation, protection of non-empty
   fields, resumable/fingerprinted decisions, accepted/rejected application,
   incomplete-resolution blocking, stale canonical protection, and interactive
-  CLI resolution/application.
+  CLI resolution/application;
+- validate the release with 394 passing tests.
 
 ## 1.6.4 — 2026-09-23
 
