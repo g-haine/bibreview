@@ -680,8 +680,8 @@ def _synchronize_audit_universe(
         synchronized = replace(
             synchronized,
             items=tuple(
-                replace(item, state="pending", detail="")
-                if item.key in current
+                replace(item, state="retryable", detail="")
+                if item.key in current and item.attempts > 0
                 else item
                 for item in synchronized.items
             ),
