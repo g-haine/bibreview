@@ -37,6 +37,33 @@ class AbstractFallbackTests(unittest.TestCase):
             "the longest available OpenAlex fallback abstract",
         )
 
+    def test_compares_provider_lengths_after_abstract_cleanup(self):
+        fallback = AbstractFallback(
+            semantic_scholar=SequenceProvider(
+                "ABSTRACT: Short candidate"
+            ),
+            openalex=SequenceProvider(
+                "A genuinely longer clean candidate"
+            ),
+            reporter=Reporter(-1),
+        )
+        self.assertEqual(
+            fallback.abstract("10.1/test"),
+            "A genuinely longer clean candidate",
+        )
+
+    def test_returns_cleaned_fallback_text(self):
+        fallback = AbstractFallback(
+            semantic_scholar=SequenceProvider(
+                "  Résumé —  Useful text from provider.  "
+            ),
+            reporter=Reporter(-1),
+        )
+        self.assertEqual(
+            fallback.abstract("10.1/test"),
+            "Useful text from provider.",
+        )
+
     def test_returns_explicit_unavailable_text_when_empty(self):
         fallback = AbstractFallback(
             semantic_scholar=SequenceProvider(""),
