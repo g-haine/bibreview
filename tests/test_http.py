@@ -200,7 +200,8 @@ class HttpTransportTests(unittest.TestCase):
             "request slot after 1.500s (minimum interval 1.500s)",
             output,
         )
-        self.assertEqual(sleeps, [1.1])
+        self.assertEqual(len(sleeps), 1)
+        self.assertAlmostEqual(sleeps[0], 1.1)
 
     def test_rate_limited_transport_zero_interval_never_sleeps(self) -> None:
         base = Mock()
