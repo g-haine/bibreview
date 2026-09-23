@@ -21,7 +21,8 @@ All notable BibReview releases are documented here.
 - add unit coverage for page precedence, article-number fallback, blank values,
   and leading-zero preservation;
 - add collection and audit regression coverage for article-number-only CrossRef
-  records.
+  records;
+- validate the correction with 371 passing tests before release.
 
 ## 1.6.2 — 2026-09-22
 
