@@ -26,6 +26,11 @@ All notable BibReview releases are documented here.
 - report one `embedded-graphic` finding containing two inline graphic
   occurrences.
 
+### Validation
+
+- add regression coverage for embedded formula images in canonical abstracts;
+- validate the release with 463 passing tests.
+
 ## 1.6.15 — 2026-09-23
 
 ### Read-only canonical abstract hygiene inventory
