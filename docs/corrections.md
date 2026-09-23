@@ -8,7 +8,7 @@ Always make corrections in a clean Git working tree when possible.
 
 ## Wrong metadata detected before merge
 
-After **collect**, **refresh**, or **audit --apply**, inspect the configured collected.json.
+After **collect**, **refresh**, **audit --apply**, or **backfill --apply**, inspect the configured collected.json.
 
 If a provider returned an incorrect title, author, journal, date, volume, issue,
 pages, abstract, event or keyword:
@@ -77,6 +77,27 @@ BibTeX backups. If the plan is correct, promote it with the normal
 `bibreview merge` command. BibReview refuses to apply a resolution if the
 canonical value has changed since the audit, so newer manual/provider work is
 not silently overwritten.
+
+## Human-reviewed enrichment of a missing field
+
+If a canonical publication is correct but lacks a field such as an abstract,
+prefer a reviewed backfill over manual bulk editing or full recollection:
+
+~~~bash
+bibreview --config bibreview.yml backfill --field abstract
+bibreview --config bibreview.yml backfill --resolve
+bibreview --config bibreview.yml --dry-run backfill --apply
+bibreview --config bibreview.yml backfill --apply
+~~~
+
+The provider chain only proposes values for fields that are currently empty.
+Every proposal must receive an explicit human decision. Accepted/custom values
+are staged in `collected.json`; rejected values leave the record unchanged.
+If the canonical field becomes non-empty before application, BibReview treats
+the proposal as stale and refuses to overwrite the newer value.
+
+Inspect staging and use the normal `bibreview merge` boundary only after the
+accepted values are satisfactory.
 
 ## Correction after a publication was already merged
 

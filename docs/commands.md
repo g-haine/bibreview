@@ -317,6 +317,65 @@ bibreview --config bibreview.yml collect
 
 Collection refuses to overwrite a non-empty staging bibliography.
 
+## backfill
+
+Propose values for selected fields that are currently empty in existing
+canonical DOI-backed publications:
+
+~~~bash
+bibreview --config bibreview.yml backfill --field abstract
+~~~
+
+Repeat `--field` to propose more than one scalar field. Use repeated `--type`
+options to restrict proposal generation to selected publication types. Existing
+non-empty canonical fields are never proposed for replacement.
+
+Proposal generation may call CrossRef, publisher enrichment, and configured
+abstract fallbacks such as OpenAlex, Semantic Scholar, and Mendeley. It does
+**not** write `collected.json` or modify the canonical bibliography. Instead it
+persists a fingerprinted local proposal set beside the configured audit state.
+
+Review those proposals interactively:
+
+~~~bash
+bibreview --config bibreview.yml backfill --resolve
+~~~
+
+The resolver presents one missing field at a time and uses the same controls as
+the audit resolver:
+
+- **Enter** or **Y** — accept the proposed value;
+- **n** — reject it;
+- **f VALUE** — store an explicit human-selected value;
+- **s** — defer it for a later session;
+- **q** — stop cleanly while preserving previous decisions.
+
+Decisions are resumable and fingerprinted against the exact proposal set.
+Proposal text is shown in full (wrapped for readability), which is especially
+important for abstracts. Provider candidates have already passed BibReview's
+normal metadata/abstract cleaning before they are proposed.
+
+Nothing reaches canonical staging until every proposal has a final accepted,
+custom, or rejected decision:
+
+~~~bash
+bibreview --config bibreview.yml --dry-run backfill --apply
+bibreview --config bibreview.yml backfill --apply
+~~~
+
+`backfill --apply` stages only accepted/custom values in `collected.json`.
+It refuses non-empty staging, unresolved/deferred decisions, stale proposal
+fingerprints, missing canonical publications, or fields that are no longer
+empty. It never edits `bibliography.json` directly and does not rewrite tracked
+BibTeX as part of missing-field enrichment.
+
+Inspect the staged JSON, then use the normal canonical boundary:
+
+~~~bash
+bibreview --config bibreview.yml --dry-run merge
+bibreview --config bibreview.yml merge
+~~~
+
 ## refresh
 
 Inspect configured incomplete existing records, compare stored/current BibTeX,
