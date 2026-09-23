@@ -16,7 +16,14 @@ from dotenv import dotenv_values
 
 from . import __version__
 from .config import BibReviewConfig, ProviderConfig
-from .pipeline.collect import BibtexLookup, CitationLookup, EnrichmentLookup, WorkProvider
+from .pipeline.collect import (
+    BatchWorkProvider,
+    BibtexLookup,
+    CitationLookup,
+    EnrichmentLookup,
+    EnrichmentManyLookup,
+    WorkProvider,
+)
 from .pipeline.discover import EnrichmentLookup as DiscoveryEnrichmentLookup
 from .pipeline.discover import WorkProvider as DiscoveryWorkProvider
 from .pipeline.enrich import EnrichmentService
@@ -55,7 +62,9 @@ class CollectionServices:
     """Concrete collaborators required by canonical project collection."""
 
     provider: WorkProvider
+    batch_provider: BatchWorkProvider
     enrichment_lookup: EnrichmentLookup
+    enrichment_many_lookup: EnrichmentManyLookup
     citation_lookup: CitationLookup
     bibtex_lookup: BibtexLookup
 
@@ -354,7 +363,9 @@ def build_collection_services(
     core = _build_core_services(config, reporter=progress, environ=environment)
     return CollectionServices(
         provider=core.crossref,
+        batch_provider=core.crossref,
         enrichment_lookup=core.enrichment.for_collection,
+        enrichment_many_lookup=core.enrichment.for_collection_many,
         citation_lookup=core.doi.citation,
         bibtex_lookup=core.doi.bibtex,
     )
