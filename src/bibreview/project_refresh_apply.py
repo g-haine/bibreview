@@ -14,6 +14,7 @@ from .project import ProjectStateError
 from .project_refresh import load_project_refresh_review
 from .refresh_resolution import load_project_refresh_resolutions
 from .reviewed_fields import apply_reviewed_field, bibtex_field_for, bibtex_value
+from .text import is_missing_metadata_value
 from .storage import (
     atomic_write_batch,
     backup_path,
@@ -135,9 +136,9 @@ def plan_project_refresh_apply(
                 f"{proposal.publication_id}: canonical publication is missing"
             )
         current = getattr(publication, proposal.field)
-        if current:
+        if not is_missing_metadata_value(proposal.field, current):
             raise ProjectStateError(
-                f"{proposal.key}: stale refresh proposal; canonical field is no longer empty"
+                f"{proposal.key}: stale refresh proposal; canonical field is no longer missing"
             )
 
         decision = decisions[proposal.key]
@@ -148,9 +149,12 @@ def plan_project_refresh_apply(
                 f"{proposal.key}: unsupported refresh decision {decision.decision}"
             )
         value = decision.resolved_value
-        if not isinstance(value, str) or not value:
+        if (
+            not isinstance(value, str)
+            or is_missing_metadata_value(proposal.field, value)
+        ):
             raise ProjectStateError(
-                f"{proposal.key}: accepted/custom refresh decision has no value"
+                f"{proposal.key}: accepted/custom refresh decision has no meaningful value"
             )
 
         updated[proposal.publication_id] = apply_reviewed_field(
