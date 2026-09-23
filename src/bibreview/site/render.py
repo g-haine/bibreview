@@ -113,11 +113,21 @@ def _page_header(title: str, permalink: str) -> str:
     )
 
 
-def _jekyll_text(value: str, *, mathjax_backslashes: int = 1) -> str:
-    """Escape Liquid delimiters and translate dollar math for a Jekyll context."""
+_LIQUID_OPENER_RE = re.compile(r"\{(?:\{|%)")
+
+
+def _escape_liquid_openers(value: str) -> str:
+    """Protect literal Liquid openers without changing rendered text."""
+    return _LIQUID_OPENER_RE.sub(
+        lambda match: "{% raw %}" + match.group(0) + "{% endraw %}",
+        value,
+    )
+
+
+def _mathjax_text(value: str, *, mathjax_backslashes: int = 1) -> str:
+    """Translate dollar-delimited math without altering ordinary TeX braces."""
     if mathjax_backslashes < 1:
         raise SiteRenderError("mathjax_backslashes must be positive")
-    value = value.replace("{{", "{[[:space:]]{").replace("}}", "}[[:space:]]}")
     opening = "\\" * mathjax_backslashes + "( "
     closing = " " + "\\" * mathjax_backslashes + ")"
     rendered: list[str] = []
@@ -135,6 +145,14 @@ def _jekyll_text(value: str, *, mathjax_backslashes: int = 1) -> str:
             )
         )
     return "\n".join(rendered)
+
+
+def _jekyll_text(value: str, *, mathjax_backslashes: int = 1) -> str:
+    """Render body text safely for Liquid and MathJax."""
+    return _mathjax_text(
+        _escape_liquid_openers(value),
+        mathjax_backslashes=mathjax_backslashes,
+    )
 
 
 def _publication_row(publication: SitePublication, options: JekyllIndexRenderOptions) -> str:
@@ -236,10 +254,17 @@ def _render_jekyll_publication_post(
             f"BibTeX for publication {publication.id!r} must be a string"
         )
 
-    title = _jekyll_text(publication.title, mathjax_backslashes=2)
+    # Front matter values are YAML data, not page-body Liquid source.  Keep
+    # literal braces untouched there; Liquid is not recursively evaluated when
+    # the layout later emits page.title or page.tags.
+    title = _mathjax_text(publication.title, mathjax_backslashes=2)
     names = [author.name for author in publication.authors]
     editor_names = [editor.name for editor in publication.editors]
-    keyword_text = _publication_keyword_text(publication, options)
+    keyword_text = _mathjax_text(
+        options.keyword_joiner.join(publication.keywords),
+        mathjax_backslashes=2,
+    )
+    keyword_body_text = _publication_keyword_text(publication, options)
     category = _publication_category(publication, options)
     date_text = publication.created_date.isoformat()
 
@@ -278,7 +303,7 @@ def _render_jekyll_publication_post(
         ]
     )
     if keyword_text:
-        lines.extend(["## Keywords", keyword_text, " "])
+        lines.extend(["## Keywords", keyword_body_text, " "])
 
     lines.append("## Citation")
     if publication.type in options.isbn_types:
