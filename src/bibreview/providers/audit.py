@@ -7,7 +7,7 @@ from typing import Protocol
 
 from ..identity import IdentityError, normalize_doi
 from ..pipeline.audit import ProviderEvidence
-from ..text import clean_metadata
+from ..text import clean_abstract, clean_metadata
 from .crossref import CrossRefProvider, crossref_page_locator
 from .openalex import OpenAlexProvider, openalex_abstract
 from .semantic_scholar import SemanticScholarProvider
@@ -156,10 +156,9 @@ class CrossRefAuditSource:
                 "title": _first(message.get("title")),
                 "authors": _crossref_names(message.get("author")),
                 "editors": _crossref_names(message.get("editor")),
-                "abstract": clean_metadata(
-                    _string(message.get("abstract")),
-                    abstract=True,
-                ).strip(),
+                "abstract": clean_abstract(
+                    _string(message.get("abstract"))
+                ),
                 "container_title": _first(message.get("container-title")),
                 "publication_year": _crossref_year(message),
                 "volume": _string(message.get("volume")),
