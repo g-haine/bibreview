@@ -16,6 +16,7 @@ from .config import BibReviewConfig
 from .pipeline.backfill import BACKFILL_FIELDS
 from .project import ProjectStateError
 from .project_backfill import load_project_backfill_review
+from .text import is_missing_metadata_value
 from .storage import (
     atomic_write_batch,
     bibliography_document_data,
@@ -134,9 +135,12 @@ def plan_project_backfill_apply(
             raise ProjectStateError(
                 f"{proposal.key}: unsupported backfill field {proposal.field}"
             )
-        if getattr(publication, proposal.field):
+        if not is_missing_metadata_value(
+            proposal.field,
+            getattr(publication, proposal.field),
+        ):
             raise ProjectStateError(
-                f"{proposal.key}: stale proposal; canonical field is no longer empty"
+                f"{proposal.key}: stale proposal; canonical field is no longer missing"
             )
 
         decision = decisions[proposal.key]
@@ -147,9 +151,12 @@ def plan_project_backfill_apply(
                 f"{proposal.key}: unsupported apply decision {decision.decision}"
             )
         value = decision.resolved_value
-        if not isinstance(value, str) or not value:
+        if (
+            not isinstance(value, str)
+            or is_missing_metadata_value(proposal.field, value)
+        ):
             raise ProjectStateError(
-                f"{proposal.key}: accepted/custom decision has no resolved value"
+                f"{proposal.key}: accepted/custom decision has no meaningful resolved value"
             )
 
         updated[proposal.publication_id] = replace(
