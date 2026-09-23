@@ -64,6 +64,25 @@ class FakeProvider:
         return self.records.get(doi)
 
 
+class FakeBatchProvider(FakeProvider):
+    BATCH_SIZE = 2
+
+    def __init__(self, records):
+        super().__init__(records)
+        self.batch_calls = []
+        self.batch_error = None
+
+    def works(self, dois):
+        self.batch_calls.append(tuple(dois))
+        if self.batch_error is not None:
+            raise self.batch_error
+        return {
+            doi: self.records[doi]
+            for doi in dois
+            if doi in self.records
+        }
+
+
 def message(title="Example title"):
     return {
         "type": "journal-article",
@@ -174,6 +193,145 @@ class BackfillPipelineTests(unittest.TestCase):
         self.assertEqual(result.eligible_count, 1)
         self.assertEqual(result.candidates, ())
         self.assertEqual(result.no_value, (publication.doi,))
+
+    def test_batched_backfill_preserves_input_order_and_avoids_individual_work_calls(self):
+        publications = tuple(
+            Publication(
+                id=new_publication_id(),
+                identifiers={"doi": f"10.1000/item-{index}"},
+                type="journal-article",
+                title=f"Reviewed {index}",
+                authors=(Author(literal="Reviewed Author"),),
+                abstract="",
+                permalink=f"reviewed-{index}",
+            )
+            for index in range(3)
+        )
+        provider = FakeBatchProvider(
+            {
+                publication.doi: message(f"Provider {index}")
+                for index, publication in enumerate(publications)
+            }
+        )
+        enrichment_calls = []
+
+        def enrich_many(messages):
+            enrichment_calls.append(tuple(messages))
+            return {
+                doi: Enrichment(abstract=f"Abstract for {doi}")
+                for doi in messages
+            }
+
+        result = backfill(
+            publications,
+            provider=provider,
+            batch_provider=provider,
+            fields=("abstract",),
+            enrichment_lookup=lambda doi, work: Enrichment(
+                abstract="individual fallback should not run"
+            ),
+            enrichment_many_lookup=enrich_many,
+        )
+
+        self.assertEqual(
+            provider.batch_calls,
+            [
+                ("10.1000/item-0", "10.1000/item-1"),
+                ("10.1000/item-2",),
+            ],
+        )
+        self.assertEqual(provider.calls, [])
+        self.assertEqual(
+            enrichment_calls,
+            [(
+                "10.1000/item-0",
+                "10.1000/item-1",
+                "10.1000/item-2",
+            )],
+        )
+        self.assertEqual(
+            tuple(candidate.doi for candidate in result.candidates),
+            tuple(publication.doi for publication in publications),
+        )
+        self.assertEqual(result.unavailable, ())
+        self.assertEqual(result.no_value, ())
+
+    def test_batch_missing_record_falls_back_only_for_that_doi(self):
+        publications = tuple(
+            Publication(
+                id=new_publication_id(),
+                identifiers={"doi": f"10.1000/item-{index}"},
+                type="journal-article",
+                title=f"Reviewed {index}",
+                authors=(Author(literal="Reviewed Author"),),
+                abstract="",
+                permalink=f"reviewed-{index}",
+            )
+            for index in range(2)
+        )
+        provider = FakeBatchProvider(
+            {publications[0].doi: message("Provider 0")}
+        )
+
+        result = backfill(
+            publications,
+            provider=provider,
+            batch_provider=provider,
+            fields=("abstract",),
+            enrichment_many_lookup=lambda messages: {
+                doi: Enrichment(abstract=f"Abstract for {doi}")
+                for doi in messages
+            },
+        )
+
+        self.assertEqual(
+            provider.batch_calls,
+            [("10.1000/item-0", "10.1000/item-1")],
+        )
+        self.assertEqual(provider.calls, ["10.1000/item-1"])
+        self.assertEqual(
+            tuple(candidate.doi for candidate in result.candidates),
+            ("10.1000/item-0",),
+        )
+        self.assertEqual(result.unavailable, ("10.1000/item-1",))
+
+    def test_failed_work_batch_falls_back_to_individual_lookups(self):
+        publications = tuple(
+            Publication(
+                id=new_publication_id(),
+                identifiers={"doi": f"10.1000/item-{index}"},
+                type="journal-article",
+                title=f"Reviewed {index}",
+                authors=(Author(literal="Reviewed Author"),),
+                abstract="",
+                permalink=f"reviewed-{index}",
+            )
+            for index in range(2)
+        )
+        provider = FakeBatchProvider(
+            {
+                publication.doi: message(f"Provider {index}")
+                for index, publication in enumerate(publications)
+            }
+        )
+        provider.batch_error = ValueError("temporary batch failure")
+
+        result = backfill(
+            publications,
+            provider=provider,
+            batch_provider=provider,
+            fields=("abstract",),
+            enrichment_many_lookup=lambda messages: {
+                doi: Enrichment(abstract=f"Abstract for {doi}")
+                for doi in messages
+            },
+        )
+
+        self.assertEqual(
+            provider.calls,
+            ["10.1000/item-0", "10.1000/item-1"],
+        )
+        self.assertEqual(len(result.candidates), 2)
 
     def test_nonempty_field_is_never_proposed_for_replacement(self):
         publication = self.publication(abstract="Canonical abstract")
