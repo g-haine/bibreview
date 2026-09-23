@@ -230,6 +230,15 @@ OpenAlex, IEEE, or any other provider. Configure the value according to the
 provider's current API policy; changing the YAML is sufficient when upstream
 rate-limit guidance changes.
 
+HTTP 429 handling is provider-local as well. BibReview performs at most two
+provider-aware retries after the initial request. A valid `Retry-After` response
+header takes precedence; otherwise BibReview uses a bounded exponential fallback
+starting at the greater of one second and the configured minimum interval. Every
+retry still passes through the same provider-local request-spacing gate. A
+persistent HTTP 429 is then propagated to the workflow, where optional fallback
+providers may be disabled for the remainder of that run. Generic HTTP transport
+retries remain reserved for transient 5xx server failures.
+
 The example uses `1.1` seconds for Semantic Scholar and `0.0` for the other
 providers. This is project policy, not a hard-coded BibReview special case.
 
