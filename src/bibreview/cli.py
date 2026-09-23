@@ -66,8 +66,27 @@ from .project_audit_apply import (
     format_project_audit_apply_plan,
     plan_project_audit_apply,
 )
-from .project_refresh import apply_project_refresh, plan_project_refresh
+from .project_refresh import (
+    apply_project_refresh,
+    format_project_refresh_review,
+    load_project_refresh_review,
+    plan_project_refresh,
+    refresh_review_path,
+)
+from .project_refresh_apply import (
+    apply_project_refresh_apply,
+    plan_project_refresh_apply,
+)
 from .project_render import apply_project_render, plan_project_render
+from .refresh_resolution import (
+    format_backfill_resolution_candidate as format_refresh_resolution_candidate,
+    load_project_refresh_resolutions,
+    record_backfill_resolution as record_refresh_resolution,
+    refresh_resolution_path,
+    refresh_resolution_summary,
+    save_project_refresh_resolutions,
+    unresolved_refresh_candidates,
+)
 from .reporting import Reporter
 from .runtime import (
     build_audit_services,
@@ -194,7 +213,26 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Apply completed human backfill decisions to collected staging",
     )
-    commands.add_parser("refresh", help="Recollect stale existing publications into canonical staging state")
+    refresh = commands.add_parser(
+        "refresh",
+        help="Review stale existing publications without overwriting canonical metadata",
+    )
+    refresh_actions = refresh.add_mutually_exclusive_group()
+    refresh_actions.add_argument(
+        "--review",
+        action="store_true",
+        help="Show the persisted safe refresh review without provider requests",
+    )
+    refresh_actions.add_argument(
+        "--resolve",
+        action="store_true",
+        help="Interactively resolve safe missing-field refresh proposals",
+    )
+    refresh_actions.add_argument(
+        "--apply",
+        action="store_true",
+        help="Apply completed safe refresh decisions to collected staging",
+    )
     authors = commands.add_parser("authors", help="Inspect author identities and optionally apply safe mappings")
     authors.add_argument(
         "--apply-safe",
@@ -434,6 +472,109 @@ def _run_backfill_resolution(config, args) -> int:
 
     prefix = "Dry run: " if args.dry_run else ""
     print(prefix + state.summary())
+    print(f"Resolutions: {path}")
+    return 0
+
+
+def _run_refresh_resolution(config, args) -> int:
+    """Run resumable human review for safe refresh proposals."""
+    if args.quiet:
+        raise ProjectStateError(
+            "--quiet cannot be used with interactive refresh --resolve"
+        )
+
+    review = load_project_refresh_review(config)
+    state = load_project_refresh_resolutions(config, review)
+    candidates = unresolved_refresh_candidates(review, state)
+    path = refresh_resolution_path(config)
+
+    if not candidates:
+        prefix = "Dry run: " if args.dry_run else ""
+        print(prefix + refresh_resolution_summary(state))
+        print("No unresolved safe refresh proposals.")
+        print(f"Resolutions: {path}")
+        return 0
+
+    _enable_interactive_line_editing()
+
+    for candidate in candidates:
+        print(format_refresh_resolution_candidate(candidate))
+        while True:
+            try:
+                raw = input("Decision [Y/n/f VALUE/s/q]: ").strip()
+            except (EOFError, KeyboardInterrupt):
+                print()
+                print(
+                    "Refresh resolution stopped; previous decisions are preserved."
+                )
+                print(refresh_resolution_summary(state))
+                print(f"Resolutions: {path}")
+                return 0
+
+            choice = raw.lower()
+            try:
+                if raw == "" or choice in {"y", "yes"}:
+                    state = record_refresh_resolution(
+                        state,
+                        candidate,
+                        decision="accepted",
+                    )
+                    break
+
+                if choice in {"n", "no"}:
+                    state = record_refresh_resolution(
+                        state,
+                        candidate,
+                        decision="rejected",
+                    )
+                    break
+
+                if choice in {"s", "skip"}:
+                    state = record_refresh_resolution(
+                        state,
+                        candidate,
+                        decision="deferred",
+                    )
+                    break
+
+                if choice in {"q", "quit"}:
+                    print(refresh_resolution_summary(state))
+                    print(f"Resolutions: {path}")
+                    return 0
+
+                if choice == "f" or choice.startswith("f "):
+                    custom = raw[1:].strip()
+                    if not custom:
+                        try:
+                            custom = input("Custom value: ").strip()
+                        except (EOFError, KeyboardInterrupt):
+                            print()
+                            print(
+                                "Refresh resolution stopped; previous decisions "
+                                "are preserved."
+                            )
+                            print(refresh_resolution_summary(state))
+                            print(f"Resolutions: {path}")
+                            return 0
+                    state = record_refresh_resolution(
+                        state,
+                        candidate,
+                        decision="custom",
+                        resolved_value=custom,
+                    )
+                    break
+            except ProjectStateError as error:
+                print(f"Invalid resolution: {error}")
+                continue
+
+            print("Please enter Y, n, f VALUE, s, or q.")
+
+        if not args.dry_run:
+            save_project_refresh_resolutions(config, state)
+        print()
+
+    prefix = "Dry run: " if args.dry_run else ""
+    print(prefix + refresh_resolution_summary(state))
     print(f"Resolutions: {path}")
     return 0
 
@@ -806,6 +947,71 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "refresh":
+        if args.review:
+            try:
+                review = load_project_refresh_review(config)
+            except (
+                OSError,
+                StorageError,
+                ProjectStateError,
+                ValueError,
+                TypeError,
+            ) as error:
+                print(f"bibreview refresh: {error}", file=sys.stderr)
+                return 1
+            if not args.quiet:
+                print(
+                    format_project_refresh_review(
+                        review,
+                        verbose=bool(args.verbose),
+                    )
+                )
+            return 0
+
+        if args.resolve:
+            try:
+                return _run_refresh_resolution(config, args)
+            except (
+                OSError,
+                StorageError,
+                ProjectStateError,
+                ValueError,
+                TypeError,
+            ) as error:
+                print(f"bibreview refresh: {error}", file=sys.stderr)
+                return 1
+
+        if args.apply:
+            try:
+                plan = plan_project_refresh_apply(config)
+                if not args.dry_run:
+                    apply_project_refresh_apply(plan)
+            except (
+                OSError,
+                StorageError,
+                ProjectStateError,
+                ValueError,
+                TypeError,
+            ) as error:
+                print(f"bibreview refresh: {error}", file=sys.stderr)
+                return 1
+
+            if not args.quiet:
+                prefix = "Dry run: " if args.dry_run else ""
+                print(prefix + plan.summary())
+                if plan.changed:
+                    print(f"Staging: {config.paths.collected}")
+                for backup in plan.bibtex_backups:
+                    label = (
+                        "Would create BibTeX backup"
+                        if args.dry_run
+                        else "BibTeX backup"
+                    )
+                    print(f"{label}: {backup}")
+                if not plan.changed:
+                    print("No accepted refresh changes to stage.")
+            return 0
+
         reporter = Reporter(-1 if args.quiet else args.verbose)
         try:
             services = build_collection_services(config, reporter=reporter)
@@ -817,22 +1023,27 @@ def main(argv: list[str] | None = None) -> int:
                 bibtex_lookup=services.bibtex_lookup,
                 reporter=reporter,
             )
-            if args.dry_run:
-                if not args.quiet:
-                    print(f"Dry run: {plan.summary()}")
-                    for backup in plan.bibtex_backups:
-                        print(f"Would create BibTeX backup: {backup}")
-                return 0
-            apply_project_refresh(plan)
-        except (OSError, StorageError, ValueError, TypeError) as error:
+            if not args.dry_run:
+                apply_project_refresh(plan)
+        except (
+            OSError,
+            StorageError,
+            ProjectStateError,
+            ValueError,
+            TypeError,
+        ) as error:
             print(f"bibreview refresh: {error}", file=sys.stderr)
             return 1
+
         if not args.quiet:
-            print(plan.summary())
-            for backup in plan.bibtex_backups:
-                print(f"BibTeX backup: {backup}")
-            if not plan.changed:
-                print("No refresh state changes.")
+            prefix = "Dry run: " if args.dry_run else ""
+            print(prefix + plan.summary())
+            print(f"Review: {refresh_review_path(config)}")
+            if plan.review.collateral:
+                print(
+                    "Collateral provider differences were retained for review "
+                    "and will never be auto-applied."
+                )
         return 0
 
     if args.command == "authors":
