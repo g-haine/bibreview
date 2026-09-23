@@ -95,6 +95,24 @@ def _integer(value: Any, name: str, default: int, *, minimum: int = 1) -> int:
     return value
 
 
+def _number(
+    value: Any,
+    name: str,
+    default: float,
+    *,
+    minimum: float = 0.0,
+) -> float:
+    if value is None:
+        return default
+    if (
+        not isinstance(value, (int, float))
+        or isinstance(value, bool)
+        or float(value) < minimum
+    ):
+        raise ConfigError(f"{name} must be a number >= {minimum}")
+    return float(value)
+
+
 def _text(value: Any, name: str, default: str = "") -> str:
     if value is None:
         return default
@@ -228,6 +246,7 @@ class ProviderConfig:
     token_env: str = ""
     client_id_env: str = ""
     client_secret_env: str = ""
+    min_interval_seconds: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -486,6 +505,12 @@ def load_config(path: str | Path = "bibreview.yml") -> BibReviewConfig:
             client_secret_env=_string(
                 item.get("client_secret_env"),
                 f"providers.{provider_name}.client_secret_env",
+            ),
+            min_interval_seconds=_number(
+                item.get("min_interval_seconds"),
+                f"providers.{provider_name}.min_interval_seconds",
+                0.0,
+                minimum=0.0,
             ),
         )
 
