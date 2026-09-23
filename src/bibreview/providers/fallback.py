@@ -23,15 +23,18 @@ class AbstractFallback:
         *,
         semantic_scholar: AbstractProvider | None = None,
         mendeley: AbstractProvider | None = None,
+        openalex: AbstractProvider | None = None,
         reporter: Reporter | None = None,
         unavailable_text: str = "Not available",
     ) -> None:
         self.semantic_scholar = semantic_scholar
         self.mendeley = mendeley
+        self.openalex = openalex
         self.reporter = reporter or Reporter()
         self.unavailable_text = unavailable_text
         self._semantic_scholar_limited = False
         self._mendeley_unauthorized = False
+        self._openalex_limited = False
 
     def abstract(self, doi: str) -> str:
         """Return the longest available optional abstract for one DOI."""
@@ -46,6 +49,22 @@ class AbstractFallback:
                 self._semantic_scholar_limited = True
                 self.reporter.warning(
                     "Semantic Scholar HTTP 429; skipping this optional abstract provider "
+                    "for the rest of this run. Other configured fallback providers will "
+                    "still be tried."
+                )
+            else:
+                if value.strip():
+                    candidates.append(value.strip())
+
+        if self.openalex is not None and not self._openalex_limited:
+            try:
+                value = self.openalex.abstract(doi)
+            except HttpError as error:
+                if error.status_code != 429:
+                    raise
+                self._openalex_limited = True
+                self.reporter.warning(
+                    "OpenAlex HTTP 429; skipping this optional abstract provider "
                     "for the rest of this run. Other configured fallback providers will "
                     "still be tried."
                 )
