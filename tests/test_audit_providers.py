@@ -101,6 +101,18 @@ class CrossRefAuditSourceTests(unittest.TestCase):
         self.assertEqual(dict(evidence.fields), {})
 
 
+    def test_not_available_abstract_is_normalized_as_missing(self):
+        provider = Mock()
+        provider.work.return_value = {
+            "DOI": "10.1000/example",
+            "abstract": "NOT AVAILABLE",
+        }
+
+        evidence = CrossRefAuditSource(provider).evidence("10.1000/example")
+
+        self.assertEqual(evidence.fields["abstract"], "")
+
+
 class OpenAlexAuditSourceTests(unittest.TestCase):
     def test_reconstructs_abstract_and_raw_author_order(self):
         provider = Mock()
@@ -170,6 +182,21 @@ class OpenAlexAuditSourceTests(unittest.TestCase):
         self.assertEqual(evidence.detail, "record not found")
 
 
+    def test_not_available_reconstructed_abstract_is_normalized_as_missing(self):
+        provider = Mock()
+        provider.work.return_value = {
+            "doi": "10.1000/example",
+            "abstract_inverted_index": {
+                "NOT": [0],
+                "AVAILABLE": [1],
+            },
+        }
+
+        evidence = OpenAlexAuditSource(provider).evidence("10.1000/example")
+
+        self.assertEqual(evidence.fields["abstract"], "")
+
+
 class SemanticScholarAuditSourceTests(unittest.TestCase):
     def test_normalizes_core_paper_fields(self):
         provider = Mock()
@@ -190,6 +217,16 @@ class SemanticScholarAuditSourceTests(unittest.TestCase):
         self.assertEqual(evidence.fields["publication_year"], "2023")
         self.assertEqual(evidence.fields["authors"], ("Ada Lovelace", "Alan Turing"))
         self.assertEqual(evidence.fields["container_title"], "Journal of Examples")
+
+    def test_not_available_abstract_is_normalized_as_missing(self):
+        provider = Mock()
+        provider.paper.return_value = {
+            "abstract": "  not   available  ",
+        }
+
+        evidence = SemanticScholarAuditSource(provider).evidence("10.1000/example")
+
+        self.assertEqual(evidence.fields["abstract"], "")
 
     def test_batches_multiple_dois_and_marks_missing_records_unavailable(self):
         provider = Mock()
