@@ -21,7 +21,149 @@ class SequenceProvider:
         return value
 
 
+class BatchProvider:
+    def __init__(self, values, *, batch_size=500):
+        self.values = dict(values)
+        self.BATCH_SIZE = batch_size
+        self.batch_calls = []
+        self.calls = []
+        self.batch_error = None
+
+    def abstracts(self, dois):
+        self.batch_calls.append(tuple(dois))
+        if self.batch_error is not None:
+            raise self.batch_error
+        return {doi: self.values.get(doi, "") for doi in dois}
+
+    def abstract(self, doi):
+        self.calls.append(doi)
+        return self.values.get(doi, "")
+
+
 class AbstractFallbackTests(unittest.TestCase):
+    def test_abstract_many_batches_capable_providers_and_keeps_mendeley_individual(self):
+        semantic = BatchProvider(
+            {
+                "10.1/one": "semantic one",
+                "10.1/two": "the longest semantic two",
+            },
+            batch_size=500,
+        )
+        openalex = BatchProvider(
+            {
+                "10.1/one": "the longest OpenAlex one",
+                "10.1/two": "openalex two",
+            },
+            batch_size=100,
+        )
+        mendeley = SequenceProvider(
+            "mendeley one",
+            "mendeley two",
+        )
+        fallback = AbstractFallback(
+            semantic_scholar=semantic,
+            openalex=openalex,
+            mendeley=mendeley,
+            reporter=Reporter(-1),
+        )
+
+        result = fallback.abstract_many(("10.1/one", "10.1/two"))
+
+        self.assertEqual(
+            result,
+            {
+                "10.1/one": "the longest OpenAlex one",
+                "10.1/two": "the longest semantic two",
+            },
+        )
+        self.assertEqual(
+            semantic.batch_calls,
+            [("10.1/one", "10.1/two")],
+        )
+        self.assertEqual(
+            openalex.batch_calls,
+            [("10.1/one", "10.1/two")],
+        )
+        self.assertEqual(
+            mendeley.calls,
+            ["10.1/one", "10.1/two"],
+        )
+
+    def test_abstract_many_chunks_by_provider_batch_size(self):
+        semantic = BatchProvider(
+            {
+                "10.1/one": "one",
+                "10.1/two": "two",
+                "10.1/three": "three",
+            },
+            batch_size=2,
+        )
+        fallback = AbstractFallback(
+            semantic_scholar=semantic,
+            reporter=Reporter(-1),
+        )
+
+        result = fallback.abstract_many(
+            ("10.1/one", "10.1/two", "10.1/three")
+        )
+
+        self.assertEqual(
+            semantic.batch_calls,
+            [
+                ("10.1/one", "10.1/two"),
+                ("10.1/three",),
+            ],
+        )
+        self.assertEqual(result["10.1/three"], "three")
+
+    def test_persistent_batch_429_disables_only_that_optional_provider(self):
+        semantic = BatchProvider({}, batch_size=500)
+        semantic.batch_error = HttpError("limited", status_code=429)
+        openalex = BatchProvider(
+            {"10.1/one": "OpenAlex one", "10.1/two": "OpenAlex two"},
+            batch_size=100,
+        )
+        stream = io.StringIO()
+        fallback = AbstractFallback(
+            semantic_scholar=semantic,
+            openalex=openalex,
+            reporter=Reporter(0, stream),
+        )
+
+        first = fallback.abstract_many(("10.1/one", "10.1/two"))
+        second = fallback.abstract_many(("10.1/three",))
+
+        self.assertEqual(
+            first,
+            {"10.1/one": "OpenAlex one", "10.1/two": "OpenAlex two"},
+        )
+        self.assertEqual(second, {"10.1/three": ""})
+        self.assertEqual(
+            semantic.batch_calls,
+            [("10.1/one", "10.1/two")],
+        )
+        self.assertIn("Semantic Scholar HTTP 429", stream.getvalue())
+
+    def test_failed_batch_falls_back_to_individual_for_that_chunk(self):
+        class RecoveringBatchProvider(BatchProvider):
+            def abstracts(self, dois):
+                self.batch_calls.append(tuple(dois))
+                raise HttpError("server", status_code=503)
+
+        semantic = RecoveringBatchProvider(
+            {"10.1/one": "one", "10.1/two": "two"},
+            batch_size=500,
+        )
+        fallback = AbstractFallback(
+            semantic_scholar=semantic,
+            reporter=Reporter(-1),
+        )
+
+        result = fallback.abstract_many(("10.1/one", "10.1/two"))
+
+        self.assertEqual(result, {"10.1/one": "one", "10.1/two": "two"})
+        self.assertEqual(semantic.calls, ["10.1/one", "10.1/two"])
+
     def test_returns_longest_available_abstract(self):
         semantic = SequenceProvider("short abstract")
         mendeley = SequenceProvider("a much longer fallback abstract")

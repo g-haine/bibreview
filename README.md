@@ -11,7 +11,7 @@ feed.
 BibReview is designed so that provider output remains inspectable and ambiguous
 decisions remain human decisions.
 
-Current stable release: **v1.6.12**.
+Current stable release: **v1.6.13**.
 
 ## What BibReview provides
 
@@ -42,7 +42,7 @@ BibReview currently requires **Python 3.12 or newer**.
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.12"
+python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.13"
 
 bibreview --version
 ~~~
@@ -161,6 +161,13 @@ bibreview backfill --apply
 ~~~
 
 Proposal generation writes only local review state beside the audit files.
+For network efficiency, backfill batches exact multi-DOI lookups when the
+configured provider supports them: CrossRef work metadata is fetched in groups
+of up to 25 DOI values, OpenAlex fallback abstracts in groups of up to 100, and
+Semantic Scholar fallback abstracts in groups of up to 500. Publisher enrichment
+and Mendeley remain per DOI. Batch transport changes neither proposal ordering
+nor the human-review boundary.
+
 `backfill --resolve` uses the same resumable human decision model as audit
 resolution: accept, reject, choose a custom value, defer, or quit. Only
 accepted/custom values can reach `collected.json`, and a stale proposal is

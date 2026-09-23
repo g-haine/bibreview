@@ -2,6 +2,39 @@
 
 All notable BibReview releases are documented here.
 
+## 1.6.13 — 2026-09-23
+
+### Batched backfill enrichment
+
+- add reusable batch collection contracts for exact multi-DOI work lookup and
+  enrichment so the same architecture can later be reused by refresh;
+- prefetch backfill CrossRef work metadata in bounded groups of 25 DOI values
+  while preserving canonical input order and proposal ordering;
+- add batched OpenAlex abstract fallback in bounded groups of 100 DOI values;
+- add batched Semantic Scholar abstract fallback through the paper batch endpoint
+  in bounded groups of 500 DOI values;
+- keep publisher enrichment per DOI because routing depends on the resolved
+  publisher host, and keep Mendeley per DOI because its current adapter exposes
+  no exact multi-DOI lookup;
+- fall back to individual DOI requests when a CrossRef batch or a non-429
+  optional-provider batch fails;
+- preserve run-scoped Semantic Scholar/OpenAlex disabling after a persistent
+  provider-aware HTTP 429;
+- isolate missing or failed base-work DOI records so unrelated backfill
+  candidates continue;
+- keep review files, apply semantics, stale-value protection, and canonical
+  promotion boundaries unchanged.
+
+### Validation
+
+- cover CrossRef-style chunking and proposal-order preservation;
+- cover missing records and failed work-batch fallback;
+- cover OpenAlex and Semantic Scholar batched abstract adapters;
+- cover provider batch-size chunking, persistent 429 handling, and individual
+  fallback after non-429 batch failures;
+- cover batched enrichment composition and runtime wiring;
+- validate the release with 446 passing tests.
+
 ## 1.6.12 — 2026-09-23
 
 ### Provider-aware HTTP 429 recovery

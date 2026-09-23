@@ -11,7 +11,12 @@ from typing import Any, Mapping
 
 from .config import BibReviewConfig
 from .pipeline.backfill import BackfillCandidate, BackfillResult, backfill
-from .pipeline.collect import EnrichmentLookup, WorkProvider
+from .pipeline.collect import (
+    BatchWorkProvider,
+    EnrichmentLookup,
+    EnrichmentManyLookup,
+    WorkProvider,
+)
 from .project import ProjectStateError
 from .reporting import Reporter
 from .storage import atomic_write_batch, json_bytes, read_bibliography, read_json
@@ -173,6 +178,8 @@ def plan_project_backfill(
     fields: tuple[str, ...],
     types: tuple[str, ...] = (),
     enrichment_lookup: EnrichmentLookup | None = None,
+    batch_provider: BatchWorkProvider | None = None,
+    enrichment_many_lookup: EnrichmentManyLookup | None = None,
     reporter: Reporter | None = None,
 ) -> ProjectBackfillPlan:
     """Build and persist proposals without touching collected/canonical state."""
@@ -197,6 +204,8 @@ def plan_project_backfill(
         fields=fields,
         types=types,
         enrichment_lookup=enrichment_lookup,
+        batch_provider=batch_provider,
+        enrichment_many_lookup=enrichment_many_lookup,
         reporter=reporter,
     )
     review = BackfillReview(

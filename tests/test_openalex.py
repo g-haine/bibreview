@@ -109,6 +109,33 @@ class OpenAlexProviderTests(unittest.TestCase):
         self.assertEqual(call.kwargs["params"]["api_key"], "secret")
         self.assertEqual(self.transport.json.call_count, 1)
 
+    def test_returns_multiple_reconstructed_abstracts_in_one_request(self) -> None:
+        self.transport.json.return_value = {
+            "results": [
+                {
+                    "doi": "https://doi.org/10.1000/A",
+                    "abstract_inverted_index": {
+                        "First": [0],
+                        "abstract": [1],
+                    },
+                },
+                {
+                    "doi": "https://doi.org/10.1000/B",
+                    "abstract_inverted_index": None,
+                },
+            ],
+            "meta": {},
+        }
+        provider = OpenAlexProvider(self.transport)
+
+        result = provider.abstracts(("10.1000/a", "10.1000/b"))
+
+        self.assertEqual(
+            result,
+            {"10.1000/a": "First abstract", "10.1000/b": ""},
+        )
+        self.assertEqual(self.transport.json.call_count, 1)
+
     def test_batch_lookup_omits_absent_records_and_enforces_limit(self) -> None:
         self.transport.json.return_value = {"results": [], "meta": {}}
         provider = OpenAlexProvider(self.transport)

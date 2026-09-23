@@ -61,6 +61,28 @@ class SemanticScholarProviderTests(unittest.TestCase):
         self.assertEqual(call.kwargs["headers"], {"x-api-key": "secret-key"})
         self.assertEqual(transport.post_json.call_count, 1)
 
+    def test_fetches_multiple_abstracts_through_batch_endpoint(self):
+        transport = Mock()
+        transport.post_json.return_value = [
+            {
+                "abstract": " First abstract. ",
+                "externalIds": {"DOI": "10.1/ONE"},
+            },
+            {
+                "abstract": None,
+                "externalIds": {"DOI": "10.1/two"},
+            },
+        ]
+        provider = SemanticScholarProvider(transport, api_key="secret-key")
+
+        result = provider.abstracts(("10.1/one", "10.1/two"))
+
+        self.assertEqual(
+            result,
+            {"10.1/one": "First abstract.", "10.1/two": ""},
+        )
+        self.assertEqual(transport.post_json.call_count, 1)
+
     def test_batch_lookup_enforces_limit_and_rejects_bad_shape(self):
         transport = Mock()
         provider = SemanticScholarProvider(transport)
