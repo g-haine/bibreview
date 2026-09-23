@@ -66,6 +66,7 @@ class RuntimeTests(unittest.TestCase):
             self.config(),
             reporter=Reporter(stream=stream),
             environ={
+                "OPENALEX_KEY": "openalex-secret",
                 "ELSEVIER_KEY": "elsevier-secret",
                 "IEEE_KEY": "ieee-secret",
                 "MENDELEY_CLIENT_ID": "mendeley-id",
@@ -241,6 +242,7 @@ class RuntimeTests(unittest.TestCase):
         )
         self.assertIsInstance(services.provider, CrossRefProvider)
         warnings = stream.getvalue()
+        self.assertIn("OpenAlex", warnings)
         self.assertIn("Elsevier", warnings)
         self.assertIn("IEEE", warnings)
         self.assertIn("Mendeley", warnings)

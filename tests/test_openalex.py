@@ -5,7 +5,45 @@ from __future__ import annotations
 import unittest
 from unittest.mock import Mock
 
-from bibreview.providers.openalex import OpenAlexError, OpenAlexProvider
+from bibreview.providers.openalex import OpenAlexError, OpenAlexProvider, openalex_abstract
+
+
+class OpenAlexAbstractTests(unittest.TestCase):
+    def test_reconstructs_inverted_index_in_position_order(self) -> None:
+        self.assertEqual(
+            openalex_abstract(
+                {
+                    "Hamiltonian": [1],
+                    "Port": [0],
+                    "systems": [2],
+                }
+            ),
+            "Port Hamiltonian systems",
+        )
+
+    def test_rejects_known_non_abstract_placeholders(self) -> None:
+        for value in (
+            {"Accepted": [0], "version": [1]},
+            {"International": [0], "audience": [1]},
+        ):
+            with self.subTest(value=value):
+                self.assertEqual(openalex_abstract(value), "")
+
+    def test_strips_openalex_video_presentation_prefix(self) -> None:
+        self.assertEqual(
+            openalex_abstract(
+                {
+                    "View": [0],
+                    "Video": [1],
+                    "Presentation:": [2],
+                    "https://doi.org/10.1/test.vid": [3],
+                    "Useful": [4],
+                    "abstract": [5],
+                    "text": [6],
+                }
+            ),
+            "Useful abstract text",
+        )
 
 
 class OpenAlexProviderTests(unittest.TestCase):
@@ -32,6 +70,21 @@ class OpenAlexProviderTests(unittest.TestCase):
         self.transport.json.return_value = []
         with self.assertRaisesRegex(OpenAlexError, "unexpected work response"):
             provider.work("10.1000/test")
+
+    def test_returns_reconstructed_abstract_for_one_work(self) -> None:
+        self.transport.json.return_value = {
+            "abstract_inverted_index": {
+                "Hamiltonian": [1],
+                "Port": [0],
+                "systems": [2],
+            }
+        }
+        provider = OpenAlexProvider(self.transport)
+
+        self.assertEqual(
+            provider.abstract("10.1000/test"),
+            "Port Hamiltonian systems",
+        )
 
     def test_fetches_multiple_works_by_doi_in_one_request(self) -> None:
         self.transport.json.return_value = {

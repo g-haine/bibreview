@@ -78,9 +78,23 @@ provider evidence:
 bibreview --config bibreview.yml audit
 ~~~
 
-The first invocation creates a stable UUID snapshot and opens the first batch.
+The first invocation creates the local audit history and opens the first batch.
 Each invocation processes **one batch only**, checkpoints every publication
-result immediately, closes the batch, and stops for human review.
+result immediately, closes the batch, and stops for human review. Later normal
+invocations keep completed publications as already visited, append newly added
+canonical publication UUIDs as pending work, and continue retryable provider
+failures only after never-audited publications.
+
+Force a deliberate new pass over every publication currently present in the
+canonical bibliography with:
+
+~~~bash
+bibreview --config bibreview.yml audit --full
+~~~
+
+A full pass preserves local audit history and attempt counts while requeueing the
+current canonical UUIDs. It refuses to reset an interrupted open batch; resume
+that batch first.
 
 Choose a smaller pilot batch when starting a campaign, or override the size of
 any later **new** batch:
@@ -91,9 +105,9 @@ bibreview --config bibreview.yml audit --batch-size 25
 
 The configured `audit.batch_size` remains the campaign default (50 unless
 changed in configuration). `--batch-size` overrides only the next batch that
-is opened; it does not change the stable UUID snapshot or the default for later
-batches. If a batch is already open after an interruption, BibReview resumes its
-persisted membership and ignores a different size override.
+is opened; it does not change the default for later batches. If a batch is
+already open after an interruption, BibReview resumes its persisted membership
+and ignores a different size override.
 
 Preview the next batch without writing audit state and without making provider
 requests:

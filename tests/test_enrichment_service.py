@@ -68,7 +68,7 @@ class EnrichmentServiceTests(unittest.TestCase):
             {"abstract": "CrossRef abstract", "subject": ["CrossRef"]},
         )
 
-        self.assertEqual(result.abstract, "Publisher")
+        self.assertEqual(result.abstract, "Publisher abstract")
         self.assertEqual(result.keywords, ("publisher",))
         self.assertEqual(result.event, "Conference")
         self.assertEqual(publisher.calls, ["10.1/test"])
@@ -115,7 +115,7 @@ class EnrichmentServiceTests(unittest.TestCase):
 
         result = service.for_collection("10.1/test", {"subject": ["CrossRef"]})
 
-        self.assertEqual(result.abstract, "Fallback")
+        self.assertEqual(result.abstract, "Fallback abstract")
         self.assertEqual(result.keywords, ("publisher",))
         self.assertEqual(fallback.calls, ["10.1/test"])
 

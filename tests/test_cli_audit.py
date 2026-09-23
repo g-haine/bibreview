@@ -10,6 +10,7 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
+from bibreview.campaign import create_campaign
 from bibreview.cli import _enable_interactive_line_editing, main
 from bibreview.config import load_config
 from bibreview.identity import new_publication_id
@@ -684,6 +685,34 @@ class AuditCliTests(unittest.TestCase):
         self.assertEqual(code, 1)
         planner.assert_not_called()
         self.assertIn("--batch-size cannot be used with --apply", stderr.getvalue())
+
+    def test_full_audit_flag_is_forwarded_to_batch_planner(self):
+        plan = SimpleNamespace(
+            batch=None,
+            campaign=create_campaign("audit", [self.publication.id], batch_size=1),
+            summary=lambda: "full audit plan",
+        )
+        stdout = StringIO()
+        stderr = StringIO()
+        with patch(
+            "bibreview.cli.plan_project_audit_batch",
+            return_value=plan,
+        ) as planner, redirect_stdout(stdout), redirect_stderr(stderr):
+            code = main([
+                "--config",
+                str(self.config_path),
+                "--dry-run",
+                "audit",
+                "--full",
+                "--json",
+            ])
+
+        self.assertEqual(code, 0, stderr.getvalue())
+        planner.assert_called_once_with(
+            self.config,
+            batch_size=None,
+            full=True,
+        )
 
     def test_dry_run_selects_batch_without_provider_or_state_writes(self):
         before = self.snapshot()

@@ -25,12 +25,44 @@ class AbstractFallbackTests(unittest.TestCase):
     def test_returns_longest_available_abstract(self):
         semantic = SequenceProvider("short abstract")
         mendeley = SequenceProvider("a much longer fallback abstract")
+        openalex = SequenceProvider("the longest available OpenAlex fallback abstract")
         fallback = AbstractFallback(
             semantic_scholar=semantic,
             mendeley=mendeley,
+            openalex=openalex,
             reporter=Reporter(-1),
         )
-        self.assertEqual(fallback.abstract("10.1/test"), "a much longer fallback abstract")
+        self.assertEqual(
+            fallback.abstract("10.1/test"),
+            "the longest available OpenAlex fallback abstract",
+        )
+
+    def test_compares_provider_lengths_after_abstract_cleanup(self):
+        fallback = AbstractFallback(
+            semantic_scholar=SequenceProvider(
+                "ABSTRACT: Short candidate"
+            ),
+            openalex=SequenceProvider(
+                "A genuinely longer clean candidate"
+            ),
+            reporter=Reporter(-1),
+        )
+        self.assertEqual(
+            fallback.abstract("10.1/test"),
+            "A genuinely longer clean candidate",
+        )
+
+    def test_returns_cleaned_fallback_text(self):
+        fallback = AbstractFallback(
+            semantic_scholar=SequenceProvider(
+                "  Résumé —  Useful text from provider.  "
+            ),
+            reporter=Reporter(-1),
+        )
+        self.assertEqual(
+            fallback.abstract("10.1/test"),
+            "Useful text from provider.",
+        )
 
     def test_returns_explicit_unavailable_text_when_empty(self):
         fallback = AbstractFallback(
@@ -58,6 +90,25 @@ class AbstractFallbackTests(unittest.TestCase):
         self.assertEqual(semantic.calls, ["10.1/one"])
         self.assertEqual(mendeley.calls, ["10.1/one", "10.1/two"])
         self.assertIn("Semantic Scholar HTTP 429", stream.getvalue())
+
+    def test_openalex_429_disables_only_that_provider_for_run(self):
+        openalex = SequenceProvider(
+            HttpError("limited", status_code=429),
+            "should never be requested",
+        )
+        semantic = SequenceProvider("semantic first", "semantic second")
+        stream = io.StringIO()
+        fallback = AbstractFallback(
+            semantic_scholar=semantic,
+            openalex=openalex,
+            reporter=Reporter(0, stream),
+        )
+
+        self.assertEqual(fallback.abstract("10.1/one"), "semantic first")
+        self.assertEqual(fallback.abstract("10.1/two"), "semantic second")
+        self.assertEqual(openalex.calls, ["10.1/one"])
+        self.assertEqual(semantic.calls, ["10.1/one", "10.1/two"])
+        self.assertIn("OpenAlex HTTP 429", stream.getvalue())
 
     def test_mendeley_401_disables_only_that_provider_for_run(self):
         semantic = SequenceProvider("semantic first", "semantic second")

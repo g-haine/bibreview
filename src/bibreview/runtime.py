@@ -82,6 +82,7 @@ class _CoreServices:
     transport: HttpTransport
     crossref: CrossRefProvider
     doi: DoiProvider
+    openalex: OpenAlexProvider | None
     enrichment: EnrichmentService
 
 
@@ -250,6 +251,19 @@ def _build_core_services(
             ieee=ieee,
         )
 
+    openalex_config = _provider(config, "openalex")
+    openalex_key = _optional_api_key(
+        openalex_config,
+        provider_name="OpenAlex",
+        environ=environ,
+        reporter=reporter,
+    )
+    openalex = (
+        OpenAlexProvider(transport, api_key=openalex_key)
+        if openalex_config is not None
+        else None
+    )
+
     semantic_config = _provider(config, "semantic_scholar")
     semantic_key = _optional_api_key(
         semantic_config,
@@ -289,10 +303,11 @@ def _build_core_services(
     )
 
     fallback = None
-    if semantic is not None or mendeley is not None:
+    if semantic is not None or mendeley is not None or openalex is not None:
         fallback = AbstractFallback(
             semantic_scholar=semantic,
             mendeley=mendeley,
+            openalex=openalex,
             reporter=reporter,
         )
 
@@ -300,6 +315,7 @@ def _build_core_services(
         transport=transport,
         crossref=crossref,
         doi=doi,
+        openalex=openalex,
         enrichment=EnrichmentService(publisher=publisher, fallback=fallback),
     )
 
@@ -347,14 +363,9 @@ def build_discovery_services(
         raise ValueError("OpenAlex must be enabled when selected for discovery")
 
     core = _build_core_services(config, reporter=progress, environ=environment)
-    openalex_key = _optional_api_key(
-        openalex_config,
-        provider_name="OpenAlex",
-        environ=environment,
-        reporter=progress,
-    )
+    discovery_provider = core.openalex or OpenAlexProvider(core.transport)
     return DiscoveryServices(
-        discovery_provider=OpenAlexProvider(core.transport, api_key=openalex_key),
+        discovery_provider=discovery_provider,
         provider=core.crossref,
         enrichment_lookup=core.enrichment.for_discovery,
     )

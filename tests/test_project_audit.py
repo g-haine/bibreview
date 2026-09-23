@@ -183,6 +183,90 @@ class ProjectAuditTests(unittest.TestCase):
         self.assertFalse(resumed.changed)
         self.assertEqual(before, self.snapshot_non_audit())
 
+    def test_completed_items_are_not_reaudited_when_new_publication_is_added(self):
+        start = plan_project_audit_batch(self.config, batch_size=3)
+        apply_project_audit_plan(start)
+        for publication in self.publications:
+            checkpoint = plan_project_audit_checkpoint(
+                self.config,
+                batch_id=start.batch.id,
+                result=self.result_for(publication),
+                state="completed",
+            )
+            apply_project_audit_plan(checkpoint)
+        apply_project_audit_plan(
+            plan_project_audit_close(self.config, batch_id=start.batch.id)
+        )
+
+        new_publication = Publication(
+            id=new_publication_id(),
+            identifiers={"doi": "10.1000/item-4"},
+            title="Publication 4",
+            authors=(Author(literal="Author 4"),),
+            publication_year="2024",
+            permalink="publication-4",
+        )
+        write_bibliography(
+            self.config.paths.bibliography,
+            self.publications + (new_publication,),
+        )
+
+        incremental = plan_project_audit_batch(self.config, batch_size=1)
+
+        self.assertIsNotNone(incremental.batch)
+        self.assertEqual(incremental.batch.keys, (new_publication.id,))
+        states = {item.key: item.state for item in incremental.campaign.items}
+        self.assertTrue(
+            all(states[publication.id] == "completed" for publication in self.publications)
+        )
+        self.assertEqual(states[new_publication.id], "active")
+        self.assertEqual(
+            incremental.report.campaign_items,
+            tuple(publication.id for publication in self.publications)
+            + (new_publication.id,),
+        )
+        self.assertEqual(len(incremental.report.entries), 3)
+
+    def test_full_requeues_current_completed_publications(self):
+        start = plan_project_audit_batch(self.config, batch_size=3)
+        apply_project_audit_plan(start)
+        for publication in self.publications:
+            checkpoint = plan_project_audit_checkpoint(
+                self.config,
+                batch_id=start.batch.id,
+                result=self.result_for(publication),
+                state="completed",
+            )
+            apply_project_audit_plan(checkpoint)
+        apply_project_audit_plan(
+            plan_project_audit_close(self.config, batch_id=start.batch.id)
+        )
+
+        full = plan_project_audit_batch(
+            self.config,
+            batch_size=2,
+            full=True,
+        )
+
+        self.assertIsNotNone(full.batch)
+        self.assertEqual(
+            full.batch.keys,
+            tuple(publication.id for publication in self.publications[:2]),
+        )
+        by_key = {item.key: item for item in full.campaign.items}
+        self.assertEqual(by_key[self.publications[0].id].attempts, 2)
+        self.assertEqual(by_key[self.publications[1].id].attempts, 2)
+        self.assertEqual(by_key[self.publications[2].id].attempts, 1)
+        self.assertEqual(by_key[self.publications[2].id].state, "retryable")
+        self.assertEqual(len(full.report.entries), 3)
+
+    def test_full_rejects_reset_while_batch_is_open(self):
+        start = plan_project_audit_batch(self.config, batch_size=1)
+        apply_project_audit_plan(start)
+
+        with self.assertRaisesRegex(ProjectStateError, "batch is open"):
+            plan_project_audit_batch(self.config, full=True)
+
     def test_checkpoint_persists_latest_result_without_touching_project_state(self):
         start = plan_project_audit_batch(self.config)
         apply_project_audit_plan(start)
@@ -358,7 +442,7 @@ class ProjectAuditTests(unittest.TestCase):
                 batch_id=start.batch.id,
             )
 
-    def test_close_then_next_batch_preserves_stable_uuid_snapshot(self):
+    def test_close_then_next_batch_appends_new_canonical_uuid(self):
         start = plan_project_audit_batch(self.config)
         apply_project_audit_plan(start)
         for publication in self.publications[:2]:
@@ -391,8 +475,11 @@ class ProjectAuditTests(unittest.TestCase):
         second = plan_project_audit_batch(self.config)
 
         self.assertEqual(second.batch.id, "batch-0002")
-        self.assertEqual(second.batch.keys, (self.publications[2].id,))
-        self.assertNotIn(changed.id, second.report.campaign_items)
+        self.assertEqual(
+            second.batch.keys,
+            (self.publications[2].id, changed.id),
+        )
+        self.assertIn(changed.id, second.report.campaign_items)
 
     def test_retry_replaces_old_report_entry_after_pending_first_pass(self):
         first = plan_project_audit_batch(self.config)

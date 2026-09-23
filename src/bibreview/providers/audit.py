@@ -9,7 +9,7 @@ from ..identity import IdentityError, normalize_doi
 from ..pipeline.audit import ProviderEvidence
 from ..text import clean_metadata
 from .crossref import CrossRefProvider, crossref_page_locator
-from .openalex import OpenAlexProvider
+from .openalex import OpenAlexProvider, openalex_abstract
 from .semantic_scholar import SemanticScholarProvider
 
 
@@ -222,20 +222,6 @@ def _openalex_authors(value: object) -> tuple[str, ...]:
     return tuple(names)
 
 
-def _openalex_abstract(value: object) -> str:
-    if not isinstance(value, Mapping) or not value:
-        return ""
-    positions: list[tuple[int, str]] = []
-    for word, raw_positions in value.items():
-        if not isinstance(word, str) or not isinstance(raw_positions, list):
-            continue
-        for raw_position in raw_positions:
-            if isinstance(raw_position, int) and not isinstance(raw_position, bool):
-                positions.append((raw_position, word))
-    positions.sort(key=lambda item: item[0])
-    return " ".join(word for _, word in positions).strip()
-
-
 def _openalex_container(value: object) -> str:
     if not isinstance(value, Mapping):
         return ""
@@ -290,7 +276,7 @@ class OpenAlexAuditSource:
             fields={
                 "title": _string(data.get("title")),
                 "authors": _openalex_authors(data.get("authorships")),
-                "abstract": _openalex_abstract(data.get("abstract_inverted_index")),
+                "abstract": openalex_abstract(data.get("abstract_inverted_index")),
                 "container_title": _openalex_container(data.get("primary_location")),
                 "publication_year": year,
                 "volume": volume,
