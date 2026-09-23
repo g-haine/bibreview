@@ -2,6 +2,34 @@
 
 All notable BibReview releases are documented here.
 
+## 1.6.12 — 2026-09-23
+
+### Provider-aware HTTP 429 recovery
+
+- remove HTTP 429 from the generic urllib3 retry policy so hidden transport
+  retries can no longer bypass provider-local request pacing;
+- keep transient 5xx server failures on the existing bounded generic retry path,
+  including normal server `Retry-After` handling;
+- preserve a parsed HTTP 429 `Retry-After` delay on `HttpError` for the
+  provider-local transport layer;
+- retry HTTP 429 responses at most twice after the initial request, with every
+  retry passing through the same provider-local request-spacing gate;
+- honor `Retry-After` when supplied by the provider, otherwise use bounded
+  exponential backoff starting at the greater of one second and the configured
+  minimum request interval;
+- keep persistent HTTP 429 propagation unchanged after provider-aware retries,
+  so existing run-scoped optional-provider disabling remains the final fallback;
+- expose provider retry attempts in `-vv` diagnostics without revealing request
+  paths, parameters, headers, or credentials.
+
+### Validation
+
+- cover separation of HTTP 429 from generic 5xx retries;
+- cover propagation of `Retry-After` into the provider-local retry layer;
+- cover successful recovery after a transient HTTP 429;
+- cover propagation after two failed provider-aware retries;
+- validate the release with 436 passing tests.
+
 ## 1.6.11 — 2026-09-23
 
 ### Observable provider request pacing

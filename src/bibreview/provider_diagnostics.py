@@ -271,7 +271,7 @@ def _failure_status(name: str, error: HttpError) -> tuple[str, str]:
             "provider denied access; check credential permissions and service entitlements",
         )
     if status == 429:
-        return "rate-limited", "provider rate limit reached after retries"
+        return "rate-limited", "provider rate limit reached after provider-aware retries"
     if isinstance(status, int) and 500 <= status <= 599:
         return "unavailable", f"provider returned HTTP {status}"
     if status is None:
