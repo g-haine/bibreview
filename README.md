@@ -28,6 +28,7 @@ Current stable release: **v1.6.5**.
 - reviewed author-name mapping with safe and ambiguous proposals;
 - BibTeX retrieval and tracked source files;
 - refresh/recollection of selected incomplete publications;
+- human-reviewed backfill of selected missing canonical fields;
 - deterministic Jekyll publication, author and year rendering;
 - an optional arXiv feed-cache module, separate from the canonical bibliography;
 - dry-run planning for mutating workflows;
@@ -105,6 +106,7 @@ A curated project should inspect staged metadata and BibTeX before merging.
 | **audit** | Incrementally audit new/retryable canonical publications; use `--full` for a complete pass. |
 | **discover** | Discover and screen new DOI candidates. |
 | **collect** | Collect pending DOI metadata into canonical staging. |
+| **backfill** | Propose missing-field enrichment, resolve it interactively, then stage accepted values. |
 | **refresh** | Recollect selected incomplete existing publications. |
 | **merge** | Merge reviewed staging into the canonical bibliography. |
 | **authors** | Analyze and safely extend author identity mappings. |
@@ -115,6 +117,26 @@ Use **--dry-run** with mutating workflows when you want to inspect the plan
 without writing project files.
 
 Full details: [command reference](docs/commands.md).
+
+### Human-reviewed missing-field backfill
+
+When an existing canonical record is intentionally incomplete, `backfill`
+can ask the configured metadata/enrichment chain for a candidate value without
+recollecting or replacing the rest of the reviewed record:
+
+~~~bash
+bibreview backfill --field abstract
+bibreview backfill --resolve
+bibreview --dry-run backfill --apply
+bibreview backfill --apply
+~~~
+
+Proposal generation writes only local review state beside the audit files.
+`backfill --resolve` uses the same resumable human decision model as audit
+resolution: accept, reject, choose a custom value, defer, or quit. Only
+accepted/custom values can reach `collected.json`, and a stale proposal is
+rejected if the canonical field has been filled meanwhile. The ordinary
+`bibreview merge` command remains the only canonical promotion boundary.
 
 ### Incremental audit history
 
@@ -169,7 +191,7 @@ BibReview keeps canonical and intermediate state visible in ordinary files:
 
 ~~~text
 bibliography.json    canonical reviewed bibliography
-collected.json       current collect/refresh/audit-apply staging batch
+collected.json       current collect/refresh/audit-apply/backfill-apply staging batch
 known.txt            accepted DOI state
 pending.txt          DOI values waiting for collection
 review.txt           DOI values requiring human relevance review
