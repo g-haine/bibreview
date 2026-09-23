@@ -107,6 +107,7 @@ A curated project should inspect staged metadata and BibTeX before merging.
 | **validate** | Validate project configuration. |
 | **status** | Show the resolved project configuration summary. |
 | **providers** | Inspect credential provenance and optionally live-check providers. |
+| **hygiene** | Read-only inventory of structured markup contaminating canonical abstracts. |
 | **audit** | Incrementally audit new/retryable canonical publications; use `--full` for a complete pass. |
 | **discover** | Discover and screen new DOI candidates. |
 | **collect** | Collect pending DOI metadata into canonical staging. |
@@ -121,6 +122,25 @@ Use **--dry-run** with mutating workflows when you want to inspect the plan
 without writing project files.
 
 Full details: [command reference](docs/commands.md).
+
+### Canonical abstract hygiene inventory
+
+Historical bibliographies can contain provider HTML/JATS/MathML payloads inside
+otherwise reviewed canonical abstracts. Inspect them without network access or
+project-state mutation with:
+
+~~~bash
+bibreview hygiene
+bibreview -v hygiene
+bibreview hygiene --json
+~~~
+
+The compact view reports counts by contamination family. Verbose output adds
+the affected DOI/title, a short context excerpt and a normalization hint; JSON
+contains the complete inventory. A deterministic-candidate label means only
+that the observed markup has an apparently lossless cleanup path (for example,
+an embedded `application/x-tex` annotation). **Phase 1 never rewrites canonical
+metadata.**
 
 ### Non-destructive reviewed refresh
 
