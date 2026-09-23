@@ -11,7 +11,7 @@ feed.
 BibReview is designed so that provider output remains inspectable and ambiguous
 decisions remain human decisions.
 
-Current stable release: **v1.6.9**.
+Current stable release: **v1.6.10**.
 
 ## What BibReview provides
 
@@ -42,7 +42,7 @@ BibReview currently requires **Python 3.12 or newer**.
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.9"
+python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.10"
 
 bibreview --version
 ~~~
@@ -126,8 +126,10 @@ Full details: [command reference](docs/commands.md).
 
 `refresh` uses the remote DOI BibTeX only as a staleness detector. A stale
 record is recollected in memory and compared field-by-field with canonical
-metadata. Configured fields that are currently empty become safe proposals;
-differences affecting already-reviewed non-empty fields are retained as
+metadata. Configured fields that are semantically missing become safe proposals;
+for abstracts, the historical `Not Available` placeholder is treated as missing
+case- and whitespace-insensitively. Differences affecting already-reviewed
+meaningful fields are retained as
 **collateral evidence** and are never auto-applied.
 
 ~~~bash
@@ -162,7 +164,9 @@ Proposal generation writes only local review state beside the audit files.
 `backfill --resolve` uses the same resumable human decision model as audit
 resolution: accept, reject, choose a custom value, defer, or quit. Only
 accepted/custom values can reach `collected.json`, and a stale proposal is
-rejected if the canonical field has been filled meanwhile. The ordinary
+rejected if the canonical field has gained a meaningful value meanwhile. For
+abstracts, historical `Not Available` values are eligible for replacement and
+provider/fallback placeholders are never proposed as real abstracts. The ordinary
 `bibreview merge` command remains the only canonical promotion boundary.
 
 ### Incremental audit history

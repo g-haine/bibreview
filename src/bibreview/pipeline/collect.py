@@ -19,7 +19,7 @@ from ..model import Author, Editor, Publication, Reference
 from ..providers.base import Enrichment
 from ..providers.crossref import crossref_page_locator
 from ..reporting import Reporter
-from ..text import clean_metadata, safe_component, slugify
+from ..text import clean_abstract, clean_metadata, safe_component, slugify
 
 
 class WorkProvider(Protocol):
@@ -188,7 +188,7 @@ def _references(value: Any, citation_lookup: CitationLookup | None) -> tuple[Ref
 
 
 def _default_enrichment(message: Mapping[str, Any]) -> Enrichment:
-    abstract = clean_metadata(_string(message.get("abstract")), abstract=True)
+    abstract = clean_abstract(_string(message.get("abstract")))
     subjects = message.get("subject")
     keywords = tuple(
         clean_metadata(_string(value))
@@ -255,7 +255,7 @@ def scalar_metadata_values(
             values[field] = _MATHML.sub("", _first(message.get("title")))
         elif field == "abstract":
             assert enrichment is not None
-            values[field] = clean_metadata(enrichment.abstract, abstract=True).strip()
+            values[field] = clean_abstract(enrichment.abstract)
         elif field == "container_title":
             values[field] = _first(message.get("container-title"))
         elif field == "publication_year":
@@ -330,7 +330,7 @@ def build_publication(
         title=scalar["title"],
         authors=_authors(message.get("author")),
         editors=_editors(message.get("editor")),
-        abstract=clean_metadata(enrichment.abstract, abstract=True).strip(),
+        abstract=clean_abstract(enrichment.abstract),
         container_title=scalar["container_title"],
         publication_year=scalar["publication_year"],
         volume=scalar["volume"],

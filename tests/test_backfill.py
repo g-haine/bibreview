@@ -138,6 +138,43 @@ class BackfillPipelineTests(unittest.TestCase):
             "Useful abstract from fallback.",
         )
 
+    def test_not_available_abstract_is_treated_as_missing(self):
+        publication = self.publication(abstract="Not Available")
+        provider = FakeProvider({publication.doi: message()})
+
+        result = backfill(
+            [publication],
+            provider=provider,
+            fields=("abstract",),
+            enrichment_lookup=lambda doi, work: Enrichment(
+                abstract="Recovered abstract"
+            ),
+        )
+
+        self.assertEqual(result.eligible_count, 1)
+        self.assertEqual(len(result.candidates), 1)
+        self.assertEqual(
+            result.candidates[0].proposed_value,
+            "Recovered abstract",
+        )
+
+    def test_provider_not_available_abstract_is_not_proposed(self):
+        publication = self.publication()
+        provider = FakeProvider({publication.doi: message()})
+
+        result = backfill(
+            [publication],
+            provider=provider,
+            fields=("abstract",),
+            enrichment_lookup=lambda doi, work: Enrichment(
+                abstract="NOT AVAILABLE"
+            ),
+        )
+
+        self.assertEqual(result.eligible_count, 1)
+        self.assertEqual(result.candidates, ())
+        self.assertEqual(result.no_value, (publication.doi,))
+
     def test_nonempty_field_is_never_proposed_for_replacement(self):
         publication = self.publication(abstract="Canonical abstract")
         provider = FakeProvider({publication.doi: message()})
@@ -304,6 +341,62 @@ class ProjectBackfillTests(unittest.TestCase):
         self.persist_review(review)
 
         with self.assertRaisesRegex(ProjectStateError, "must be complete"):
+            plan_project_backfill_apply(self.config)
+
+    def test_apply_can_replace_historical_not_available_placeholder(self):
+        placeholder = Publication(
+            **{
+                **self.publication.__dict__,
+                "abstract": "Not Available",
+            }
+        )
+        write_bibliography(self.config.paths.bibliography, (placeholder,))
+        proposal = BackfillCandidate(
+            publication_id=self.publication.id,
+            doi=self.publication.doi,
+            title=self.publication.title,
+            field="abstract",
+            proposed_value="Recovered abstract",
+        )
+        review = self.review(proposal)
+        self.persist_review(review)
+        state = load_project_backfill_resolutions(self.config, review)
+        state = record_backfill_resolution(
+            state,
+            backfill_resolution_candidates(review)[0],
+            decision="accepted",
+        )
+        save_project_backfill_resolutions(self.config, state)
+
+        plan = plan_project_backfill_apply(self.config)
+        apply_project_backfill_apply(plan)
+
+        staged = read_bibliography(self.config.paths.collected)
+        self.assertEqual(staged[0].abstract, "Recovered abstract")
+
+    def test_apply_rejects_placeholder_as_custom_abstract(self):
+        proposal = BackfillCandidate(
+            publication_id=self.publication.id,
+            doi=self.publication.doi,
+            title=self.publication.title,
+            field="abstract",
+            proposed_value="Recovered abstract",
+        )
+        review = self.review(proposal)
+        self.persist_review(review)
+        state = load_project_backfill_resolutions(self.config, review)
+        state = record_backfill_resolution(
+            state,
+            backfill_resolution_candidates(review)[0],
+            decision="custom",
+            resolved_value="  not   available ",
+        )
+        save_project_backfill_resolutions(self.config, state)
+
+        with self.assertRaisesRegex(
+            ProjectStateError,
+            "no meaningful resolved value",
+        ):
             plan_project_backfill_apply(self.config)
 
     def test_apply_rejects_stale_canonical_field(self):

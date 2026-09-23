@@ -46,3 +46,31 @@ def clean_metadata(value: str, *, abstract: bool = False) -> str:
     while result and (match := _ABSTRACT_LABEL.match(result)) is not None:
         result = result[match.end():].strip()
     return result
+
+
+_ABSTRACT_MISSING_PLACEHOLDERS = frozenset({
+    "not available",
+})
+
+
+def is_missing_metadata_value(field: str, value: str) -> bool:
+    """Return whether a scalar metadata value is semantically missing.
+
+    Empty strings are missing for every scalar field. The abstract field also
+    treats the historical "Not Available" placeholder as missing, case- and
+    whitespace-insensitively.
+    """
+    if not isinstance(field, str):
+        raise TypeError("metadata field must be a string")
+    if not isinstance(value, str):
+        raise TypeError("metadata value must be a string")
+    normalized = " ".join(value.split()).casefold()
+    if not normalized:
+        return True
+    return field == "abstract" and normalized in _ABSTRACT_MISSING_PLACEHOLDERS
+
+
+def clean_abstract(value: str) -> str:
+    """Normalize one abstract and collapse known missing placeholders to empty."""
+    cleaned = clean_metadata(value, abstract=True).strip()
+    return "" if is_missing_metadata_value("abstract", cleaned) else cleaned

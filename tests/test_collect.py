@@ -154,6 +154,21 @@ class BuildPublicationTests(unittest.TestCase):
         self.assertEqual(publication.keywords, ("keyword",))
         self.assertEqual(publication.event, "Conference")
 
+    def test_provider_abstract_placeholder_is_never_canonicalized(self):
+        data = message()
+        data["abstract"] = "Not Available"
+
+        publication = build_publication(
+            "10.1/test",
+            data,
+            "fluid-structure",
+            enrichment_lookup=lambda doi, work: Enrichment(
+                abstract="NOT AVAILABLE"
+            ),
+        )
+
+        self.assertEqual(publication.abstract, "")
+
     def test_default_enrichment_uses_crossref_fields(self):
         publication = build_publication("10.1/test", message(), "fluid-structure")
         # Canonical in-memory data does not preserve incidental leading whitespace.

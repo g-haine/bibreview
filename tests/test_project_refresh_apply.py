@@ -202,6 +202,36 @@ class ProjectRefreshApplyTests(unittest.TestCase):
         with self.assertRaisesRegex(ProjectStateError, "must be complete"):
             plan_project_refresh_apply(self.config)
 
+    def test_abstract_placeholder_can_be_replaced_by_reviewed_refresh(self):
+        placeholder = Publication(
+            id=self.publication.id,
+            identifiers=self.publication.identifiers,
+            type=self.publication.type,
+            title=self.publication.title,
+            authors=self.publication.authors,
+            abstract="Not Available",
+            container_title=self.publication.container_title,
+            publication_year=self.publication.publication_year,
+            created_date=self.publication.created_date,
+            permalink=self.publication.permalink,
+        )
+        write_bibliography(self.config.paths.bibliography, (placeholder,))
+        abstract = BackfillCandidate(
+            publication_id=self.publication.id,
+            doi=self.publication.doi,
+            title=self.publication.title,
+            field="abstract",
+            proposed_value="Recovered abstract",
+        )
+        review = self.persist_review(abstract)
+        self.resolved_state(review, (("accepted", None),))
+
+        plan = plan_project_refresh_apply(self.config)
+        apply_project_refresh_apply(plan)
+
+        staged = read_bibliography(self.config.paths.collected)
+        self.assertEqual(staged[0].abstract, "Recovered abstract")
+
     def test_nonempty_canonical_field_blocks_stale_proposal(self):
         volume = BackfillCandidate(
             publication_id=self.publication.id,
@@ -227,7 +257,7 @@ class ProjectRefreshApplyTests(unittest.TestCase):
         )
         write_bibliography(self.config.paths.bibliography, (changed,))
 
-        with self.assertRaisesRegex(ProjectStateError, "no longer empty"):
+        with self.assertRaisesRegex(ProjectStateError, "no longer missing"):
             plan_project_refresh_apply(self.config)
 
     def test_nonempty_staging_blocks_apply(self):

@@ -7,6 +7,7 @@ from dataclasses import dataclass
 
 from ..model import Publication
 from ..reporting import Reporter
+from ..text import is_missing_metadata_value
 from .collect import EnrichmentLookup, WorkProvider, scalar_metadata_values
 
 
@@ -58,9 +59,10 @@ def backfill(
     enrichment_lookup: EnrichmentLookup | None = None,
     reporter: Reporter | None = None,
 ) -> BackfillResult:
-    """Propose values only for requested empty scalar fields.
+    """Propose values only for requested semantically-missing scalar fields.
 
-    Existing non-empty canonical values are never proposed for replacement.
+    Existing meaningful canonical values are never proposed for replacement.
+    The abstract placeholder "Not Available" is treated as missing.
     When *types* is empty, all publication types are eligible.
     """
     publication_values = tuple(publications)
@@ -84,7 +86,9 @@ def backfill(
         if selected_types and publication.type not in selected_types:
             continue
         missing = tuple(
-            field for field in requested_fields if not getattr(publication, field)
+            field
+            for field in requested_fields
+            if is_missing_metadata_value(field, getattr(publication, field))
         )
         if not missing:
             continue
@@ -108,7 +112,7 @@ def backfill(
         found = False
         for field in missing:
             value = proposed[field]
-            if not value:
+            if is_missing_metadata_value(field, value):
                 continue
             found = True
             candidates.append(
