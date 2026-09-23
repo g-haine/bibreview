@@ -202,7 +202,10 @@ MENDELEY_CLIENT_SECRET=...
 
 Optional providers whose required configured secret is missing are skipped with
 a warning. OpenAlex and Semantic Scholar can run without API keys, but supplying
-their optional keys may provide more predictable rate limits.
+their optional keys may provide more predictable rate limits. When the publisher
+and CrossRef provide no abstract, enabled OpenAlex, Semantic Scholar and Mendeley
+providers participate in the optional abstract fallback; BibReview keeps the
+longest valid fallback abstract returned for that DOI.
 
 For Mendeley, configure the **Application ID** and **Application Secret** from
 the Mendeley Developer Portal. BibReview uses the OAuth 2.0
