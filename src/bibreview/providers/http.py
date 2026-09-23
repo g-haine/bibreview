@@ -55,6 +55,24 @@ def _parse_retry_after(value: str | None) -> float | None:
     return delay if delay >= 0 else None
 
 
+class _ServerRetry(Retry):
+    """Retry transient server failures while leaving HTTP 429 to providers."""
+
+    def is_retry(
+        self,
+        method: str,
+        status_code: int,
+        has_retry_after: bool = False,
+    ) -> bool:
+        if status_code == 429:
+            return False
+        return super().is_retry(
+            method,
+            status_code,
+            has_retry_after=has_retry_after,
+        )
+
+
 class RateLimitedTransport:
     """Provider-local minimum-interval wrapper around an HTTP transport."""
 
@@ -207,13 +225,12 @@ class HttpTransport:
         self.timeout = timeout
         self.default_headers = dict(default_headers or {})
         if session is None:
-            retry = Retry(
+            retry = _ServerRetry(
                 total=retries,
                 backoff_factor=1,
                 status_forcelist=(500, 502, 503, 504),
                 allowed_methods=frozenset({"GET", "POST"}),
                 raise_on_status=False,
-                respect_retry_after_header=False,
             )
             self.session.mount("https://", HTTPAdapter(max_retries=retry))
 
