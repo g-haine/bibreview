@@ -28,7 +28,7 @@ All notable BibReview releases are documented here.
 - cover propagation of `Retry-After` into the provider-local retry layer;
 - cover successful recovery after a transient HTTP 429;
 - cover propagation after two failed provider-aware retries;
-- validate the release with the full CI test suite.
+- validate the release with 436 passing tests.
 
 ## 1.6.11 — 2026-09-23
 
