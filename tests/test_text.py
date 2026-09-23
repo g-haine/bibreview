@@ -17,6 +17,37 @@ class TextTests(unittest.TestCase):
     def test_clean_metadata_removes_controls(self):
         self.assertEqual(clean_metadata("  A\x01B  "), "AB")
 
+    def test_clean_abstract_removes_only_leading_labels(self):
+        labels = (
+            "Abstract",
+            "ABSTRACT",
+            "Summary",
+            "Résumé",
+            "RESUMEN",
+            "Resumo",
+            "Zusammenfassung",
+            "Riassunto",
+            "Samenvatting",
+        )
+        for label in labels:
+            with self.subTest(label=label):
+                self.assertEqual(
+                    clean_metadata(
+                        f"  {label}:   Useful abstract text.  ",
+                        abstract=True,
+                    ),
+                    "Useful abstract text.",
+                )
+
+    def test_clean_abstract_normalizes_boundary_whitespace_and_preserves_body_words(self):
+        self.assertEqual(
+            clean_metadata(
+                "  Abstract\nThis abstract studies abstract systems.  ",
+                abstract=True,
+            ),
+            "This abstract studies abstract systems.",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
