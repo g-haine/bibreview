@@ -334,7 +334,16 @@ options to restrict proposal generation to selected publication types. Existing
 non-empty canonical fields are never proposed for replacement.
 
 Proposal generation may call CrossRef, publisher enrichment, and configured
-abstract fallbacks such as OpenAlex, Semantic Scholar, and Mendeley. It does
+abstract fallbacks such as OpenAlex, Semantic Scholar, and Mendeley. Backfill
+uses exact multi-DOI requests where the provider adapter supports them: CrossRef
+work metadata is chunked at 25 DOI values, OpenAlex abstract fallback at 100,
+and Semantic Scholar abstract fallback at 500. Publisher enrichment remains
+per DOI because provider selection depends on the resolved publisher host, and
+Mendeley remains per DOI because the current adapter has no exact batch lookup.
+Failed CrossRef batches fall back to individual DOI requests for that chunk;
+non-rate-limit OpenAlex/Semantic Scholar batch failures do the same, while a
+persistent HTTP 429 preserves the existing run-scoped provider disable policy.
+Batching does
 **not** write `collected.json` or modify the canonical bibliography. Instead it
 persists a fingerprinted local proposal set beside the configured audit state.
 
