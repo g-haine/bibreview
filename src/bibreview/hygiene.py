@@ -13,6 +13,7 @@ from .model import Publication
 _FAMILY_ORDER = (
     "legacy-renderer-marker",
     "inline-formula",
+    "embedded-graphic",
     "mathml",
     "jats",
     "xml-comment",
@@ -31,6 +32,11 @@ _TAG_RE = re.compile(
 )
 _INLINE_FORMULA_RE = re.compile(
     r"<\s*/?\s*(?:jats:)?inline-formula\b",
+    re.IGNORECASE,
+)
+_EMBEDDED_GRAPHIC_RE = re.compile(
+    r"<\s*/?\s*(?:[A-Za-z][A-Za-z0-9_.-]*:)?"
+    r"(?:inline-graphic|graphic|img|image)\b",
     re.IGNORECASE,
 )
 _MATHML_RE = re.compile(
@@ -188,6 +194,8 @@ def _families(value: str) -> tuple[str, ...]:
         detected.add("legacy-renderer-marker")
     if _INLINE_FORMULA_RE.search(value):
         detected.add("inline-formula")
+    if _EMBEDDED_GRAPHIC_RE.search(value):
+        detected.add("embedded-graphic")
     if _MATHML_RE.search(value):
         detected.add("mathml")
     if _JATS_RE.search(value):
@@ -210,6 +218,8 @@ def _normalization_assessment(
     family_set = set(families)
     if "unbalanced-structured-tags" in family_set:
         return False, "review-required"
+    if "embedded-graphic" in family_set:
+        return False, "embedded-graphic-review"
     if {"inline-formula", "mathml"} & family_set:
         if _TEX_ANNOTATION_RE.search(value):
             return True, "embedded-tex-annotation"
@@ -232,6 +242,7 @@ def _context(value: str) -> str:
     for pattern in (
         _LEGACY_MARKER_RE,
         _INLINE_FORMULA_RE,
+        _EMBEDDED_GRAPHIC_RE,
         _MATHML_RE,
         _JATS_RE,
         _XML_COMMENT_RE,
