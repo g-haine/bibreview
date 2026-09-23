@@ -29,6 +29,15 @@ class WorkProvider(Protocol):
         """Return one provider work record, or ``None`` when it is absent."""
 
 
+class BatchWorkProvider(Protocol):
+    """Optional exact multi-DOI metadata-provider contract."""
+
+    BATCH_SIZE: int
+
+    def works(self, dois: tuple[str, ...]) -> dict[str, dict]:
+        """Return provider work records keyed by normalized DOI."""
+
+
 @dataclass(frozen=True)
 class CollectedItem:
     """One canonical publication plus optional rendered BibTeX."""
@@ -52,6 +61,10 @@ class CollectionResult:
 
 
 EnrichmentLookup = Callable[[str, Mapping[str, Any]], Enrichment]
+EnrichmentManyLookup = Callable[
+    [Mapping[str, Mapping[str, Any]]],
+    Mapping[str, Enrichment],
+]
 CitationLookup = Callable[[str], str]
 BibtexLookup = Callable[[str], str]
 
