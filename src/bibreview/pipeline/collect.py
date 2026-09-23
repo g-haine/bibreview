@@ -198,6 +198,87 @@ def _default_enrichment(message: Mapping[str, Any]) -> Enrichment:
     return Enrichment(abstract=abstract, keywords=keywords)
 
 
+SCALAR_METADATA_FIELDS = frozenset({
+    "title",
+    "abstract",
+    "container_title",
+    "publication_year",
+    "volume",
+    "issue",
+    "pages",
+    "publisher",
+    "event",
+})
+
+
+def scalar_metadata_values(
+    doi: str,
+    message: Mapping[str, Any],
+    fields: Iterable[str],
+    *,
+    enrichment_lookup: EnrichmentLookup | None = None,
+    created: date | None = None,
+) -> dict[str, str]:
+    """Extract selected scalar metadata without requiring a complete publication.
+
+    This helper intentionally validates only data required by the requested
+    fields. It is therefore suitable for reviewed backfill when a provider work
+    record is incomplete in unrelated areas such as authors/editors.
+    """
+    normalized_doi = normalize_doi(doi)
+    requested = tuple(dict.fromkeys(fields))
+    unsupported = set(requested) - SCALAR_METADATA_FIELDS
+    if unsupported:
+        raise ValueError(
+            "unsupported scalar metadata field(s): "
+            + ", ".join(sorted(unsupported))
+        )
+
+    enrichment: Enrichment | None = None
+    if {"abstract", "event"} & set(requested):
+        base_enrichment = _default_enrichment(message)
+        if enrichment_lookup is None:
+            enrichment = base_enrichment
+        else:
+            extra = enrichment_lookup(normalized_doi, message)
+            if not isinstance(extra, Enrichment):
+                raise TypeError("enrichment lookup must return Enrichment")
+            enrichment = Enrichment(
+                abstract=extra.abstract or base_enrichment.abstract,
+                keywords=extra.keywords or base_enrichment.keywords,
+                event=extra.event or base_enrichment.event,
+            )
+
+    values: dict[str, str] = {}
+    for field in requested:
+        if field == "title":
+            values[field] = _MATHML.sub("", _first(message.get("title")))
+        elif field == "abstract":
+            assert enrichment is not None
+            values[field] = clean_metadata(enrichment.abstract, abstract=True).strip()
+        elif field == "container_title":
+            values[field] = _first(message.get("container-title"))
+        elif field == "publication_year":
+            created_value = created or _created_date(message, normalized_doi)
+            values[field] = _publication_year(message, created_value)
+        elif field == "volume":
+            values[field] = _string(message.get("volume"))
+        elif field == "issue":
+            values[field] = _string(message.get("issue"))
+        elif field == "pages":
+            pages = crossref_page_locator(message)
+            if _string(message.get("page")).strip():
+                pages = pages.replace("-", "--")
+            values[field] = pages
+        elif field == "publisher":
+            values[field] = _string(message.get("publisher"))
+        elif field == "event":
+            assert enrichment is not None
+            values[field] = clean_metadata(enrichment.event)
+
+    return values
+
+
 def build_publication(
     doi: str,
     message: Mapping[str, Any],
@@ -210,18 +291,29 @@ def build_publication(
     normalized_doi = normalize_doi(doi)
     safe_component(slug)
     created = _created_date(message, normalized_doi)
-    title = _MATHML.sub("", _first(message.get("title")))
-    base_enrichment = _default_enrichment(message)
-    if enrichment_lookup is None:
-        enrichment = base_enrichment
-    else:
+    scalar = scalar_metadata_values(
+        normalized_doi,
+        message,
+        (
+            "title",
+            "container_title",
+            "publication_year",
+            "volume",
+            "issue",
+            "pages",
+            "publisher",
+        ),
+        created=created,
+    )
+    enrichment = _default_enrichment(message)
+    if enrichment_lookup is not None:
         extra = enrichment_lookup(normalized_doi, message)
         if not isinstance(extra, Enrichment):
             raise TypeError("enrichment lookup must return Enrichment")
         enrichment = Enrichment(
-            abstract=extra.abstract or base_enrichment.abstract,
-            keywords=extra.keywords or base_enrichment.keywords,
-            event=extra.event or base_enrichment.event,
+            abstract=extra.abstract or enrichment.abstract,
+            keywords=extra.keywords or enrichment.keywords,
+            event=extra.event or enrichment.event,
         )
 
     identifiers: dict[str, str] = {"doi": normalized_doi}
@@ -231,24 +323,20 @@ def build_publication(
         if isbn:
             identifiers["isbn"] = isbn
 
-    pages = crossref_page_locator(message)
-    if _string(message.get("page")).strip():
-        pages = pages.replace("-", "--")
-
     return Publication(
         id=new_publication_id(),
         identifiers=identifiers,
         type=_string(message.get("type")),
-        title=title,
+        title=scalar["title"],
         authors=_authors(message.get("author")),
         editors=_editors(message.get("editor")),
         abstract=clean_metadata(enrichment.abstract, abstract=True).strip(),
-        container_title=_first(message.get("container-title")),
-        publication_year=_publication_year(message, created),
-        volume=_string(message.get("volume")),
-        issue=_string(message.get("issue")),
-        pages=pages,
-        publisher=_string(message.get("publisher")),
+        container_title=scalar["container_title"],
+        publication_year=scalar["publication_year"],
+        volume=scalar["volume"],
+        issue=scalar["issue"],
+        pages=scalar["pages"],
+        publisher=scalar["publisher"],
         event=clean_metadata(enrichment.event),
         keywords=tuple(clean_metadata(keyword) for keyword in enrichment.keywords if keyword.strip()),
         created_date=created,

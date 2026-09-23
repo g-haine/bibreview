@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 from ..model import Publication
 from ..reporting import Reporter
-from .collect import EnrichmentLookup, WorkProvider, build_publication
+from .collect import EnrichmentLookup, WorkProvider, scalar_metadata_values
 
 
 BACKFILL_FIELDS = frozenset({
@@ -99,15 +99,15 @@ def backfill(
             unavailable.append(doi)
             continue
 
-        proposed = build_publication(
+        proposed = scalar_metadata_values(
             doi,
             message,
-            publication.permalink,
+            missing,
             enrichment_lookup=enrichment_lookup,
         )
         found = False
         for field in missing:
-            value = getattr(proposed, field)
+            value = proposed[field]
             if not value:
                 continue
             found = True

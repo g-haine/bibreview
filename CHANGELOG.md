@@ -2,6 +2,31 @@
 
 All notable BibReview releases are documented here.
 
+## 1.6.7 — 2026-09-23
+
+### Partial-provider backfill safety
+
+- allow reviewed scalar-field backfill to extract only the requested metadata
+  instead of constructing a complete provider `Publication`;
+- prevent unrelated provider omissions such as missing authors/editors from
+  aborting `bibreview backfill --field abstract`;
+- validate only metadata required by the requested backfill field, so an
+  abstract proposal does not depend on unrelated creation-date or contributor
+  completeness;
+- preserve strict canonical validation for normal collection of new
+  publications: new records still require at least one author or editor;
+- preserve existing abstract cleanup, enrichment fallback, page-range, and
+  scalar metadata normalization rules;
+- ensure normal publication collection invokes optional enrichment exactly once.
+
+### Validation
+
+- add regression coverage for abstract backfill from a provider record with no
+  authors, editors, or creation date;
+- retain regression coverage rejecting newly collected publications without
+  authors/editors;
+- validate the release with 407 passing tests.
+
 ## 1.6.6 — 2026-09-23
 
 ### Non-destructive reviewed refresh

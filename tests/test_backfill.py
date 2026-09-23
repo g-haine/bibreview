@@ -110,6 +110,34 @@ class BackfillPipelineTests(unittest.TestCase):
         self.assertEqual(proposal.proposed_value, "Useful reviewed candidate")
         self.assertEqual(provider.calls, [publication.doi])
 
+    def test_abstract_backfill_does_not_require_provider_authors_editors_or_dates(self):
+        publication = self.publication()
+        provider = FakeProvider({
+            publication.doi: {
+                "type": "journal-article",
+                "title": ["Partial provider record"],
+            }
+        })
+
+        result = backfill(
+            [publication],
+            provider=provider,
+            fields=("abstract",),
+            enrichment_lookup=lambda doi, work: Enrichment(
+                abstract="  ABSTRACT: Useful abstract from fallback.  "
+            ),
+        )
+
+        self.assertEqual(result.eligible_count, 1)
+        self.assertEqual(result.unavailable, ())
+        self.assertEqual(result.no_value, ())
+        self.assertEqual(len(result.candidates), 1)
+        self.assertEqual(result.candidates[0].field, "abstract")
+        self.assertEqual(
+            result.candidates[0].proposed_value,
+            "Useful abstract from fallback.",
+        )
+
     def test_nonempty_field_is_never_proposed_for_replacement(self):
         publication = self.publication(abstract="Canonical abstract")
         provider = FakeProvider({publication.doi: message()})
