@@ -2,6 +2,35 @@
 
 All notable BibReview releases are documented here.
 
+## 1.6.16 — 2026-09-23
+
+### Embedded formula-image hygiene detection
+
+- classify embedded graphical payloads such as JATS `inline-graphic`,
+  `graphic`, HTML `img`, and `image` separately from ordinary structural
+  markup in canonical abstracts;
+- require human review whenever an embedded graphic is present instead of
+  classifying a balanced graphic tag as safe structural unwrapping;
+- preserve the Phase 1 read-only boundary: no image is downloaded, interpreted,
+  OCRed, or replaced automatically;
+- add regression coverage for the historical PHRAISE abstract
+  `10.1049/iet-cta.2017.0392`, whose two inline PNG resources represent
+  mathematical expressions without a trustworthy textual fallback.
+
+### PHRAISE inventory refinement
+
+- keep 2,346 canonical publications, 2,326 abstracts present, and 21 suspicious
+  abstracts;
+- refine the classification to 16 apparent deterministic candidates and
+  5 review-required cases;
+- report one `embedded-graphic` finding containing two inline graphic
+  occurrences.
+
+### Validation
+
+- add regression coverage for embedded formula images in canonical abstracts;
+- validate the release with 463 passing tests.
+
 ## 1.6.15 — 2026-09-23
 
 ### Read-only canonical abstract hygiene inventory

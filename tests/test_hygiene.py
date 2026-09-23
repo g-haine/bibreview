@@ -51,6 +51,23 @@ class AbstractHygieneTests(unittest.TestCase):
         self.assertEqual(finding.normalization_hint, "embedded-tex-annotation")
         self.assertIn("<inline-formula", finding.context)
 
+    def test_embedded_graphic_requires_review(self) -> None:
+        abstract = (
+            'This study proposes a constructive stabilisation and '
+            '<jats:inline-graphic xmlns:xlink="http://www.w3.org/1999/xlink" '
+            'xlink:href="graphic/example-math-0002.png" '
+            'xlink:title="urn:x-example:media:example-math-0002"/>'
+            ' robust controller design method.'
+        )
+        finding = scan_abstract_hygiene((publication(abstract),)).findings[0]
+
+        self.assertEqual(
+            finding.families,
+            ("embedded-graphic", "jats", "html-xml-markup"),
+        )
+        self.assertFalse(finding.deterministic_candidate)
+        self.assertEqual(finding.normalization_hint, "embedded-graphic-review")
+
     def test_mathml_without_tex_annotation_requires_review(self) -> None:
         abstract = (
             '<inline-formula><mml:math xmlns:mml="urn:test">'
