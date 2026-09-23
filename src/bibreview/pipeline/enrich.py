@@ -10,7 +10,7 @@ from collections.abc import Mapping
 from typing import Any, Protocol
 
 from ..providers.base import Enrichment, EnrichmentProvider
-from ..text import clean_metadata
+from ..text import clean_abstract, clean_metadata
 
 
 class AbstractFallbackProvider(Protocol):
@@ -23,7 +23,7 @@ class AbstractFallbackProvider(Protocol):
 def crossref_enrichment(message: Mapping[str, Any]) -> Enrichment:
     """Extract the enrichment fields already present in a CrossRef work message."""
     raw_abstract = message.get("abstract")
-    abstract = clean_metadata(str(raw_abstract or ""), abstract=True).strip()
+    abstract = clean_abstract(str(raw_abstract or ""))
 
     raw_subjects = message.get("subject")
     keywords: list[str] = []
@@ -37,7 +37,7 @@ def crossref_enrichment(message: Mapping[str, Any]) -> Enrichment:
 
 
 def _clean_enrichment(value: Enrichment) -> Enrichment:
-    abstract = clean_metadata(value.abstract, abstract=True).strip()
+    abstract = clean_abstract(value.abstract)
     keywords = tuple(
         cleaned
         for keyword in value.keywords
