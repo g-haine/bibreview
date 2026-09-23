@@ -71,7 +71,7 @@ class AbstractFallback:
                 )
             else:
                 if value.strip():
-                    candidates.append(value.strip())
+                    candidates.append(clean_metadata(value, abstract=True))
 
         if self.mendeley is not None and not self._mendeley_unauthorized:
             try:
@@ -86,7 +86,7 @@ class AbstractFallback:
                 )
             else:
                 if value.strip():
-                    candidates.append(value.strip())
+                    candidates.append(clean_metadata(value, abstract=True))
 
         candidates = [value for value in candidates if value]
         return max(candidates, key=len, default=self.unavailable_text)
