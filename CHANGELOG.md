@@ -2,6 +2,34 @@
 
 All notable BibReview releases are documented here.
 
+## 1.6.15 — 2026-09-23
+
+### Read-only canonical abstract hygiene inventory
+
+- add the offline `bibreview hygiene` command for detecting historical
+  structured-markup contamination in canonical abstracts without modifying
+  project state;
+- classify legacy renderer markers, `inline-formula`, MathML, JATS-like
+  markup, XML comments, escaped markup, generic HTML/XML tags, and obviously
+  unbalanced structured tags;
+- report aggregate family counts by default, bounded publication-level context
+  with `-v`, and a complete machine-readable inventory with `--json`;
+- distinguish apparent deterministic-cleanup candidates from records that still
+  require human review, while deliberately performing no normalization in this
+  phase;
+- recognize embedded `application/x-tex` annotations as evidence for a later
+  lossless MathML-to-TeX normalization path.
+
+### Validation
+
+- cover clean text/TeX no-op behavior, MathML with and without embedded TeX,
+  structural HTML/JATS, escaped markup, legacy renderer markers, unbalanced
+  tags, aggregate formatting, JSON output, and read-only CLI behavior;
+- validate the release with 462 passing tests;
+- validate the scanner against the current PHRAISE canonical bibliography:
+  2,346 publications, 2,326 abstracts present, 21 suspicious abstracts,
+  17 apparent deterministic candidates, and 4 review-required cases.
+
 ## 1.6.14 — 2026-09-23
 
 ### Lossless Jekyll Liquid escaping

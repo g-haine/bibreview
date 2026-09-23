@@ -70,6 +70,43 @@ bibreview --config bibreview.yml providers --json
 bibreview --config bibreview.yml providers --check --json
 ~~~
 
+## hygiene
+
+Scan canonical abstracts for historical structured-markup contamination without
+calling providers and without writing project files:
+
+~~~bash
+bibreview --config bibreview.yml hygiene
+~~~
+
+The default output is aggregate only: number of canonical publications scanned,
+number with abstracts, suspicious abstracts, deterministic cleanup candidates,
+review-required cases, and counts by markup family.
+
+Show each affected publication with DOI/title, classification, normalization
+hint and a bounded context excerpt:
+
+~~~bash
+bibreview --config bibreview.yml -v hygiene
+~~~
+
+Machine-readable complete inventory:
+
+~~~bash
+bibreview --config bibreview.yml hygiene --json
+~~~
+
+The initial scanner recognizes legacy renderer markers, `inline-formula`,
+MathML, JATS-like tags, XML comments, escaped markup, generic HTML/XML tags and
+obviously unbalanced structured tags. MathML carrying an
+`application/x-tex` annotation is marked as an apparent deterministic
+candidate because a later normalizer can preserve the embedded TeX. That label
+is diagnostic only: **`hygiene` never normalizes, stages, or mutates canonical
+metadata.**
+
+This command is the inventory phase of canonical-data hygiene. Historical
+changes must be proposed and reviewed explicitly in a later migration step.
+
 ## audit
 
 Audit one stable batch of existing canonical publications against current
