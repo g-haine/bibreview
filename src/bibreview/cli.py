@@ -114,6 +114,11 @@ def _parser() -> argparse.ArgumentParser:
     )
     audit_actions = audit.add_mutually_exclusive_group()
     audit_actions.add_argument(
+        "--full",
+        action="store_true",
+        help="Re-audit every current canonical publication instead of only new/retryable items",
+    )
+    audit_actions.add_argument(
         "--reclassify",
         action="store_true",
         help="Reclassify the existing audit report offline using current rules",
@@ -445,6 +450,7 @@ def main(argv: list[str] | None = None) -> int:
             plan = plan_project_audit_batch(
                 config,
                 batch_size=args.batch_size,
+                full=args.full,
             )
             if args.dry_run:
                 payload = {
