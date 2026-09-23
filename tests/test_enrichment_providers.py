@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import io
 import unittest
 
 from bibreview.providers import (
@@ -12,6 +13,8 @@ from bibreview.providers import (
     SpringerProvider,
     format_bibtex,
 )
+from bibreview.providers.http import HttpError
+from bibreview.reporting import Reporter
 
 
 @dataclass
@@ -191,6 +194,79 @@ class RouterTests(unittest.TestCase):
         self.assertEqual(elsevier.calls, ["10.1/test"])
         self.assertEqual(springer.calls, ["10.1/test"])
         self.assertEqual(ieee.calls, ["10.1/test"])
+
+    def test_ieee_403_disables_optional_provider_for_rest_of_run(self) -> None:
+        class FakeDoi:
+            def landing_url(self, doi):
+                return "https://ieeexplore.ieee.org/document/x"
+
+        class DeniedProvider:
+            def __init__(self):
+                self.calls = []
+
+            def enrich(self, doi):
+                self.calls.append(doi)
+                raise HttpError("denied", status_code=403)
+
+        stream = io.StringIO()
+        ieee = DeniedProvider()
+        router = PublisherEnrichmentRouter(
+            FakeDoi(),
+            ieee=ieee,
+            reporter=Reporter(0, stream),
+        )
+
+        self.assertEqual(router.enrich("10.1/one"), Enrichment())
+        self.assertEqual(router.enrich("10.1/two"), Enrichment())
+        self.assertEqual(ieee.calls, ["10.1/one"])
+        self.assertIn("IEEE HTTP 403", stream.getvalue())
+        self.assertIn("rest of this run", stream.getvalue())
+
+    def test_optional_publisher_server_failure_is_nonfatal_for_one_publication(self) -> None:
+        class FakeDoi:
+            def landing_url(self, doi):
+                return "https://link.springer.com/article/x"
+
+        class FailingProvider:
+            def enrich(self, doi):
+                raise HttpError("server", status_code=503)
+
+        stream = io.StringIO()
+        router = PublisherEnrichmentRouter(
+            FakeDoi(),
+            springer=FailingProvider(),
+            reporter=Reporter(0, stream),
+        )
+
+        self.assertEqual(router.enrich("10.1/test"), Enrichment())
+        self.assertIn("Springer HTTP 503", stream.getvalue())
+
+    def test_publisher_lookup_http_failure_is_nonfatal(self) -> None:
+        class FailingDoi:
+            def landing_url(self, doi):
+                raise HttpError("resolver", status_code=503)
+
+        stream = io.StringIO()
+        router = PublisherEnrichmentRouter(
+            FailingDoi(),
+            reporter=Reporter(0, stream),
+        )
+
+        self.assertEqual(router.enrich("10.1/test"), Enrichment())
+        self.assertIn("Publisher lookup HTTP failure", stream.getvalue())
+
+    def test_non_http_publisher_errors_still_propagate(self) -> None:
+        class FakeDoi:
+            def landing_url(self, doi):
+                return "https://ieeexplore.ieee.org/document/x"
+
+        class BrokenProvider:
+            def enrich(self, doi):
+                raise TypeError("broken provider contract")
+
+        router = PublisherEnrichmentRouter(FakeDoi(), ieee=BrokenProvider())
+        with self.assertRaisesRegex(TypeError, "broken provider contract"):
+            router.enrich("10.1/test")
 
     def test_known_publisher_without_configured_provider_is_nonfatal(self) -> None:
         class FakeDoi:
