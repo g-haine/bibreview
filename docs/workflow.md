@@ -76,7 +76,7 @@ bibreview --config bibreview.yml --dry-run merge
 bibreview --config bibreview.yml merge
 ~~~
 
-Do not start a collect/refresh batch while audit corrections remain staged.
+Do not start a collect/refresh/backfill batch while audit corrections remain staged.
 
 ## 2. Discover candidate publications
 
@@ -129,6 +129,31 @@ bibreview --config bibreview.yml merge
 
 If a provider response is wrong, correct it before merging. See
 [Manual corrections](corrections.md).
+
+## Optional: backfill missing canonical fields
+
+For an existing record that is otherwise reviewed but lacks a field such as an
+abstract, use the human-reviewed backfill workflow instead of recollecting the
+entire publication:
+
+~~~bash
+bibreview --config bibreview.yml backfill --field abstract
+bibreview --config bibreview.yml backfill --resolve
+bibreview --config bibreview.yml --dry-run backfill --apply
+bibreview --config bibreview.yml backfill --apply
+~~~
+
+Proposal generation does not touch canonical or staging data. Resolve every
+proposal explicitly; only accepted/custom decisions are staged. Inspect
+`collected.json`, then promote with the ordinary merge boundary:
+
+~~~bash
+bibreview --config bibreview.yml --dry-run merge
+bibreview --config bibreview.yml merge
+~~~
+
+Backfill never replaces a non-empty canonical value and refuses stale proposals
+when the field was filled after proposal generation.
 
 ## 5. Collect new pending DOI values
 
