@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Protocol
 
 from ..reporting import Reporter
+from ..text import clean_metadata
 from .http import HttpError
 
 
@@ -54,7 +55,7 @@ class AbstractFallback:
                 )
             else:
                 if value.strip():
-                    candidates.append(value.strip())
+                    candidates.append(clean_metadata(value, abstract=True))
 
         if self.openalex is not None and not self._openalex_limited:
             try:
@@ -87,4 +88,5 @@ class AbstractFallback:
                 if value.strip():
                     candidates.append(value.strip())
 
+        candidates = [value for value in candidates if value]
         return max(candidates, key=len, default=self.unavailable_text)
