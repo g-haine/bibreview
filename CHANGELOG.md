@@ -29,7 +29,7 @@ All notable BibReview releases are documented here.
 ### Validation
 
 - add regression coverage for scientific subscript/superscript markup;
-- validate the release through the pull-request CI before merge.
+- validate the release with 464 passing tests.
 
 ## 1.6.16 — 2026-09-23
 
