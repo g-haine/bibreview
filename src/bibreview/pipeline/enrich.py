@@ -19,6 +19,9 @@ class AbstractFallbackProvider(Protocol):
     def abstract(self, doi: str) -> str:
         """Return a fallback abstract or an explicit unavailable marker."""
 
+    def abstract_many(self, dois: tuple[str, ...]) -> Mapping[str, str]:
+        """Return fallback abstracts for multiple DOI values."""
+
 
 def crossref_enrichment(message: Mapping[str, Any]) -> Enrichment:
     """Extract the enrichment fields already present in a CrossRef work message."""
@@ -73,6 +76,52 @@ class EnrichmentService:
     def for_discovery(self, doi: str, message: Mapping[str, Any]) -> Enrichment:
         """Return cumulative enrichment suitable for discovery/relevance checks."""
         return self._compose(doi, message, discovery=True)
+
+    def for_collection_many(
+        self,
+        messages: Mapping[str, Mapping[str, Any]],
+    ) -> dict[str, Enrichment]:
+        """Return collection enrichment for multiple DOI-backed work records.
+
+        Publisher enrichment remains per DOI because those adapters are routed
+        by resolved publisher host. Optional abstract fallback is then batched
+        for the subset that still has no abstract.
+        """
+        prepared: dict[str, tuple[Enrichment, Enrichment]] = {}
+        fallback_dois: list[str] = []
+
+        for doi, message in messages.items():
+            base = crossref_enrichment(message)
+            extra = (
+                self.publisher.enrich(doi)
+                if self.publisher is not None
+                else Enrichment()
+            )
+            if not isinstance(extra, Enrichment):
+                raise TypeError(
+                    "publisher enrichment provider must return Enrichment"
+                )
+            prepared[doi] = (base, extra)
+            if not (extra.abstract or base.abstract).strip():
+                fallback_dois.append(doi)
+
+        fallback_values: Mapping[str, str] = {}
+        if fallback_dois and self.fallback is not None:
+            fallback_values = self.fallback.abstract_many(tuple(fallback_dois))
+
+        result: dict[str, Enrichment] = {}
+        for doi, (base, extra) in prepared.items():
+            abstract = extra.abstract or base.abstract
+            if not abstract.strip():
+                abstract = fallback_values.get(doi, "")
+            result[doi] = _clean_enrichment(
+                Enrichment(
+                    abstract=abstract,
+                    keywords=extra.keywords or base.keywords,
+                    event=extra.event,
+                )
+            )
+        return result
 
     def _compose(
         self,
