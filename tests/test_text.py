@@ -1,6 +1,6 @@
 import unittest
 
-from bibreview.text import clean_metadata, safe_component, slugify
+from bibreview.text import clean_abstract, clean_metadata, is_missing_metadata_value, safe_component, slugify
 
 
 class TextTests(unittest.TestCase):
@@ -16,6 +16,30 @@ class TextTests(unittest.TestCase):
 
     def test_clean_metadata_removes_controls(self):
         self.assertEqual(clean_metadata("  A\x01B  "), "AB")
+
+    def test_abstract_missing_placeholder_is_case_and_space_insensitive(self):
+        for value in (
+            "",
+            "Not Available",
+            "not available",
+            "NOT AVAILABLE",
+            "  Not   Available  ",
+        ):
+            with self.subTest(value=value):
+                self.assertTrue(
+                    is_missing_metadata_value("abstract", value)
+                )
+
+    def test_not_available_is_not_special_for_other_fields(self):
+        self.assertFalse(
+            is_missing_metadata_value("publisher", "Not Available")
+        )
+
+    def test_clean_abstract_collapses_missing_placeholder(self):
+        self.assertEqual(
+            clean_abstract(" Abstract: NOT   AVAILABLE "),
+            "",
+        )
 
     def test_clean_abstract_removes_only_leading_labels(self):
         labels = (
