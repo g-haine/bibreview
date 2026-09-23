@@ -272,10 +272,10 @@ uses repeated exact DOI filters in bounded groups of 25, OpenAlex uses one
 OR-filter request for up to 100 DOI values, and Semantic Scholar uses the paper
 batch endpoint for up to 500 DOI values.
 
-Authenticated Semantic Scholar requests retain a minimum 1.1-second interval
-between batch requests. With BibReview's default audit batch size of 50, one
-audit batch therefore normally needs two CrossRef requests, one OpenAlex
-request, and one Semantic Scholar batch request. Provider failures are recorded
+Provider request pacing is controlled by each provider's
+`min_interval_seconds` value in `bibreview.yml`. With BibReview's default audit
+batch size of 50, one audit batch therefore normally needs two CrossRef requests,
+one OpenAlex request, and one Semantic Scholar batch request. Provider failures are recorded
 separately from canonical metadata discrepancies. If one provider batch fails,
 only the DOI values in that provider chunk become retryable; it does not modify
 the canonical record.
