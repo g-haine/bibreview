@@ -2,6 +2,48 @@
 
 All notable BibReview releases are documented here.
 
+## 1.6.9 — 2026-09-23
+
+### Configurable provider request pacing
+
+- add `providers.<name>.min_interval_seconds` to configuration schema 1 for
+  every metadata provider;
+- interpret the value as the minimum interval between the start times of
+  consecutive HTTP requests for that provider;
+- default to `0.0`, preserving no BibReview-imposed delay unless explicitly
+  configured;
+- apply provider-local pacing consistently across collect, backfill, refresh,
+  discover, audit, and live provider diagnostics;
+- keep each provider on an independent limiter so throttling one service never
+  delays unrelated provider requests;
+- remove the hidden audit-only Semantic Scholar 1.1-second runtime policy;
+  projects now express that policy explicitly in YAML;
+- retain the provider adapter's direct interval option for isolated adapter tests
+  while runtime composition uses the generic transport-level limiter;
+- expose the effective minimum interval in human and JSON provider diagnostics.
+
+### Configuration and documentation
+
+- update the example project configuration with explicit request intervals for
+  every provider;
+- use `1.1` seconds for Semantic Scholar in the example and `0.0` for the
+  remaining providers;
+- document that upstream policy changes can be handled by editing YAML without
+  changing BibReview code;
+- validate non-negative integer and floating-point interval values and reject
+  booleans, strings, and negative values.
+
+### Validation
+
+- add provider-local timing tests proving that only the remaining interval is
+  slept and that `0.0` never sleeps;
+- add configuration default/validation tests;
+- verify interval wiring for CrossRef, OpenAlex, Elsevier, IEEE,
+  Semantic Scholar, and Mendeley across runtime workflows;
+- verify Semantic Scholar is not double-throttled;
+- verify diagnostic text and JSON expose configured intervals;
+- validate the release with 417 passing tests.
+
 ## 1.6.8 — 2026-09-23
 
 ### Optional publisher failure isolation
