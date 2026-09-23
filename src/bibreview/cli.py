@@ -18,6 +18,14 @@ from .audit_resolution import (
     save_project_audit_resolutions,
     unresolved_resolution_candidates,
 )
+from .backfill_resolution import (
+    backfill_resolution_path,
+    format_backfill_resolution_candidate,
+    load_project_backfill_resolutions,
+    record_backfill_resolution,
+    save_project_backfill_resolutions,
+    unresolved_backfill_candidates,
+)
 from .campaign import campaign_progress
 from .config import ConfigError, load_config
 from .pipeline.authors import author_mapping_plan_data, format_author_mapping_plan
@@ -36,7 +44,15 @@ from .project import (
     plan_project_merge,
 )
 from .project_arxiv import apply_project_arxiv, plan_project_arxiv
-from .project_backfill import apply_project_backfill, plan_project_backfill
+from .project_backfill import (
+    apply_project_backfill_plan,
+    load_project_backfill_review,
+    plan_project_backfill,
+)
+from .project_backfill_apply import (
+    apply_project_backfill_apply,
+    plan_project_backfill_apply,
+)
 from .project_audit import (
     apply_project_audit_plan,
     execute_project_audit_batch,
@@ -157,15 +173,26 @@ def _parser() -> argparse.ArgumentParser:
         dest="backfill_fields",
         action="append",
         choices=sorted(BACKFILL_FIELDS),
-        required=True,
-        help="Missing canonical field to fill; repeat for multiple fields",
+        default=[],
+        help="Missing canonical field to propose; repeat for multiple fields",
     )
     backfill.add_argument(
         "--type",
         dest="backfill_types",
         action="append",
         default=[],
-        help="Restrict to one publication type; repeat for multiple types",
+        help="Restrict proposal generation to one publication type; repeat for multiple types",
+    )
+    backfill_actions = backfill.add_mutually_exclusive_group()
+    backfill_actions.add_argument(
+        "--resolve",
+        action="store_true",
+        help="Interactively review persisted backfill proposals",
+    )
+    backfill_actions.add_argument(
+        "--apply",
+        action="store_true",
+        help="Apply completed human backfill decisions to collected staging",
     )
     commands.add_parser("refresh", help="Recollect stale existing publications into canonical staging state")
     authors = commands.add_parser("authors", help="Inspect author identities and optionally apply safe mappings")
@@ -296,6 +323,113 @@ def _run_audit_resolution(config, args) -> int:
 
         if not args.dry_run:
             save_project_audit_resolutions(config, state)
+        print()
+
+    prefix = "Dry run: " if args.dry_run else ""
+    print(prefix + state.summary())
+    print(f"Resolutions: {path}")
+    return 0
+
+
+def _run_backfill_resolution(config, args) -> int:
+    """Run resumable human review for persisted backfill proposals."""
+    if args.backfill_fields or args.backfill_types:
+        raise ProjectStateError(
+            "--field/--type cannot be used with backfill --resolve"
+        )
+    if args.quiet:
+        raise ProjectStateError(
+            "--quiet cannot be used with interactive backfill --resolve"
+        )
+
+    review = load_project_backfill_review(config)
+    state = load_project_backfill_resolutions(config, review)
+    candidates = unresolved_backfill_candidates(review, state)
+    path = backfill_resolution_path(config)
+
+    if not candidates:
+        prefix = "Dry run: " if args.dry_run else ""
+        print(prefix + state.summary())
+        print("No unresolved backfill proposals.")
+        print(f"Resolutions: {path}")
+        return 0
+
+    _enable_interactive_line_editing()
+
+    for candidate in candidates:
+        print(format_backfill_resolution_candidate(candidate))
+        while True:
+            try:
+                raw = input("Decision [Y/n/f VALUE/s/q]: ").strip()
+            except (EOFError, KeyboardInterrupt):
+                print()
+                print(
+                    "Backfill resolution stopped; previous decisions are preserved."
+                )
+                print(state.summary())
+                print(f"Resolutions: {path}")
+                return 0
+
+            choice = raw.lower()
+            try:
+                if raw == "" or choice in {"y", "yes"}:
+                    state = record_backfill_resolution(
+                        state,
+                        candidate,
+                        decision="accepted",
+                    )
+                    break
+
+                if choice in {"n", "no"}:
+                    state = record_backfill_resolution(
+                        state,
+                        candidate,
+                        decision="rejected",
+                    )
+                    break
+
+                if choice in {"s", "skip"}:
+                    state = record_backfill_resolution(
+                        state,
+                        candidate,
+                        decision="deferred",
+                    )
+                    break
+
+                if choice in {"q", "quit"}:
+                    print(state.summary())
+                    print(f"Resolutions: {path}")
+                    return 0
+
+                if choice == "f" or choice.startswith("f "):
+                    custom = raw[1:].strip()
+                    if not custom:
+                        try:
+                            custom = input("Custom value: ").strip()
+                        except (EOFError, KeyboardInterrupt):
+                            print()
+                            print(
+                                "Backfill resolution stopped; previous decisions "
+                                "are preserved."
+                            )
+                            print(state.summary())
+                            print(f"Resolutions: {path}")
+                            return 0
+                    state = record_backfill_resolution(
+                        state,
+                        candidate,
+                        decision="custom",
+                        resolved_value=custom,
+                    )
+                    break
+            except ProjectStateError as error:
+                print(f"Invalid resolution: {error}")
+                continue
+
+            print("Please enter Y, n, f VALUE, s, or q.")
+
+        if not args.dry_run:
+            save_project_backfill_resolutions(config, state)
         print()
 
     prefix = "Dry run: " if args.dry_run else ""
@@ -591,6 +725,55 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "backfill":
+        if args.resolve:
+            try:
+                return _run_backfill_resolution(config, args)
+            except (
+                OSError,
+                StorageError,
+                ProjectStateError,
+                ValueError,
+                TypeError,
+            ) as error:
+                print(f"bibreview backfill: {error}", file=sys.stderr)
+                return 1
+
+        if args.apply:
+            try:
+                if args.backfill_fields or args.backfill_types:
+                    raise ProjectStateError(
+                        "--field/--type cannot be used with backfill --apply"
+                    )
+                plan = plan_project_backfill_apply(config)
+                if not args.dry_run:
+                    apply_project_backfill_apply(plan)
+            except (
+                OSError,
+                StorageError,
+                ProjectStateError,
+                ValueError,
+                TypeError,
+            ) as error:
+                print(f"bibreview backfill: {error}", file=sys.stderr)
+                return 1
+
+            if not args.quiet:
+                prefix = "Dry run: " if args.dry_run else ""
+                print(prefix + plan.summary())
+                if plan.changed:
+                    print(f"Staging: {config.paths.collected}")
+                else:
+                    print("No accepted backfill changes to stage.")
+            return 0
+
+        if not args.backfill_fields:
+            print(
+                "bibreview backfill: at least one --field is required "
+                "when generating proposals",
+                file=sys.stderr,
+            )
+            return 1
+
         reporter = Reporter(-1 if args.quiet else args.verbose)
         try:
             services = build_collection_services(config, reporter=reporter)
@@ -603,18 +786,23 @@ def main(argv: list[str] | None = None) -> int:
                 reporter=reporter,
             )
             if not args.dry_run:
-                apply_project_backfill(plan)
-        except (OSError, StorageError, ProjectStateError, ValueError, TypeError) as error:
+                apply_project_backfill_plan(plan)
+        except (
+            OSError,
+            StorageError,
+            ProjectStateError,
+            ValueError,
+            TypeError,
+        ) as error:
             print(f"bibreview backfill: {error}", file=sys.stderr)
             return 1
 
         if not args.quiet:
             prefix = "Dry run: " if args.dry_run else ""
             print(prefix + plan.summary())
-            if plan.changed:
-                print(f"Staging: {config.paths.collected}")
-            else:
-                print("No missing-field backfill changes.")
+            print(f"Review: {config.audit.report.with_name('backfill.json')}")
+            if not plan.review.candidates:
+                print("No missing-field proposals available.")
         return 0
 
     if args.command == "refresh":
