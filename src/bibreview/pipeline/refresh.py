@@ -14,6 +14,7 @@ from typing import Any
 
 from ..model import Publication
 from ..reporting import Reporter
+from ..text import is_missing_metadata_value
 from .audit import AuditValue, classify_audit_pair, publication_audit_record
 from .backfill import BackfillCandidate
 from .collect import (
@@ -80,12 +81,6 @@ class RefreshResult:
         )
 
 
-def _is_empty(value: AuditValue) -> bool:
-    if isinstance(value, str):
-        return not value.strip()
-    return not value or all(not item.strip() for item in value)
-
-
 def refresh(
     publications: Iterable[Publication],
     *,
@@ -131,7 +126,10 @@ def refresh(
     for publication in publication_values:
         if publication.type not in selected_types:
             continue
-        if not any(not getattr(publication, field) for field in missing_fields):
+        if not any(
+            is_missing_metadata_value(field, getattr(publication, field))
+            for field in missing_fields
+        ):
             continue
         eligible_count += 1
         doi = publication.doi
@@ -199,8 +197,8 @@ def refresh(
                 field in missing_fields
                 and isinstance(current_value, str)
                 and isinstance(proposed_value, str)
-                and _is_empty(current_value)
-                and not _is_empty(proposed_value)
+                and is_missing_metadata_value(field, current_value)
+                and not is_missing_metadata_value(field, proposed_value)
             )
             if safe_missing_proposal:
                 proposals.append(
