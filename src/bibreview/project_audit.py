@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Mapping
@@ -12,6 +12,7 @@ from .campaign import (
     Campaign,
     CampaignBatch,
     CampaignError,
+    CampaignItem,
     campaign_data,
     campaign_from_data,
     campaign_progress,
@@ -649,10 +650,56 @@ def plan_project_audit_reclassify(
     )
 
 
+def _synchronize_audit_universe(
+    campaign: Campaign,
+    report: AuditReport,
+    current_publication_ids: tuple[str, ...],
+    *,
+    full: bool,
+) -> tuple[Campaign, AuditReport]:
+    """Add new canonical publications and optionally requeue all current ones."""
+    existing = {item.key for item in campaign.items}
+    additions = tuple(
+        CampaignItem(key=key)
+        for key in current_publication_ids
+        if key not in existing
+    )
+    synchronized = replace(
+        campaign,
+        items=campaign.items + additions,
+    )
+
+    if full:
+        progress = campaign_progress(synchronized)
+        if progress.open_batch is not None:
+            raise ProjectStateError(
+                "--full cannot reset an audit while a batch is open; "
+                "resume the current batch first"
+            )
+        current = set(current_publication_ids)
+        synchronized = replace(
+            synchronized,
+            items=tuple(
+                replace(item, state="pending", detail="")
+                if item.key in current
+                else item
+                for item in synchronized.items
+            ),
+        )
+
+    synchronized_report = replace(
+        report,
+        campaign_items=_campaign_items(synchronized),
+    )
+    _validate_report_against_campaign(synchronized, synchronized_report)
+    return synchronized, synchronized_report
+
+
 def plan_project_audit_batch(
     config: BibReviewConfig,
     *,
     batch_size: int | None = None,
+    full: bool = False,
 ) -> ProjectAuditBatchPlan:
     """Create/resume an audit campaign and open its stable current batch."""
     if not isinstance(config, BibReviewConfig):
@@ -665,18 +712,26 @@ def plan_project_audit_batch(
             "audit campaign and report must either both exist or both be absent"
         )
 
+    if not config.paths.bibliography.exists():
+        raise ProjectStateError(
+            f"{config.paths.bibliography}: canonical bibliography does not exist"
+        )
+    publications = read_bibliography(config.paths.bibliography)
+    current_ids = tuple(publication.id for publication in publications)
+
     if campaign_path.exists():
         campaign, report = _read_state(config)
+        campaign, report = _synchronize_audit_universe(
+            campaign,
+            report,
+            current_ids,
+            full=full,
+        )
     else:
-        if not config.paths.bibliography.exists():
-            raise ProjectStateError(
-                f"{config.paths.bibliography}: canonical bibliography does not exist"
-            )
-        publications = read_bibliography(config.paths.bibliography)
         try:
             campaign = create_campaign(
                 "audit",
-                (publication.id for publication in publications),
+                current_ids,
                 batch_size=config.audit.batch_size,
             )
         except CampaignError as error:
