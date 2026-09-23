@@ -249,6 +249,7 @@ def _build_core_services(
             elsevier=elsevier,
             springer=springer,
             ieee=ieee,
+            reporter=reporter,
         )
 
     openalex_config = _provider(config, "openalex")

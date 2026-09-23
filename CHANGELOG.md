@@ -2,6 +2,30 @@
 
 All notable BibReview releases are documented here.
 
+## 1.6.8 — 2026-09-23
+
+### Optional publisher failure isolation
+
+- keep optional publisher enrichment failures from aborting collect, backfill,
+  refresh, or discovery workflows;
+- treat DOI publisher-lookup HTTP failures as non-fatal enrichment misses;
+- disable Elsevier, Springer, or IEEE for the remainder of a run after persistent
+  HTTP 401, 403, or 429 responses;
+- skip only the current publication for other HTTP/transport/response failures,
+  allowing later publications to retry the provider;
+- continue to configured abstract fallbacks such as OpenAlex, Semantic Scholar,
+  and Mendeley after publisher enrichment is skipped;
+- keep non-HTTP contract/type errors fatal so implementation defects are not
+  silently hidden;
+- route all optional-provider failure diagnostics through the normal Reporter.
+
+### Validation
+
+- add regression coverage for IEEE HTTP 403 run-scoped disabling, publisher
+  HTTP 503 isolation, DOI publisher-lookup failure isolation, and propagation
+  of non-HTTP provider errors;
+- validate the release with 411 passing tests.
+
 ## 1.6.7 — 2026-09-23
 
 ### Partial-provider backfill safety
