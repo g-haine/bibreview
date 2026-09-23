@@ -22,6 +22,7 @@ class ProviderDiagnostic:
     credential_source: str
     status: str
     detail: str
+    min_interval_seconds: float = 0.0
     checked: bool = False
 
     def data(self) -> dict[str, object]:
@@ -343,6 +344,11 @@ def diagnose_providers(
                 credential_source=source,
                 status=status,
                 detail=detail,
+                min_interval_seconds=(
+                    _provider_config(config, name).min_interval_seconds
+                    if _provider_config(config, name) is not None
+                    else 0.0
+                ),
                 checked=checked,
             )
         )
@@ -354,12 +360,13 @@ def format_provider_diagnostics(items: tuple[ProviderDiagnostic, ...]) -> str:
     """Format diagnostics as a compact human-readable table."""
     if not items:
         return "No providers configured."
-    headers = ("Provider", "Credential", "Source", "Status")
+    headers = ("Provider", "Credential", "Source", "Min interval", "Status")
     rows = [
         (
             item.name,
             item.credential_variable or "-",
             item.credential_source,
+            f"{item.min_interval_seconds:g}s",
             item.status,
         )
         for item in items
