@@ -51,7 +51,7 @@ All notable BibReview releases are documented here.
 - add regression coverage for OpenAlex inverted-index reconstruction,
   placeholder rejection, video-prefix cleanup, fallback selection, and
   run-scoped rate-limit handling;
-- validate the feature with 376 passing tests before release.
+- validate the feature with 384 passing tests before release.
 
 ## 1.6.3 — 2026-09-23
 
