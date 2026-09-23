@@ -165,6 +165,43 @@ class HttpTransportTests(unittest.TestCase):
         self.assertEqual(len(sleeps), 1)
         self.assertAlmostEqual(sleeps[0], 0.7)
 
+    def test_rate_limited_transport_debug_reports_effective_timing(self) -> None:
+        base = Mock()
+        base.json.return_value = {}
+        stream = io.StringIO()
+        base.reporter = Reporter(2, stream)
+        clock_values = iter((10.0, 10.4, 11.5))
+        sleeps = []
+
+        transport = RateLimitedTransport(
+            base,
+            min_interval_seconds=1.5,
+            clock=lambda: next(clock_values),
+            sleeper=sleeps.append,
+        )
+
+        transport.json(
+            "https://api.example.test/one",
+            context="Semantic Scholar abstract for DOI 10.1/one",
+        )
+        transport.json(
+            "https://api.example.test/two",
+            context="Semantic Scholar abstract for DOI 10.1/two",
+        )
+
+        output = stream.getvalue()
+        self.assertIn(
+            "Semantic Scholar abstract for DOI 10.1/one: rate limit request slot "
+            "(minimum interval 1.500s; first request)",
+            output,
+        )
+        self.assertIn(
+            "Semantic Scholar abstract for DOI 10.1/two: rate limit waited 1.100s; "
+            "request slot after 1.500s (minimum interval 1.500s)",
+            output,
+        )
+        self.assertEqual(sleeps, [1.1])
+
     def test_rate_limited_transport_zero_interval_never_sleeps(self) -> None:
         base = Mock()
         base.request.return_value = None
