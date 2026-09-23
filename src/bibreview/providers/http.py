@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from time import monotonic, sleep
+from typing import Callable
 from urllib.parse import urlsplit
 
 import requests
@@ -18,6 +20,56 @@ class HttpError(ValueError):
     def __init__(self, message: str, *, status_code: int | None = None):
         super().__init__(message)
         self.status_code = status_code
+
+
+class RateLimitedTransport:
+    """Provider-local minimum-interval wrapper around an HTTP transport."""
+
+    def __init__(
+        self,
+        transport: HttpTransport,
+        *,
+        min_interval_seconds: float = 0.0,
+        clock: Callable[[], float] = monotonic,
+        sleeper: Callable[[float], None] = sleep,
+    ) -> None:
+        if min_interval_seconds < 0:
+            raise ValueError("min_interval_seconds must be non-negative")
+        self.transport = transport
+        self.min_interval_seconds = float(min_interval_seconds)
+        self._clock = clock
+        self._sleeper = sleeper
+        self._last_request_started: float | None = None
+
+    def _wait_for_request_slot(self) -> None:
+        if self.min_interval_seconds <= 0:
+            return
+        now = self._clock()
+        if self._last_request_started is not None:
+            remaining = (
+                self.min_interval_seconds
+                - (now - self._last_request_started)
+            )
+            if remaining > 0:
+                self._sleeper(remaining)
+                now = self._clock()
+        self._last_request_started = now
+
+    def request(self, url: str, **kwargs: object):
+        self._wait_for_request_slot()
+        return self.transport.request(url, **kwargs)
+
+    def json(self, url: str, **kwargs: object):
+        self._wait_for_request_slot()
+        return self.transport.json(url, **kwargs)
+
+    def post_json(self, url: str, **kwargs: object):
+        self._wait_for_request_slot()
+        return self.transport.post_json(url, **kwargs)
+
+    def post_form_json(self, url: str, **kwargs: object):
+        self._wait_for_request_slot()
+        return self.transport.post_form_json(url, **kwargs)
 
 
 class HttpTransport:
