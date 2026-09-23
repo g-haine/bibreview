@@ -2,10 +2,41 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+import re
 from urllib.parse import quote
 
 from ..identity import IdentityError, normalize_doi
 from .http import HttpTransport
+
+
+_OPENALEX_ABSTRACT_PLACEHOLDERS = {
+    "accepted version",
+    "international audience",
+}
+_OPENALEX_VIDEO_PREFIX = re.compile(
+    r"^View Video Presentation:\s*https?://\S+\s*",
+    re.IGNORECASE,
+)
+
+
+def openalex_abstract(value: object) -> str:
+    """Reconstruct and sanitize an OpenAlex inverted-index abstract."""
+    if not isinstance(value, Mapping) or not value:
+        return ""
+    positions: list[tuple[int, str]] = []
+    for word, raw_positions in value.items():
+        if not isinstance(word, str) or not isinstance(raw_positions, list):
+            continue
+        for raw_position in raw_positions:
+            if isinstance(raw_position, int) and not isinstance(raw_position, bool):
+                positions.append((raw_position, word))
+    positions.sort(key=lambda item: item[0])
+    abstract = " ".join(word for _, word in positions).strip()
+    abstract = _OPENALEX_VIDEO_PREFIX.sub("", abstract).strip()
+    if abstract.casefold() in _OPENALEX_ABSTRACT_PLACEHOLDERS:
+        return ""
+    return abstract
 
 
 class OpenAlexError(ValueError):
@@ -42,6 +73,13 @@ class OpenAlexProvider:
         if not isinstance(data, dict):
             raise OpenAlexError("OpenAlex: unexpected work response")
         return data
+
+    def abstract(self, doi: str) -> str:
+        """Return one reconstructed OpenAlex abstract, or an empty string."""
+        work = self.work(doi)
+        if work is None:
+            return ""
+        return openalex_abstract(work.get("abstract_inverted_index"))
 
     def works(self, dois: tuple[str, ...]) -> dict[str, dict]:
         """Return OpenAlex works for multiple DOI values in one request."""
