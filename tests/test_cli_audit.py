@@ -10,6 +10,7 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
+from bibreview.campaign import create_campaign
 from bibreview.cli import _enable_interactive_line_editing, main
 from bibreview.config import load_config
 from bibreview.identity import new_publication_id
