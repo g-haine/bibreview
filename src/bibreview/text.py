@@ -26,10 +26,23 @@ def safe_component(value: str) -> str:
     return value
 
 
+_ABSTRACT_LABEL = re.compile(
+    r"^(?:abstract|summary|résumé|resume|resumen|resumo|zusammenfassung|"
+    r"riassunto|samenvatting)(?:\s*[:.\-–—]\s*|\s+|$)",
+    re.IGNORECASE,
+)
+
+
 def clean_metadata(value: str, *, abstract: bool = False) -> str:
-    """Remove control/JATS markup while preserving the established normalization contract."""
+    """Remove control/JATS markup and conservatively normalize abstract labels."""
     if not isinstance(value, str):
         raise TypeError("metadata value must be a string")
-    result = re.sub(r"[\x00-\x19]", "", value).strip()
-    result = re.sub(r"<[^>]*jats[^>]*>", "", result)
-    return re.sub(r"summary|abstract", "", result, flags=re.I) if abstract else result
+    result = re.sub(r"[\t\n\r\f\v]+", " ", value)
+    result = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x19]", "", result).strip()
+    result = re.sub(r"<[^>]*jats[^>]*>", "", result).strip()
+    if not abstract:
+        return result
+    result = re.sub(r"\s+", " ", result).strip()
+    while result and (match := _ABSTRACT_LABEL.match(result)) is not None:
+        result = result[match.end():].strip()
+    return result
