@@ -82,6 +82,7 @@ class _CoreServices:
     transport: HttpTransport
     crossref: CrossRefProvider
     doi: DoiProvider
+    openalex: OpenAlexProvider | None
     enrichment: EnrichmentService
 
 
@@ -314,6 +315,7 @@ def _build_core_services(
         transport=transport,
         crossref=crossref,
         doi=doi,
+        openalex=openalex,
         enrichment=EnrichmentService(publisher=publisher, fallback=fallback),
     )
 
@@ -361,14 +363,9 @@ def build_discovery_services(
         raise ValueError("OpenAlex must be enabled when selected for discovery")
 
     core = _build_core_services(config, reporter=progress, environ=environment)
-    openalex_key = _optional_api_key(
-        openalex_config,
-        provider_name="OpenAlex",
-        environ=environment,
-        reporter=progress,
-    )
+    discovery_provider = core.openalex or OpenAlexProvider(core.transport)
     return DiscoveryServices(
-        discovery_provider=OpenAlexProvider(core.transport, api_key=openalex_key),
+        discovery_provider=discovery_provider,
         provider=core.crossref,
         enrichment_lookup=core.enrichment.for_discovery,
     )
