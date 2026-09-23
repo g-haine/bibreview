@@ -179,6 +179,42 @@ class ConfigTests(unittest.TestCase):
         with self.assertRaisesRegex(ConfigError, "audit.batch_size"):
             load_config(path)
 
+    def test_loads_provider_min_interval_seconds(self):
+        _, path = self.write(BASE.replace(
+            "    enabled: true\n",
+            "    enabled: true\n"
+            "    min_interval_seconds: 1.1\n",
+            1,
+        ))
+        config = load_config(path)
+        self.assertEqual(
+            config.providers["crossref"].min_interval_seconds,
+            1.1,
+        )
+
+    def test_provider_min_interval_defaults_to_zero(self):
+        _, path = self.write()
+        config = load_config(path)
+        self.assertEqual(
+            config.providers["crossref"].min_interval_seconds,
+            0.0,
+        )
+
+    def test_rejects_invalid_provider_min_interval_seconds(self):
+        for value in ("-0.1", "not-a-number", "true"):
+            with self.subTest(value=value):
+                _, path = self.write(BASE.replace(
+                    "    enabled: true\n",
+                    "    enabled: true\n"
+                    f"    min_interval_seconds: {value}\n",
+                    1,
+                ))
+                with self.assertRaisesRegex(
+                    ConfigError,
+                    "providers.crossref.min_interval_seconds",
+                ):
+                    load_config(path)
+
     def test_loads_provider_oauth_environment_fields(self):
         _, path = self.write(BASE.replace(
             "providers:\n",
