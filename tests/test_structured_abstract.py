@@ -45,6 +45,7 @@ class StructuredAbstractNormalizationTests(unittest.TestCase):
             '<p>A space <inline-formula content-type="math/mathml">'
             '<mml:math xmlns:mml="http://www.w3.org/1998/Math/MathML">'
             '<mml:semantics><mml:mi>V</mml:mi>'
+            '<mml:mo>⊕<!-- presentation glyph --></mml:mo>'
             '<mml:annotation encoding="application/x-tex">'
             r'V \oplus V^{\ast}'
             '</mml:annotation></mml:semantics></mml:math>'
@@ -93,14 +94,6 @@ class StructuredAbstractNormalizationTests(unittest.TestCase):
 
         self.assertTrue(result.deterministic)
         self.assertEqual(result.normalized, r"\(preferred\)")
-
-    def test_presentation_comments_are_removed(self) -> None:
-        result = normalize_structured_abstract(
-            "<jats:p>Value<!-- presentation only --> preserved.</jats:p>"
-        )
-
-        self.assertTrue(result.deterministic)
-        self.assertEqual(result.normalized, "Value preserved.")
 
     def test_embedded_graphic_is_refused_without_mutation(self) -> None:
         value = (
@@ -153,13 +146,25 @@ class StructuredAbstractNormalizationTests(unittest.TestCase):
         self.assertEqual(result.reason, "formula-without-trusted-text")
         self.assertEqual(result.normalized, value)
 
-    def test_unknown_balanced_markup_is_refused(self) -> None:
-        value = "<custom-semantic>Text</custom-semantic>"
+    def test_residual_xml_comment_is_refused(self) -> None:
+        value = "<jats:p>Value<!-- unknown comment --> preserved.</jats:p>"
         result = normalize_structured_abstract(value)
 
         self.assertFalse(result.deterministic)
-        self.assertEqual(result.reason, "unsupported-markup")
+        self.assertEqual(result.reason, "xml-comment-review")
         self.assertEqual(result.normalized, value)
+
+    def test_unknown_balanced_markup_is_refused(self) -> None:
+        for value in (
+            "<custom-semantic>Text</custom-semantic>",
+            "<div>Not yet justified by the PHRAISE corpus.</div>",
+            "<em>Not yet justified either.</em>",
+        ):
+            with self.subTest(value=value):
+                result = normalize_structured_abstract(value)
+                self.assertFalse(result.deterministic)
+                self.assertEqual(result.reason, "unsupported-markup")
+                self.assertEqual(result.normalized, value)
 
     def test_unbalanced_markup_is_refused(self) -> None:
         value = "<p>Broken <span>text</p>"
