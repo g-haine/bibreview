@@ -66,7 +66,7 @@ class HygieneCliTests(unittest.TestCase):
             if path.is_file()
         }
 
-    def run(self, *extra: str) -> tuple[int, str, str]:
+    def run_cli(self, *extra: str) -> tuple[int, str, str]:
         stdout = StringIO()
         stderr = StringIO()
         with redirect_stdout(stdout), redirect_stderr(stderr):
@@ -75,7 +75,7 @@ class HygieneCliTests(unittest.TestCase):
 
     def test_hygiene_is_read_only_and_summary_only_by_default(self) -> None:
         before = self.snapshot()
-        code, stdout, stderr = self.run("hygiene")
+        code, stdout, stderr = self.run_cli("hygiene")
 
         self.assertEqual(code, 0, stderr)
         self.assertIn("Publications scanned     : 2", stdout)
@@ -84,7 +84,7 @@ class HygieneCliTests(unittest.TestCase):
         self.assertEqual(before, self.snapshot())
 
     def test_verbose_hygiene_lists_findings_with_short_context(self) -> None:
-        code, stdout, stderr = self.run("-v", "hygiene")
+        code, stdout, stderr = self.run_cli("-v", "hygiene")
 
         self.assertEqual(code, 0, stderr)
         self.assertIn("10.1/markup: Markup", stdout)
@@ -92,7 +92,7 @@ class HygieneCliTests(unittest.TestCase):
         self.assertIn("Context:", stdout)
 
     def test_hygiene_json_is_complete(self) -> None:
-        code, stdout, stderr = self.run("hygiene", "--json")
+        code, stdout, stderr = self.run_cli("hygiene", "--json")
 
         self.assertEqual(code, 0, stderr)
         payload = json.loads(stdout)
@@ -106,7 +106,7 @@ class HygieneCliTests(unittest.TestCase):
 
     def test_missing_canonical_bibliography_fails_without_traceback(self) -> None:
         self.config.paths.bibliography.unlink()
-        code, stdout, stderr = self.run("hygiene")
+        code, stdout, stderr = self.run_cli("hygiene")
 
         self.assertEqual(code, 1)
         self.assertEqual(stdout, "")
