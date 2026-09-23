@@ -59,7 +59,7 @@ publication.
 ## Collected staging
 
 **collected.json** uses the same document envelope and is temporary staging for
-**collect**, **refresh**, and explicit **audit --apply** promotion.
+**collect**, **refresh**, explicit **audit --apply**, and reviewed **backfill --apply** promotion.
 
 Only one staging batch is allowed at a time. This is intentional: inspect and
 resolve the current batch before starting another collection, refresh, or audit
@@ -187,6 +187,26 @@ The optional per-item `detail` field is persisted verbatim and therefore must
 contain only already-sanitized diagnostic text. Credentials, authorization
 headers and raw provider responses must never be stored in campaign state.
 
+### Backfill proposal and resolution state
+
+Human-reviewed missing-field backfill keeps its proposal and decision files
+beside the configured audit report by default:
+
+~~~text
+data/audit/backfill.json
+data/audit/backfill-resolutions.json
+~~~
+
+The proposal file contains only values for requested fields that were empty in
+the canonical publication at proposal time. The resolution file stores
+accepted, custom, rejected, and deferred human decisions and is fingerprinted
+against the exact proposal set.
+
+Neither file is canonical bibliographic data and neither is merge-ready staging.
+Only `bibreview backfill --apply` may convert completed accepted/custom
+decisions into `collected.json`. Application rechecks that the canonical field
+is still empty so a newer correction cannot be overwritten silently.
+
 ### Audit campaign and report
 
 The audit workflow uses two separate files by default:
@@ -200,10 +220,10 @@ They are created and updated together when an audit campaign starts. A partial
 state where only one of the two files exists is rejected rather than silently
 reconstructed.
 
-The audit campaign snapshots publication **UUIDs** in canonical order when the
-campaign starts. Later additions or deletions in the canonical bibliography do
-not shift the remaining batches. Resuming an interrupted run returns the same
-open batch.
+The audit campaign starts with publication **UUIDs** in canonical order. Normal
+later audit runs append newly added canonical UUIDs as pending items without
+revisiting completed publications; historical batch membership remains stable.
+Resuming an interrupted run returns the same open batch.
 
 The audit report stores only the latest result for each processed UUID, together
 with the batch ID and attempt number that produced it. If a retry later
