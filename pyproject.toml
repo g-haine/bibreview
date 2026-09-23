@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bibreview"
-version = "1.6.5"
+version = "1.6.6"
 description = "Generic bibliographic engine for reproducible literature-review websites"
 readme = "README.md"
 requires-python = ">=3.12"
