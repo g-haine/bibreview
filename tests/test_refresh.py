@@ -18,13 +18,22 @@ class FakeProvider:
         return self.records.get(doi)
 
 
-def publication(doi, *, volume="", issue="", pages="", permalink="paper"):
+def publication(
+    doi,
+    *,
+    volume="",
+    issue="",
+    pages="",
+    title="Reviewed title",
+    permalink="paper",
+):
     return Publication(
         id=new_publication_id(),
         identifiers={"doi": doi},
         type="journal-article",
-        title="Old title",
-        authors=(Author(literal="Example Author"),),
+        title=title,
+        authors=(Author(literal="Reviewed Author"),),
+        container_title="Reviewed Journal",
         publication_year="2025",
         volume=volume,
         issue=issue,
@@ -34,12 +43,12 @@ def publication(doi, *, volume="", issue="", pages="", permalink="paper"):
     )
 
 
-def message(title="Updated title"):
+def message(title="Provider title"):
     return {
         "type": "journal-article",
         "title": [title],
         "author": [{"given": "Ada", "family": "Lovelace"}],
-        "container-title": ["Journal"],
+        "container-title": ["Provider Journal"],
         "created": {"date-parts": [[2026, 9, 17]]},
         "published-print": {"date-parts": [[2026]]},
         "volume": "12",
@@ -65,34 +74,90 @@ class RefreshTests(unittest.TestCase):
         self.assertEqual(result.items, ())
         self.assertEqual(provider.calls, [])
 
-    def test_missing_and_changed_bibtex_are_recollected_with_existing_permalink(self):
-        missing = publication("10.1/missing", permalink="stable-one")
-        changed = publication("10.1/changed", issue="1", permalink="stable-two")
-        provider = FakeProvider({
-            "10.1/missing": message("One"),
-            "10.1/changed": message("Two"),
-        })
-        stored = {
-            "10.1/missing": None,
-            "10.1/changed": "old bibtex\n",
-        }
-        current = {
-            "10.1/missing": "new one\n",
-            "10.1/changed": "new two\n",
-        }
+    def test_changed_bibtex_creates_only_safe_missing_field_proposals(self):
+        item = publication("10.1/changed")
+        provider = FakeProvider({"10.1/changed": message()})
+
         result = refresh(
-            [missing, changed],
+            [item],
             provider=provider,
-            stored_bibtex_lookup=lambda publication: stored[publication.doi],
-            bibtex_lookup=lambda doi: current[doi],
+            stored_bibtex_lookup=lambda publication: "old bibtex\n",
+            bibtex_lookup=lambda doi: "new bibtex\n",
             types=("journal-article",),
             when_missing_any=("volume", "issue", "pages"),
         )
-        self.assertEqual(result.candidates, ("10.1/missing", "10.1/changed"))
-        self.assertEqual(tuple(item.reason for item in result.items), ("missing BibTeX", "changed BibTeX"))
-        self.assertEqual(tuple(item.publication.permalink for item in result.items), ("stable-one", "stable-two"))
-        self.assertEqual(tuple(item.publication.volume for item in result.items), ("12", "12"))
-        self.assertEqual(provider.calls, ["10.1/missing", "10.1/changed"])
+
+        self.assertEqual(result.candidates, ("10.1/changed",))
+        self.assertEqual(
+            tuple((proposal.field, proposal.proposed_value) for proposal in result.proposals),
+            (
+                ("volume", "12"),
+                ("issue", "3"),
+                ("pages", "10-20"),
+            ),
+        )
+        collateral = {item.field: item for item in result.collateral}
+        self.assertEqual(collateral["title"].current_value, "Reviewed title")
+        self.assertEqual(collateral["title"].proposed_value, "Provider title")
+        self.assertEqual(
+            collateral["authors"].current_value,
+            ("Reviewed Author",),
+        )
+        self.assertEqual(
+            collateral["authors"].proposed_value,
+            ("Ada Lovelace",),
+        )
+        self.assertEqual(
+            collateral["container_title"].current_value,
+            "Reviewed Journal",
+        )
+        self.assertEqual(provider.calls, ["10.1/changed"])
+
+    def test_existing_nonempty_configured_field_is_never_a_safe_proposal(self):
+        item = publication(
+            "10.1/existing",
+            volume="1",
+            issue="",
+            pages="",
+        )
+        provider = FakeProvider({"10.1/existing": message()})
+
+        result = refresh(
+            [item],
+            provider=provider,
+            stored_bibtex_lookup=lambda publication: "old\n",
+            bibtex_lookup=lambda doi: "new\n",
+            types=("journal-article",),
+            when_missing_any=("volume", "issue", "pages"),
+        )
+
+        self.assertNotIn("volume", {proposal.field for proposal in result.proposals})
+        collateral = {item.field: item for item in result.collateral}
+        self.assertEqual(collateral["volume"].current_value, "1")
+        self.assertEqual(collateral["volume"].proposed_value, "12")
+
+    def test_formatting_only_differences_are_not_reported_as_collateral(self):
+        item = publication(
+            "10.1/formatting",
+            pages="10--20",
+            issue="",
+        )
+        provider_message = message(title="Reviewed title")
+        provider_message["author"] = [{"name": "Reviewed Author"}]
+        provider_message["container-title"] = ["Reviewed Journal"]
+        provider_message["published-print"] = {"date-parts": [[2025]]}
+        provider_message["page"] = "10-20"
+
+        result = refresh(
+            [item],
+            provider=FakeProvider({"10.1/formatting": provider_message}),
+            stored_bibtex_lookup=lambda publication: "old\n",
+            bibtex_lookup=lambda doi: "new\n",
+            types=("journal-article",),
+            when_missing_any=("issue",),
+        )
+
+        self.assertNotIn("pages", {item.field for item in result.collateral})
 
     def test_empty_current_bibtex_keeps_existing_state(self):
         item = publication("10.1/empty-current")
@@ -130,8 +195,12 @@ class RefreshTests(unittest.TestCase):
         result = refresh(
             [item],
             provider=provider,
-            stored_bibtex_lookup=lambda publication: self.fail("stored BibTeX should not be read"),
-            bibtex_lookup=lambda doi: self.fail("remote BibTeX should not be read"),
+            stored_bibtex_lookup=lambda publication: self.fail(
+                "stored BibTeX should not be read"
+            ),
+            bibtex_lookup=lambda doi: self.fail(
+                "remote BibTeX should not be read"
+            ),
             types=(),
             when_missing_any=(),
         )
