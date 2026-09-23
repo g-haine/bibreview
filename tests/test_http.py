@@ -170,7 +170,7 @@ class HttpTransportTests(unittest.TestCase):
         base.json.return_value = {}
         stream = io.StringIO()
         base.reporter = Reporter(2, stream)
-        clock_values = iter((10.0, 10.4, 11.5))
+        clock_values = iter((10.0, 10.4, 11.5, 13.2))
         sleeps = []
 
         transport = RateLimitedTransport(
@@ -188,6 +188,10 @@ class HttpTransportTests(unittest.TestCase):
             "https://api.example.test/two",
             context="Semantic Scholar abstract for DOI 10.1/two",
         )
+        transport.json(
+            "https://api.example.test/three",
+            context="Semantic Scholar abstract for DOI 10.1/three",
+        )
 
         output = stream.getvalue()
         self.assertIn(
@@ -198,6 +202,11 @@ class HttpTransportTests(unittest.TestCase):
         self.assertIn(
             "Semantic Scholar abstract for DOI 10.1/two: rate limit waited 1.100s; "
             "request slot after 1.500s (minimum interval 1.500s)",
+            output,
+        )
+        self.assertIn(
+            "Semantic Scholar abstract for DOI 10.1/three: rate limit request slot "
+            "after 1.700s (minimum interval 1.500s; no wait)",
             output,
         )
         self.assertEqual(len(sleeps), 1)
