@@ -45,6 +45,7 @@ providers:
   semantic_scholar:
     enabled: true
     api_key_env: SEMANTIC_KEY
+    min_interval_seconds: 1.1
   mendeley:
     enabled: true
     client_id_env: MENDELEY_CLIENT_ID
@@ -85,6 +86,10 @@ class ProviderDiagnosticTests(unittest.TestCase):
         self.assertEqual(by_name["ieee"].status, "missing-credential")
         self.assertEqual(by_name["semantic_scholar"].credential_source, "dotenv")
         self.assertEqual(
+            by_name["semantic_scholar"].min_interval_seconds,
+            1.1,
+        )
+        self.assertEqual(
             by_name["mendeley"].credential_source,
             "client_id_env=dotenv, client_secret_env=dotenv",
         )
@@ -100,6 +105,7 @@ class ProviderDiagnosticTests(unittest.TestCase):
             self.assertNotIn(secret, report)
         self.assertIn("OPENALEX_KEY", report)
         self.assertIn("missing-credential", report)
+        self.assertIn("1.1s", report)
 
     def test_process_environment_overrides_dotenv_source(self):
         diagnostics = diagnose_providers(
