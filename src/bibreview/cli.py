@@ -21,6 +21,7 @@ from .audit_resolution import (
 from .campaign import campaign_progress
 from .config import ConfigError, load_config
 from .pipeline.authors import author_mapping_plan_data, format_author_mapping_plan
+from .pipeline.backfill import BACKFILL_FIELDS
 from .provider_diagnostics import diagnose_providers, format_provider_diagnostics
 from .pipeline.merge import MergeError
 from .project import (
@@ -35,6 +36,7 @@ from .project import (
     plan_project_merge,
 )
 from .project_arxiv import apply_project_arxiv, plan_project_arxiv
+from .project_backfill import apply_project_backfill, plan_project_backfill
 from .project_audit import (
     apply_project_audit_plan,
     execute_project_audit_batch,
@@ -146,6 +148,25 @@ def _parser() -> argparse.ArgumentParser:
     )
     commands.add_parser("discover", help="Discover and screen new DOI candidates")
     commands.add_parser("collect", help="Collect pending DOI metadata into canonical staging state")
+    backfill = commands.add_parser(
+        "backfill",
+        help="Fill selected missing canonical fields without replacing reviewed metadata",
+    )
+    backfill.add_argument(
+        "--field",
+        dest="backfill_fields",
+        action="append",
+        choices=sorted(BACKFILL_FIELDS),
+        required=True,
+        help="Missing canonical field to fill; repeat for multiple fields",
+    )
+    backfill.add_argument(
+        "--type",
+        dest="backfill_types",
+        action="append",
+        default=[],
+        help="Restrict to one publication type; repeat for multiple types",
+    )
     commands.add_parser("refresh", help="Recollect stale existing publications into canonical staging state")
     authors = commands.add_parser("authors", help="Inspect author identities and optionally apply safe mappings")
     authors.add_argument(
@@ -567,6 +588,33 @@ def main(argv: list[str] | None = None) -> int:
             print(plan.summary())
             if not plan.changed:
                 print("No pending DOI state changes.")
+        return 0
+
+    if args.command == "backfill":
+        reporter = Reporter(-1 if args.quiet else args.verbose)
+        try:
+            services = build_collection_services(config, reporter=reporter)
+            plan = plan_project_backfill(
+                config,
+                provider=services.provider,
+                fields=tuple(args.backfill_fields),
+                types=tuple(args.backfill_types),
+                enrichment_lookup=services.enrichment_lookup,
+                reporter=reporter,
+            )
+            if not args.dry_run:
+                apply_project_backfill(plan)
+        except (OSError, StorageError, ProjectStateError, ValueError, TypeError) as error:
+            print(f"bibreview backfill: {error}", file=sys.stderr)
+            return 1
+
+        if not args.quiet:
+            prefix = "Dry run: " if args.dry_run else ""
+            print(prefix + plan.summary())
+            if plan.changed:
+                print(f"Staging: {config.paths.collected}")
+            else:
+                print("No missing-field backfill changes.")
         return 0
 
     if args.command == "refresh":
