@@ -2,6 +2,52 @@
 
 All notable BibReview releases are documented here.
 
+## 1.6.5 — 2026-09-23
+
+### Human-reviewed missing-field backfill
+
+- add `bibreview backfill --field FIELD` to propose values only for selected
+  canonical scalar fields that are currently empty;
+- keep proposal generation outside `collected.json` and canonical bibliography
+  state, with versioned local proposal state beside the audit files;
+- add `bibreview backfill --resolve` with the same resumable accept/reject/custom/
+  defer/quit interaction model used by audit resolution;
+- fingerprint human decisions against the exact proposal set so stale decisions
+  cannot be silently reused after proposals change;
+- add `bibreview backfill --apply` to stage only accepted/custom decisions after
+  every proposal has a final decision;
+- revalidate canonical state at apply time and refuse to overwrite a field that
+  has become non-empty since proposal generation;
+- keep `bibreview merge` as the only canonical promotion boundary;
+- do not rewrite tracked BibTeX during missing-field backfill.
+
+### Backfill safety and scope
+
+- never propose replacement values for non-empty canonical fields;
+- allow repeated `--field` and optional repeated `--type` selectors during
+  proposal generation;
+- refuse proposal generation or application when normal `collected.json`
+  staging is already occupied;
+- preserve publication UUIDs, DOI identity, permalink, authors, title, and every
+  other reviewed field unless that exact empty field receives an accepted/custom
+  human decision;
+- show full proposal text wrapped for interactive review, including abstracts.
+
+### Documentation
+
+- document proposal, resolution, application, stale-state protection, and the
+  normal staging/merge boundary in README, command reference, workflow, data
+  model, and correction guidance;
+- clarify that persistent audit history may append newly added canonical UUIDs
+  while preserving historical batch membership.
+
+### Validation
+
+- add regression coverage for proposal-only generation, protection of non-empty
+  fields, resumable/fingerprinted decisions, accepted/rejected application,
+  incomplete-resolution blocking, stale canonical protection, and interactive
+  CLI resolution/application.
+
 ## 1.6.4 — 2026-09-23
 
 ### OpenAlex abstract enrichment
