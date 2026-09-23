@@ -84,6 +84,47 @@ class AbstractHygieneTests(unittest.TestCase):
         self.assertEqual(finding.normalization_hint, "script-markup-review")
         self.assertIn("<inf>", finding.context)
 
+    def test_tex_math_latex_for_every_inline_formula_is_deterministic(self) -> None:
+        abstract = (
+            'The operator <inline-formula>'
+            '<tex-math notation="LaTeX">$g$</tex-math>'
+            '</inline-formula> satisfies <inline-formula>'
+            '<tex-math notation="LaTeX">$g^{2}=-1$</tex-math>'
+            '</inline-formula>.'
+        )
+        finding = scan_abstract_hygiene((publication(abstract),)).findings[0]
+
+        self.assertEqual(
+            finding.families,
+            ("inline-formula", "tex-math", "html-xml-markup"),
+        )
+        self.assertTrue(finding.deterministic_candidate)
+        self.assertEqual(finding.normalization_hint, "embedded-tex-math")
+
+    def test_partial_tex_math_inline_formula_coverage_requires_review(self) -> None:
+        abstract = (
+            '<inline-formula><tex-math notation="LaTeX">$g$</tex-math>'
+            '</inline-formula>'
+            '<inline-formula><italic>h</italic></inline-formula>'
+        )
+        finding = scan_abstract_hygiene((publication(abstract),)).findings[0]
+
+        self.assertFalse(finding.deterministic_candidate)
+        self.assertEqual(finding.normalization_hint, "review-required")
+
+    def test_partial_mathml_tex_annotation_coverage_requires_review(self) -> None:
+        abstract = (
+            '<inline-formula><mml:math>'
+            '<mml:annotation encoding="application/x-tex">V</mml:annotation>'
+            '</mml:math></inline-formula>'
+            '<inline-formula><mml:math><mml:mi>W</mml:mi></mml:math>'
+            '</inline-formula>'
+        )
+        finding = scan_abstract_hygiene((publication(abstract),)).findings[0]
+
+        self.assertFalse(finding.deterministic_candidate)
+        self.assertEqual(finding.normalization_hint, "review-required")
+
     def test_mathml_without_tex_annotation_requires_review(self) -> None:
         abstract = (
             '<inline-formula><mml:math xmlns:mml="urn:test">'

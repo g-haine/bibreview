@@ -11,7 +11,7 @@ feed.
 BibReview is designed so that provider output remains inspectable and ambiguous
 decisions remain human decisions.
 
-Current stable release: **v1.6.17**.
+Current stable release: **v1.6.18**.
 
 ## What BibReview provides
 
@@ -42,7 +42,7 @@ BibReview currently requires **Python 3.12 or newer**.
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.17"
+python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.18"
 
 bibreview --version
 ~~~
@@ -138,10 +138,12 @@ bibreview hygiene --json
 The compact view reports counts by contamination family. Verbose output adds
 the affected DOI/title, a short context excerpt and a normalization hint; JSON
 contains the complete inventory. A deterministic-candidate label means only
-that the observed markup has an apparently lossless cleanup path (for example,
-an embedded `application/x-tex` annotation). Embedded graphics such as JATS
-`inline-graphic` are instead review-required because removing the tag could
-discard mathematical content. Subscript/superscript markup such as IEEE
+that the observed markup has an apparently lossless cleanup path. For inline
+formulas, BibReview accepts explicit `application/x-tex` annotations or
+`<tex-math notation="LaTeX">…</tex-math>` payloads only when **every**
+`inline-formula` has a non-empty representation. Embedded graphics such as
+JATS `inline-graphic` are instead review-required because removing the tag
+could discard mathematical content. Subscript/superscript markup such as IEEE
 `<inf>` and ordinary `<sub>` / `<sup>` is also review-required because plain
 unwrapping would lose mathematical position semantics. **Phase 1 never rewrites
 canonical metadata.**

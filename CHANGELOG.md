@@ -2,6 +2,38 @@
 
 All notable BibReview releases are documented here.
 
+## 1.6.18 — 2026-09-23
+
+### Complete inline TeX hygiene coverage
+
+- recognize IEEE-style `<tex-math notation="LaTeX">…</tex-math>` payloads as
+  explicit formula representations in the Phase 1 hygiene inventory;
+- require every `inline-formula` in an abstract to carry a non-empty trusted
+  textual representation before calling the abstract an apparent deterministic
+  candidate;
+- apply the same complete-coverage rule to MathML
+  `application/x-tex` annotations, preventing a single annotated formula from
+  masking another formula without trustworthy text;
+- keep partial formula coverage review-required and preserve the Phase 1
+  read-only boundary.
+
+### PHRAISE inventory refinement
+
+- keep 2,346 canonical publications, 2,326 abstracts present, and 21 suspicious
+  abstracts;
+- classify the three IEEE `tex-math` abstracts as apparent deterministic
+  candidates after verifying complete explicit LaTeX coverage;
+- refine the inventory to **18 apparent deterministic candidates** and
+  **3 review-required cases**;
+- leave the three qualitatively distinct review cases explicit: one embedded
+  graphic, one script-markup record, and one escaped-markup record.
+
+### Validation
+
+- add regression coverage for complete IEEE-style TeX payloads, partial
+  `tex-math` coverage, and partial MathML annotation coverage;
+- validate the release with 467 passing tests.
+
 ## 1.6.17 — 2026-09-23
 
 ### Semantic script-markup hygiene detection
