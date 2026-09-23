@@ -113,7 +113,7 @@ def _page_header(title: str, permalink: str) -> str:
     )
 
 
-_LIQUID_OPENER_RE = re.compile(r"\\{(?:\\{|%)")
+_LIQUID_OPENER_RE = re.compile(r"\{(?:\{|%)")
 
 
 def _escape_liquid_openers(value: str) -> str:
