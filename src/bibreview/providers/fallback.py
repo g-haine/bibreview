@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Protocol
 
 from ..reporting import Reporter
-from ..text import clean_metadata
+from ..text import clean_abstract
 from .http import HttpError
 
 
@@ -26,7 +26,7 @@ class AbstractFallback:
         mendeley: AbstractProvider | None = None,
         openalex: AbstractProvider | None = None,
         reporter: Reporter | None = None,
-        unavailable_text: str = "Not available",
+        unavailable_text: str = "",
     ) -> None:
         self.semantic_scholar = semantic_scholar
         self.mendeley = mendeley
@@ -54,8 +54,9 @@ class AbstractFallback:
                     "still be tried."
                 )
             else:
-                if value.strip():
-                    candidates.append(clean_metadata(value, abstract=True))
+                cleaned = clean_abstract(value)
+                if cleaned:
+                    candidates.append(cleaned)
 
         if self.openalex is not None and not self._openalex_limited:
             try:
@@ -70,8 +71,9 @@ class AbstractFallback:
                     "still be tried."
                 )
             else:
-                if value.strip():
-                    candidates.append(clean_metadata(value, abstract=True))
+                cleaned = clean_abstract(value)
+                if cleaned:
+                    candidates.append(cleaned)
 
         if self.mendeley is not None and not self._mendeley_unauthorized:
             try:
@@ -85,8 +87,13 @@ class AbstractFallback:
                     "rest of this run. Check the configured Mendeley token before a future run."
                 )
             else:
-                if value.strip():
-                    candidates.append(clean_metadata(value, abstract=True))
+                cleaned = clean_abstract(value)
+                if cleaned:
+                    candidates.append(cleaned)
 
         candidates = [value for value in candidates if value]
-        return max(candidates, key=len, default=self.unavailable_text)
+        return max(
+            candidates,
+            key=len,
+            default=clean_abstract(self.unavailable_text),
+        )
