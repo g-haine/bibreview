@@ -13,6 +13,7 @@ from .model import Publication
 _FAMILY_ORDER = (
     "legacy-renderer-marker",
     "inline-formula",
+    "tex-math",
     "embedded-graphic",
     "script-markup",
     "mathml",
@@ -35,6 +36,22 @@ _INLINE_FORMULA_RE = re.compile(
     r"<\s*/?\s*(?:jats:)?inline-formula\b",
     re.IGNORECASE,
 )
+_INLINE_FORMULA_BLOCK_RE = re.compile(
+    r"<\s*(?:jats:)?inline-formula\b[^>]*>(?P<body>.*?)"
+    r"<\s*/\s*(?:jats:)?inline-formula\s*>",
+    re.IGNORECASE | re.DOTALL,
+)
+_TEX_MATH_RE = re.compile(
+    r"<\s*/?\s*(?:[A-Za-z][A-Za-z0-9_.-]*:)?tex-math\b",
+    re.IGNORECASE,
+)
+_LATEX_TEX_MATH_BLOCK_RE = re.compile(
+    r"<\s*(?:[A-Za-z][A-Za-z0-9_.-]*:)?tex-math\b"
+    r"(?=[^>]*\bnotation\s*=\s*[\"']latex[\"'])[^>]*>"
+    r"(?P<body>.*?)"
+    r"<\s*/\s*(?:[A-Za-z][A-Za-z0-9_.-]*:)?tex-math\s*>",
+    re.IGNORECASE | re.DOTALL,
+)
 _EMBEDDED_GRAPHIC_RE = re.compile(
     r"<\s*/?\s*(?:[A-Za-z][A-Za-z0-9_.-]*:)?"
     r"(?:inline-graphic|graphic|img|image)\b",
@@ -53,9 +70,11 @@ _JATS_RE = re.compile(
     re.IGNORECASE,
 )
 _TEX_ANNOTATION_RE = re.compile(
-    r"<\s*(?:mml:)?annotation\b[^>]*"
-    r"encoding\s*=\s*([\"'])application/x-tex\1",
-    re.IGNORECASE,
+    r"<\s*(?:mml:)?annotation\b"
+    r"(?=[^>]*\bencoding\s*=\s*[\"']application/x-tex[\"'])[^>]*>"
+    r"(?P<body>.*?)"
+    r"<\s*/\s*(?:mml:)?annotation\s*>",
+    re.IGNORECASE | re.DOTALL,
 )
 _XML_COMMENT_RE = re.compile(r"<!--")
 _ESCAPED_MARKUP_RE = re.compile(
@@ -193,12 +212,32 @@ def _structured_tags_unbalanced(value: str) -> bool:
     return saw_tag and bool(stack)
 
 
+def _all_inline_formulas_have_representation(
+    value: str,
+    representation_re: re.Pattern[str],
+) -> bool:
+    """Return whether every inline formula carries a non-empty representation."""
+    formulas = tuple(_INLINE_FORMULA_BLOCK_RE.finditer(value))
+    if not formulas:
+        return False
+
+    for formula in formulas:
+        representations = tuple(representation_re.finditer(formula.group("body")))
+        if not representations:
+            return False
+        if not any(match.group("body").strip() for match in representations):
+            return False
+    return True
+
+
 def _families(value: str) -> tuple[str, ...]:
     detected: set[str] = set()
     if _LEGACY_MARKER_RE.search(value):
         detected.add("legacy-renderer-marker")
     if _INLINE_FORMULA_RE.search(value):
         detected.add("inline-formula")
+    if _TEX_MATH_RE.search(value):
+        detected.add("tex-math")
     if _EMBEDDED_GRAPHIC_RE.search(value):
         detected.add("embedded-graphic")
     if _SCRIPT_MARKUP_RE.search(value):
@@ -230,7 +269,12 @@ def _normalization_assessment(
     if "script-markup" in family_set:
         return False, "script-markup-review"
     if {"inline-formula", "mathml"} & family_set:
-        if _TEX_ANNOTATION_RE.search(value):
+        if _all_inline_formulas_have_representation(
+            value,
+            _LATEX_TEX_MATH_BLOCK_RE,
+        ):
+            return True, "embedded-tex-math"
+        if _all_inline_formulas_have_representation(value, _TEX_ANNOTATION_RE):
             return True, "embedded-tex-annotation"
         return False, "review-required"
     if "escaped-markup" in family_set:
@@ -251,6 +295,7 @@ def _context(value: str) -> str:
     for pattern in (
         _LEGACY_MARKER_RE,
         _INLINE_FORMULA_RE,
+        _TEX_MATH_RE,
         _EMBEDDED_GRAPHIC_RE,
         _SCRIPT_MARKUP_RE,
         _MATHML_RE,
