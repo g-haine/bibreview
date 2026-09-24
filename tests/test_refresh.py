@@ -206,6 +206,33 @@ class RefreshTests(unittest.TestCase):
         self.assertEqual(proposal.evidence[0].reason, "script-markup")
 
 
+
+    def test_unsafe_custom_enrichment_is_retained_as_refresh_evidence(self):
+        item = publication("10.1/custom-unsafe")
+        provider_message = message(title="Reviewed title")
+
+        result = refresh(
+            [item],
+            provider=FakeProvider({
+                "10.1/custom-unsafe": provider_message
+            }),
+            stored_bibtex_lookup=lambda publication: "old\n",
+            bibtex_lookup=lambda doi: "new\n",
+            types=("journal-article",),
+            when_missing_any=("abstract",),
+            enrichment_lookup=lambda doi, work: Enrichment(
+                abstract="(u<inf>0</inf>)<sup>T</sup>",
+                abstract_source="custom_provider",
+            ),
+        )
+
+        proposal = result.proposals[0]
+        self.assertTrue(proposal.review_required)
+        self.assertEqual(len(proposal.evidence), 1)
+        self.assertEqual(proposal.evidence[0].source, "custom_provider")
+        self.assertEqual(proposal.evidence[0].reason, "script-markup")
+
+
     def test_existing_nonempty_configured_field_is_never_a_safe_proposal(self):
         item = publication(
             "10.1/existing",
