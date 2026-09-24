@@ -2,6 +2,64 @@
 
 All notable BibReview releases are documented here.
 
+## 1.6.29 — 2026-09-24
+
+### Two-round reference citation reconstruction
+
+- extend issue #102 with the missing DOI citation round in
+  `bibreview references`;
+- keep Round 1 unchanged as the source of parent reference count, order,
+  identifiers, and fallback citation evidence;
+- collect every cited DOI across the complete campaign batch, de-duplicate the
+  DOI set, and retrieve cited-work CrossRef metadata through the existing exact
+  multi-DOI batch endpoint;
+- use Round-2 metadata **only** to render a citation string and reinject that
+  string into every matching Round-1 slot;
+- never create, persist, or merge a Round-2 BibReview publication/reference
+  notice.
+
+### Local CSL citation rendering
+
+- add `citeproc-py>=0.10,<0.12` as the local CSL engine;
+- bundle only the exact historical BibReview style
+  `springer-basic-author-date-no-et-al-with-issue`, with its upstream
+  provenance and CC BY-SA 3.0 notice, instead of depending on the ~40 MB
+  all-styles package;
+- convert transient CrossRef work metadata to CSL JSON and render plain-text
+  Springer bibliography entries locally;
+- load the CSL style once per cited-DOI batch and isolate per-DOI formatting
+  failures;
+- keep CrossRef metadata transient: only final citation strings enter proposed
+  reference lists.
+
+### Resilience and observability
+
+- leave Round-1 citation evidence untouched when cited-DOI metadata is absent
+  or local rendering produces no citation;
+- make parents retryable when the cited-DOI CrossRef batch itself fails
+  transiently;
+- run the conservative T2 citation sanitizer after Round-2 reinjection;
+- report the number of unique cited DOI values, successfully formatted
+  citations, and unavailable citations for every campaign batch;
+- normalize DOI page ranges through CSL typography and avoid literal `None`
+  values from nullable CrossRef fields.
+
+### PHRAISE motivation
+
+The v1.6.28 PHRAISE pilot of 100 parent publications improved the first
+reference-refresh attempt but still produced only 6 safe updates and 1
+unchanged result, with 86 review-required and 7 unavailable. This confirmed that
+canonical DOI references needed the same styled citation construction used by
+historical collection, not merely parent-payload citation text or canonical
+fallback.
+
+### Validation
+
+- cover CrossRef-to-CSL conversion, bundled Springer rendering, null-safe
+  metadata, per-DOI error isolation, duplicate cited DOI de-duplication,
+  citation-only reinjection, and second-round campaign metrics;
+- validate with **607 passing tests**, compilation included.
+
 ## 1.6.28 — 2026-09-24
 
 ### Reference refresh reconstruction refinement
