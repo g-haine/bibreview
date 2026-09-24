@@ -343,7 +343,11 @@ def _build_core_services(
         crossref=crossref,
         doi=doi,
         openalex=openalex,
-        enrichment=EnrichmentService(\n            publisher=publisher,\n            fallback=fallback,\n            reporter=reporter,\n        ),
+        enrichment=EnrichmentService(
+            publisher=publisher,
+            fallback=fallback,
+            reporter=reporter,
+        ),
     )
 
 
