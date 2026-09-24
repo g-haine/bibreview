@@ -37,7 +37,7 @@ All notable BibReview releases are documented here.
   draft-only prompt regression during review;
 - validate direct CrossRef, publisher, optional fallback, batched backfill,
   serialization, interactive resolution, and custom staging behavior with
-  **500 passing tests**, compilation included.
+  **501 passing tests**, compilation included.
 
 ## 1.6.20 — 2026-09-24
 
