@@ -39,7 +39,7 @@ class ElsevierProvider:
         ]
         terms = re.split(r"[|;,]", str(core.get("authkeywords") or ""))
         return Enrichment(
-            abstract=plain_text(core.get("dc:description")),
+            abstract=str(core.get("dc:description") or ""),
             keywords=normalized_keywords([*subjects, *terms]),
             event=plain_text(core.get("prism:issueName")),
         )
