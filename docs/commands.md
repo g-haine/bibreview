@@ -326,8 +326,18 @@ changed reference indices, refusal reasons where applicable, and the proposed
 reference list. Unchanged entries keep fingerprints/counts but deliberately omit
 a duplicate copy of the full list.
 
-**v1.6.29 is an observation release.** Inspect the PHRAISE campaign/report before
-designing the resolver and application boundary in a later v1.6.x release.
+v1.6.29 uses reference report **schema v2**. A v1.6.28 schema-v1
+campaign/report cannot be resumed under the new two-round semantics. Archive
+both files together, then start a fresh campaign. For the default layout:
+
+~~~bash
+mv audit/references audit/references-v1.6.28
+bibreview references --batch-size 100
+~~~
+
+**v1.6.29 is an observation release.** Inspect the fresh PHRAISE
+campaign/report before designing the resolver and application boundary in a
+later v1.6.x release.
 
 ## audit
 
