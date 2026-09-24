@@ -339,6 +339,73 @@ def reconstruct_provider_references(
     )
 
 
+def reconstruction_dois(
+    reconstruction: ReferenceReconstruction,
+) -> tuple[str, ...]:
+    """Return unique DOI values in one reconstructed ordered reference list."""
+    return tuple(
+        dict.fromkeys(
+            doi
+            for candidate in reconstruction.candidates
+            for doi in (candidate.reference.identifiers.get("doi"),)
+            if doi
+        )
+    )
+
+
+def with_formatted_doi_citations(
+    reconstruction: ReferenceReconstruction,
+    citations: Mapping[str, str],
+) -> ReferenceReconstruction:
+    """Inject second-round DOI citation strings without altering structure.
+
+    Only the citation string is replaced. Reference count, ordering, and
+    identifiers remain exactly those reconstructed from the parent work.
+    Missing/empty second-round citations leave round-1 evidence untouched.
+    """
+    if not reconstruction.available:
+        return reconstruction
+
+    normalized_citations: dict[str, str] = {}
+    for raw_doi, value in citations.items():
+        if not isinstance(value, str) or not value.strip():
+            continue
+        normalized_citations[normalize_doi(raw_doi)] = value.strip()
+
+    candidates: list[ProviderReferenceCandidate] = []
+    for candidate in reconstruction.candidates:
+        doi = candidate.reference.identifiers.get("doi")
+        formatted = normalized_citations.get(doi or "")
+        if not formatted:
+            candidates.append(candidate)
+            continue
+
+        normalized = normalize_structured_citation(formatted)
+        citation = (
+            normalized.normalized
+            if normalized.deterministic
+            else formatted
+        )
+        candidates.append(
+            ProviderReferenceCandidate(
+                index=candidate.index,
+                reference=Reference(
+                    identifiers=candidate.reference.identifiers,
+                    citation=citation,
+                ),
+                raw_citation=formatted,
+                deterministic=normalized.deterministic,
+                reason=f"doi-citation:{normalized.reason}",
+            )
+        )
+
+    return ReferenceReconstruction(
+        available=True,
+        reason=reconstruction.reason,
+        candidates=tuple(candidates),
+    )
+
+
 def _with_canonical_doi_fallback(
     publication: Publication,
     reconstruction: ReferenceReconstruction,
