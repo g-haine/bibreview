@@ -1274,6 +1274,9 @@ def main(argv: list[str] | None = None) -> int:
             "retryable": execution.retryable_count,
             "failed": execution.failed_count,
             "classifications": dict(execution.classifications),
+            "cited_doi_count": execution.cited_doi_count,
+            "formatted_citation_count": execution.formatted_citation_count,
+            "unavailable_citation_count": execution.unavailable_citation_count,
             "progress": {
                 **progress.data(),
                 "exhausted": progress.exhausted,
