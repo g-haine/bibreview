@@ -140,6 +140,11 @@ The local renderer uses `citeproc-py` plus the single bundled
 its upstream provenance/license notice under `bibreview/data/styles/`; the
 full multi-style package is not required.
 
+Because v1.6.29 changes reference-report semantics materially, the references
+report schema is bumped to **v2**. A v1.6.28 pilot campaign/report is refused
+rather than silently mixed with two-round results; archive both files and start
+a fresh campaign.
+
 BibReview v1.6.28 refines the read-only `bibreview references` workflow after
 the first PHRAISE batch showed that parent CrossRef references often expose a
 DOI without citation text. When that DOI exactly matches the canonical DOI at
