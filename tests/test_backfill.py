@@ -14,6 +14,7 @@ from bibreview.config import load_config
 from bibreview.identity import new_publication_id
 from bibreview.model import Author, Publication
 from bibreview.pipeline.backfill import BackfillCandidate, backfill
+from bibreview.pipeline.enrich import EnrichmentService
 from bibreview.project import ProjectStateError
 from bibreview.project_backfill import (
     BackfillReview,
@@ -27,6 +28,8 @@ from bibreview.project_backfill_apply import (
     plan_project_backfill_apply,
 )
 from bibreview.providers.base import AbstractEvidence, Enrichment
+from bibreview.providers.fallback import AbstractFallback
+from bibreview.reporting import Reporter
 from bibreview.storage import read_bibliography, write_bibliography, write_json
 
 
@@ -220,6 +223,56 @@ class BackfillPipelineTests(unittest.TestCase):
         self.assertEqual(candidate.evidence[0].source, "crossref")
         self.assertEqual(candidate.evidence[0].reason, "embedded-graphic")
         self.assertIn("math-0002.png", candidate.evidence[0].value)
+
+
+    def test_batched_backfill_retains_refused_fallback_provider_abstract(self):
+        publication = self.publication()
+        provider = FakeBatchProvider({publication.doi: message()})
+
+        class UnsafeSemanticScholar:
+            BATCH_SIZE = 500
+
+            def abstracts(self, dois):
+                return {
+                    doi: (
+                        'A controller <jats:inline-graphic '
+                        'xlink:href="graphic/math-0002.png"/> is proposed.'
+                    )
+                    for doi in dois
+                }
+
+            def abstract(self, doi):
+                return (
+                    'A controller <jats:inline-graphic '
+                    'xlink:href="graphic/math-0002.png"/> is proposed.'
+                )
+
+        service = EnrichmentService(
+            fallback=AbstractFallback(
+                semantic_scholar=UnsafeSemanticScholar(),
+                reporter=Reporter(-1),
+            ),
+            reporter=Reporter(-1),
+        )
+
+        result = backfill(
+            [publication],
+            provider=provider,
+            batch_provider=provider,
+            fields=("abstract",),
+            enrichment_lookup=service.for_collection,
+            enrichment_many_lookup=service.for_collection_many,
+        )
+
+        self.assertEqual(result.no_value, ())
+        self.assertEqual(len(result.candidates), 1)
+        candidate = result.candidates[0]
+        self.assertTrue(candidate.review_required)
+        self.assertEqual(len(candidate.evidence), 1)
+        self.assertEqual(candidate.evidence[0].source, "semantic_scholar")
+        self.assertEqual(candidate.evidence[0].reason, "embedded-graphic")
+        self.assertIn("math-0002.png", candidate.evidence[0].value)
+
 
     def test_safe_backfill_proposal_keeps_refused_alternative_evidence(self):
         publication = self.publication()
