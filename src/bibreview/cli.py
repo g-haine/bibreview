@@ -488,7 +488,10 @@ def _run_backfill_resolution(config, args) -> int:
                 print(f"Invalid resolution: {error}")
                 continue
 
-            print("Please enter Y, n, f VALUE, s, or q.")
+            if review_required:
+                print("Please enter n, f VALUE, s, or q.")
+            else:
+                print("Please enter Y, n, f VALUE, s, or q.")
 
         if not args.dry_run:
             save_project_backfill_resolutions(config, state)
