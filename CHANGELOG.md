@@ -2,6 +2,46 @@
 
 All notable BibReview releases are documented here.
 
+## 1.6.20 — 2026-09-24
+
+### Provider abstract ingestion prevention
+
+- compose the structured abstract normalizer with ordinary abstract
+  label/placeholder cleanup through a non-destructive provider preparation path;
+- normalize only deterministic provider abstract payloads before canonical
+  collection, backfill, and refresh can consume them;
+- refuse unsafe structured payloads without flattening their tags into
+  misleading canonical text;
+- allow an unsafe publisher or CrossRef abstract to fall through to another
+  usable source rather than masking a safe fallback;
+- make optional abstract fallback providers skip refused structured candidates
+  with an explicit warning.
+
+### Provider boundary cleanup
+
+- preserve raw abstract markup in Elsevier, Springer, and IEEE enrichment
+  adapters until the central enrichment policy decides whether it is safe;
+- remove generic tag stripping from those abstract adapter fields while keeping
+  ordinary provider normalization for non-abstract metadata;
+- protect direct library-level collection from reintroducing refused structured
+  markup even when no runtime enrichment service is injected.
+
+### Discovery and scope
+
+- preserve refused provider abstract text only transiently for discovery
+  relevance matching, where no canonical metadata is written;
+- keep audit evidence normalization unchanged in this release;
+- perform no historical canonical migration and no automatic reconstruction of
+  embedded graphics or script markup.
+
+### Validation
+
+- add regression coverage for safe structured normalization, refusal without
+  mutation, CrossRef/publisher fallback precedence, optional fallback skipping,
+  direct collection prevention, raw publisher payload preservation, and
+  transient discovery relevance;
+- validate the release with **493 passing tests**, compilation included.
+
 ## 1.6.19 — 2026-09-23
 
 ### Conservative structured abstract normalization primitive
