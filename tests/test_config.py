@@ -230,6 +230,21 @@ class ConfigTests(unittest.TestCase):
         with self.assertRaisesRegex(ConfigError, "references.batch_size"):
             load_config(path)
 
+    def test_rejects_reference_state_path_overlapping_canonical_state(self):
+        overlap = BASE.replace(
+            "relevance:\n",
+            "references:\n"
+            "  campaign: data/bibliography.json\n"
+            "  report: data/references-report.json\n"
+            "relevance:\n",
+        )
+        _, path = self.write(overlap)
+        with self.assertRaisesRegex(
+            ConfigError,
+            "must not overlap canonical/project/audit state paths",
+        ):
+            load_config(path)
+
     def test_loads_provider_min_interval_seconds(self):
         _, path = self.write(BASE.replace(
             "    enabled: true\n",
