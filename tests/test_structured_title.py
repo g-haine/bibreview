@@ -249,6 +249,100 @@ class StructuredCitationNormalizationTests(unittest.TestCase):
         self.assertTrue(result.deterministic)
         self.assertEqual(result.normalized, r"\(n+m\)")
 
+    def test_all_phraise_mathml_expression_shapes_are_supported(self) -> None:
+        cases = (
+            (
+                "<mml:msub><mml:mrow><mml:mi>H</mml:mi></mml:mrow>"
+                "<mml:mrow><mml:mi>∞</mml:mi></mml:mrow></mml:msub>",
+                r"H_{\\infty}",
+            ),
+            (
+                "<mml:msub><mml:mrow><mml:mi>L</mml:mi></mml:mrow>"
+                "<mml:mrow><mml:mn>2</mml:mn></mml:mrow></mml:msub>",
+                r"L_{2}",
+            ),
+            (
+                "<mml:msub><mml:mi>H</mml:mi><mml:mi>∞</mml:mi></mml:msub>",
+                r"H_{\\infty}",
+            ),
+            (
+                "<mml:msub><mml:mrow><mml:mi>H</mml:mi></mml:mrow>"
+                "<mml:mrow><mml:mn>2</mml:mn></mml:mrow></mml:msub>",
+                r"H_{2}",
+            ),
+            (
+                "<mml:mrow><mml:msub><mml:mrow><mml:mi>H</mml:mi></mml:mrow>"
+                "<mml:mrow><mml:mi>∞</mml:mi></mml:mrow></mml:msub></mml:mrow>",
+                r"H_{\\infty}",
+            ),
+            (
+                "<mml:mrow><mml:msub><mml:mi>H</mml:mi>"
+                "<mml:mi>∞</mml:mi></mml:msub></mml:mrow>",
+                r"H_{\\infty}",
+            ),
+            (
+                "<mml:msub><mml:mrow><mml:mi>ℒ</mml:mi></mml:mrow>"
+                "<mml:mrow><mml:mn>2</mml:mn></mml:mrow></mml:msub>",
+                r"\\mathcal{L}_{2}",
+            ),
+            ("<mml:mi>N</mml:mi>", "N"),
+            (
+                "<mml:msub><mml:mrow><mml:mi>H</mml:mi></mml:mrow>"
+                "<mml:mrow><mml:mo>∞</mml:mo></mml:mrow></mml:msub>",
+                r"H_{\\infty}",
+            ),
+            (
+                "<mml:msub><mml:mrow><mml:mi>h</mml:mi></mml:mrow>"
+                "<mml:mrow><mml:mn>2</mml:mn></mml:mrow></mml:msub>",
+                r"h_{2}",
+            ),
+            ("<mml:mi>ϑ</mml:mi>", r"\\vartheta"),
+            (
+                "<mml:mrow><mml:mi>n</mml:mi><mml:mo>+</mml:mo>"
+                "<mml:mi>m</mml:mi></mml:mrow>",
+                "n+m",
+            ),
+            (
+                "<mml:msup><mml:mi>L</mml:mi><mml:mo>∞</mml:mo></mml:msup>",
+                r"L^{\\infty}",
+            ),
+            (
+                '<mml:msub><mml:mrow><mml:mi mathvariant="italic">RH</mml:mi>'
+                "</mml:mrow><mml:mrow><mml:mn>2</mml:mn></mml:mrow></mml:msub>",
+                r"RH_{2}",
+            ),
+            (
+                '<mml:msub><mml:mrow><mml:mi mathvariant="italic">RH</mml:mi>'
+                "</mml:mrow><mml:mrow><mml:mo>∞</mml:mo></mml:mrow></mml:msub>",
+                r"RH_{\\infty}",
+            ),
+        )
+
+        for body, expected in cases:
+            with self.subTest(expected=expected):
+                value = (
+                    '<mml:math xmlns:mml="http://www.w3.org/1998/Math/MathML">'
+                    + body
+                    + "</mml:math>"
+                )
+                result = normalize_structured_citation(value)
+                self.assertTrue(result.deterministic)
+                self.assertEqual(result.normalized, rf"\\({expected}\\)")
+
+    def test_formula_tex_wrapper_is_supported(self) -> None:
+        value = (
+            'Interpolation-based <formula formulatype="inline">'
+            '<tex Notation="TeX">\${\\cal H}_{2}$</tex></formula> model reduction'
+        )
+        result = normalize_structured_citation(value)
+
+        self.assertTrue(result.deterministic)
+        self.assertEqual(
+            result.normalized,
+            r"Interpolation-based \\({\\cal H}_{2}\\) model reduction",
+        )
+        self.assertEqual(result.reason, "embedded-tex")
+
     def test_unsupported_mathml_is_refused(self) -> None:
         value = (
             '<mml:math xmlns:mml="http://www.w3.org/1998/Math/MathML">'
