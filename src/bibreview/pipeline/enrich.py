@@ -10,7 +10,8 @@ from collections.abc import Mapping
 from typing import Any, Protocol
 
 from ..providers.base import Enrichment, EnrichmentProvider
-from ..text import clean_abstract, clean_metadata
+from ..reporting import Reporter
+from ..text import clean_metadata, normalize_provider_abstract
 
 
 class AbstractFallbackProvider(Protocol):
@@ -23,10 +24,38 @@ class AbstractFallbackProvider(Protocol):
         """Return fallback abstracts for multiple DOI values."""
 
 
-def crossref_enrichment(message: Mapping[str, Any]) -> Enrichment:
-    """Extract the enrichment fields already present in a CrossRef work message."""
-    raw_abstract = message.get("abstract")
-    abstract = clean_abstract(str(raw_abstract or ""))
+def _prepared_abstract(
+    value: str,
+    *,
+    reporter: Reporter | None = None,
+    context: str = "Provider abstract",
+) -> str:
+    """Return one safe provider abstract, warning when structured markup is refused."""
+    result = normalize_provider_abstract(value)
+    if result.deterministic:
+        return result.normalized
+    if reporter is not None:
+        reporter.warning(
+            f"{context} contains unsupported structured markup "
+            f"({result.reason}); ignoring this abstract candidate."
+        )
+    return ""
+
+
+def crossref_enrichment(
+    message: Mapping[str, Any],
+    *,
+    reporter: Reporter | None = None,
+    doi: str = "",
+) -> Enrichment:
+    """Extract safely normalized enrichment fields from a CrossRef work message."""
+    raw_abstract = str(message.get("abstract") or "")
+    context = f"CrossRef abstract for {doi}" if doi else "CrossRef abstract"
+    abstract = _prepared_abstract(
+        raw_abstract,
+        reporter=reporter,
+        context=context,
+    )
 
     raw_subjects = message.get("subject")
     keywords: list[str] = []
@@ -39,8 +68,17 @@ def crossref_enrichment(message: Mapping[str, Any]) -> Enrichment:
     return Enrichment(abstract=abstract, keywords=tuple(keywords))
 
 
-def _clean_enrichment(value: Enrichment) -> Enrichment:
-    abstract = clean_abstract(value.abstract)
+def _clean_enrichment(
+    value: Enrichment,
+    *,
+    reporter: Reporter | None = None,
+    context: str = "Provider abstract",
+) -> Enrichment:
+    abstract = _prepared_abstract(
+        value.abstract,
+        reporter=reporter,
+        context=context,
+    )
     keywords = tuple(
         cleaned
         for keyword in value.keywords
@@ -65,9 +103,11 @@ class EnrichmentService:
         *,
         publisher: EnrichmentProvider | None = None,
         fallback: AbstractFallbackProvider | None = None,
+        reporter: Reporter | None = None,
     ) -> None:
         self.publisher = publisher
         self.fallback = fallback
+        self.reporter = reporter or Reporter(-1)
 
     def for_collection(self, doi: str, message: Mapping[str, Any]) -> Enrichment:
         """Return enrichment for canonical collection of one publication."""
@@ -91,7 +131,11 @@ class EnrichmentService:
         fallback_dois: list[str] = []
 
         for doi, message in messages.items():
-            base = crossref_enrichment(message)
+            base = crossref_enrichment(
+                message,
+                reporter=self.reporter,
+                doi=doi,
+            )
             extra = (
                 self.publisher.enrich(doi)
                 if self.publisher is not None
@@ -101,6 +145,11 @@ class EnrichmentService:
                 raise TypeError(
                     "publisher enrichment provider must return Enrichment"
                 )
+            extra = _clean_enrichment(
+                extra,
+                reporter=self.reporter,
+                context=f"Publisher abstract for {doi}",
+            )
             prepared[doi] = (base, extra)
             if not (extra.abstract or base.abstract).strip():
                 fallback_dois.append(doi)
@@ -119,7 +168,9 @@ class EnrichmentService:
                     abstract=abstract,
                     keywords=extra.keywords or base.keywords,
                     event=extra.event,
-                )
+                ),
+                reporter=self.reporter,
+                context=f"Fallback abstract for {doi}",
             )
         return result
 
@@ -130,13 +181,24 @@ class EnrichmentService:
         *,
         discovery: bool,
     ) -> Enrichment:
-        base = crossref_enrichment(message)
+        base = crossref_enrichment(
+            message,
+            reporter=self.reporter,
+            doi=doi,
+        )
         extra = self.publisher.enrich(doi) if self.publisher is not None else Enrichment()
         if not isinstance(extra, Enrichment):
             raise TypeError("publisher enrichment provider must return Enrichment")
+        extra = _clean_enrichment(
+            extra,
+            reporter=self.reporter,
+            context=f"Publisher abstract for {doi}",
+        )
 
         if discovery:
-            abstract = base.abstract + extra.abstract
+            abstract = " ".join(
+                part for part in (base.abstract, extra.abstract) if part
+            )
             keywords = base.keywords + extra.keywords
         else:
             abstract = extra.abstract or base.abstract
@@ -150,5 +212,7 @@ class EnrichmentService:
                 abstract=abstract,
                 keywords=keywords,
                 event=extra.event,
-            )
+            ),
+            reporter=self.reporter,
+            context=f"Fallback abstract for {doi}",
         )
