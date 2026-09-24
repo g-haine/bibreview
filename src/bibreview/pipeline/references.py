@@ -361,6 +361,7 @@ def _result(
     reason: str,
     proposed: tuple[Reference, ...],
     changed_indices: tuple[int, ...],
+    persist_proposed: bool = True,
 ) -> ReferenceRefreshResult:
     refusals = tuple(
         (item.index, item.reason)
@@ -378,7 +379,7 @@ def _result(
         changed_indices=changed_indices,
         current_fingerprint=references_fingerprint(publication.references),
         proposed_fingerprint=references_fingerprint(proposed),
-        proposed_references=proposed,
+        proposed_references=proposed if persist_proposed else (),
         provider_refusals=refusals,
     )
 
@@ -409,6 +410,7 @@ def compare_reference_reconstruction(
             reason=reconstruction.reason,
             proposed=(),
             changed_indices=(),
+            persist_proposed=False,
         )
 
     changed = _changed_indices(current, proposed)
@@ -420,6 +422,7 @@ def compare_reference_reconstruction(
             reason="provider-reference-list-unchanged",
             proposed=proposed,
             changed_indices=(),
+            persist_proposed=False,
         )
 
     if len(current) != len(proposed):
