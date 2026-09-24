@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import io
 import unittest
 
 from bibreview.pipeline.collect import collect
 from bibreview.pipeline.enrich import EnrichmentService, crossref_enrichment
 from bibreview.providers.base import Enrichment
+from bibreview.reporting import Reporter
 
 
 class StubPublisher:
@@ -60,7 +62,7 @@ class EnrichmentServiceTests(unittest.TestCase):
     def test_collection_prefers_non_empty_publisher_fields(self) -> None:
         publisher = StubPublisher(
             Enrichment(
-                abstract="Publisher abstract",
+                abstract="<p>Publisher abstract</p>",
                 keywords=("publisher",),
                 event="Conference",
             )
@@ -156,6 +158,53 @@ class EnrichmentServiceTests(unittest.TestCase):
             publisher.calls,
             ["10.1/one", "10.1/two", "10.1/three"],
         )
+
+
+    def test_collection_uses_fallback_when_crossref_markup_is_unsafe(self) -> None:
+        stream = io.StringIO()
+        fallback = StubFallback("Fallback abstract")
+        service = EnrichmentService(
+            fallback=fallback,
+            reporter=Reporter(0, stream),
+        )
+
+        result = service.for_collection(
+            "10.1/test",
+            {
+                "abstract": (
+                    'A controller <jats:inline-graphic '
+                    'xlink:href="graphic/math-0002.png"/> is proposed.'
+                )
+            },
+        )
+
+        self.assertEqual(result.abstract, "Fallback abstract")
+        self.assertEqual(fallback.calls, ["10.1/test"])
+        self.assertIn("CrossRef abstract for 10.1/test", stream.getvalue())
+        self.assertIn("embedded-graphic", stream.getvalue())
+
+    def test_collection_keeps_crossref_when_publisher_markup_is_unsafe(self) -> None:
+        stream = io.StringIO()
+        publisher = StubPublisher(
+            Enrichment(
+                abstract="(u<inf>0</inf>)<sup>T</sup>",
+                keywords=("publisher",),
+            )
+        )
+        service = EnrichmentService(
+            publisher=publisher,
+            reporter=Reporter(0, stream),
+        )
+
+        result = service.for_collection(
+            "10.1/test",
+            {"abstract": "<p>CrossRef text</p>"},
+        )
+
+        self.assertEqual(result.abstract, "CrossRef text")
+        self.assertEqual(result.keywords, ("publisher",))
+        self.assertIn("Publisher abstract for 10.1/test", stream.getvalue())
+        self.assertIn("script-markup", stream.getvalue())
 
     def test_no_fallback_provider_leaves_abstract_empty(self) -> None:
         service = EnrichmentService()
