@@ -6,12 +6,15 @@ from pathlib import Path
 import json
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from bibreview.cli import main
 from bibreview.config import load_config
+from bibreview.hygiene_resolution import load_project_hygiene_resolutions
 from bibreview.identity import new_publication_id
 from bibreview.model import Author, Publication
-from bibreview.storage import write_bibliography
+from bibreview.project_hygiene import project_hygiene_migration_review
+from bibreview.storage import read_bibliography, write_bibliography
 
 
 CONFIG = """\
@@ -102,6 +105,73 @@ class HygieneCliTests(unittest.TestCase):
         self.assertEqual(
             payload["findings"][0]["normalization_hint"],
             "embedded-tex-annotation",
+        )
+
+    def test_hygiene_review_derives_proposals_without_writing_state(self) -> None:
+        before = self.snapshot()
+
+        code, stdout, stderr = self.run_cli("hygiene", "--review")
+
+        self.assertEqual(code, 0, stderr)
+        self.assertIn("Suspicious abstracts     : 1", stdout)
+        self.assertIn("Deterministic proposals  : 1", stdout)
+        self.assertIn("Review required          : 0", stdout)
+        self.assertEqual(before, self.snapshot())
+
+    def test_resolve_then_apply_stages_accepted_normalization(self) -> None:
+        canonical_before = self.config.paths.bibliography.read_bytes()
+
+        with patch("builtins.input", side_effect=[""]):
+            code, stdout, stderr = self.run_cli("hygiene", "--resolve")
+
+        self.assertEqual(code, 0, stderr)
+        self.assertIn("Accepted   : 1", stdout)
+
+        code, stdout, stderr = self.run_cli("hygiene", "--apply")
+
+        self.assertEqual(code, 0, stderr)
+        self.assertIn("Changes to stage      : 1", stdout)
+        self.assertEqual(
+            self.config.paths.bibliography.read_bytes(),
+            canonical_before,
+        )
+        staged = read_bibliography(self.config.paths.collected)
+        self.assertEqual(len(staged), 1)
+        self.assertEqual(staged[0].doi, "10.1/markup")
+        self.assertEqual(staged[0].abstract, r"Text \(V\).")
+
+    def test_review_required_resolver_requires_custom_or_reject(self) -> None:
+        unsafe = Publication(
+            id=new_publication_id(),
+            identifiers={"doi": "10.1/unsafe"},
+            title="Unsafe",
+            authors=(Author(literal="Grace Hopper"),),
+            abstract=(
+                'A controller <jats:inline-graphic '
+                'xlink:href="graphic/math-0002.png"/> is proposed.'
+            ),
+        )
+        write_bibliography(
+            self.config.paths.bibliography,
+            (unsafe,),
+        )
+
+        with patch(
+            "builtins.input",
+            side_effect=["", "f Reviewed safe abstract"],
+        ):
+            code, stdout, stderr = self.run_cli("hygiene", "--resolve")
+
+        self.assertEqual(code, 0, stderr)
+        self.assertIn("REVIEW REQUIRED", stdout)
+        self.assertIn("No safe automatic normalized abstract is available", stdout)
+
+        review = project_hygiene_migration_review(self.config)
+        state = load_project_hygiene_resolutions(self.config, review)
+        self.assertEqual(state.decisions[0].decision, "custom")
+        self.assertEqual(
+            state.decisions[0].resolved_value,
+            "Reviewed safe abstract",
         )
 
     def test_missing_canonical_bibliography_fails_without_traceback(self) -> None:

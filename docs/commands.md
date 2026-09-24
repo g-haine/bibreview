@@ -113,8 +113,34 @@ either an `application/x-tex` annotation or
 review-required. That label is diagnostic only: **`hygiene` never normalizes,
 stages, or mutates canonical metadata.**
 
-This command is the inventory phase of canonical-data hygiene. Historical
-changes must be proposed and reviewed explicitly in a later migration step.
+The plain command remains the inventory phase of canonical-data hygiene.
+Historical migration is an explicit second workflow:
+
+~~~bash
+bibreview --config bibreview.yml hygiene --review
+bibreview --config bibreview.yml -v hygiene --review
+bibreview --config bibreview.yml hygiene --resolve
+bibreview --config bibreview.yml --dry-run hygiene --apply
+bibreview --config bibreview.yml hygiene --apply
+~~~
+
+`hygiene --review` is read-only: it recomputes every proposal from the current
+canonical bibliography and writes no proposal file. Deterministic normalizer
+results become ordinary proposals; refused cases become `review-required`
+proposals with no automatic replacement.
+
+`hygiene --resolve` stores resumable human decisions in
+`hygiene-resolutions.json`. Ordinary deterministic proposals support **Y**,
+**n**, **f VALUE**, **s**, and **q** (accept, reject, custom, defer, quit).
+Review-required cases deliberately disable **Y** and require custom, reject, or
+defer.
+
+The resolution fingerprint covers the exact canonical abstract and derived
+normalizer state. Any canonical change invalidates stale decisions. After every
+proposal has a final decision, `hygiene --apply` rechecks staging and the
+canonical abstract, then writes accepted/custom replacements to
+`collected.json`. It never edits `bibliography.json` directly; use the normal
+explicit `bibreview merge` step after inspecting the staged diff.
 
 ## audit
 

@@ -254,6 +254,30 @@ that the canonical field is still empty. Applicable tracked BibTeX fields are
 edited locally and backed up; the remote BibTeX is never used as a wholesale
 replacement.
 
+### Historical hygiene resolution state
+
+Historical canonical abstract migration deliberately does **not** persist a
+proposal file. `hygiene --review` derives proposals directly from the current
+canonical bibliography every time. Only human decisions are stored:
+
+~~~text
+data/audit/hygiene-resolutions.json
+~~~
+
+The resolution file contains a SHA-256 fingerprint of the exact derived review,
+the total proposal count, and accepted/custom/rejected/deferred decisions. The
+fingerprint covers each publication ID/DOI, exact current canonical abstract,
+proposed normalized value, review-required flag, normalizer reason, and detected
+markup families. If the canonical abstract or normalization state changes,
+BibReview refuses to reuse the stale resolution file.
+
+Review-required proposals have no automatic proposed value and cannot be
+accepted directly. An explicit custom value may be staged after human review.
+`hygiene --apply` requires complete decisions and empty existing staging,
+rechecks the exact canonical abstract, and writes only accepted/custom
+publication replacements into `collected.json`. Canonical
+`bibliography.json` remains untouched until the ordinary `merge` command.
+
 ### Backfill proposal and resolution state
 
 Human-reviewed missing-field backfill keeps its proposal and decision files
