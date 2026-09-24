@@ -2,6 +2,46 @@
 
 All notable BibReview releases are documented here.
 
+## 1.6.25 — 2026-09-24
+
+### Title/reference hygiene inventory
+
+- start issue #97 with **T1 only**, a strictly read-only inventory of canonical
+  publication titles and complete stored reference citation strings;
+- add `bibreview hygiene --titles`, with compact, verbose, and JSON output;
+- keep the existing abstract inventory/migration behavior unchanged and make
+  `--titles` mutually exclusive with `--review`, `--resolve`, and
+  `--apply`;
+- classify title/reference signals including HTML/XML markup, MathML/JATS,
+  small-caps markup, HTML entities, TeX/math fragments, embedded graphics,
+  script markup, escaped markup, selected Unicode/control signals, and
+  unbalanced structured tags.
+
+### Conservative inventory semantics
+
+- report only **apparent** lossless candidates in T1; no title/citation
+  normalizer is introduced yet;
+- treat plain TeX fragments as `preserve-tex` inventory signals rather than
+  cleanup candidates;
+- keep script markup, embedded graphics, malformed structures, and suspicious
+  Unicode/control signals review-required at the inventory level;
+- preserve publication titles and reference citations exactly; T1 performs no
+  staging or canonical mutation.
+
+### Stable reference reporting identity
+
+- prefer an exact reference DOI when one exists;
+- otherwise report a SHA-256 fingerprint of the complete original citation;
+- append an ordinal only when duplicate reference identities occur within one
+  publication;
+- introduce no fuzzy reference-title extraction or matching.
+
+### Validation
+
+- cover read-only CLI behavior, JSON/verbose reports, small-caps markup,
+  entities, TeX preservation, script markup, and DOI/fingerprint reference
+  identity with **535 passing tests**, compilation included.
+
 ## 1.6.24 — 2026-09-24
 
 ### Reviewed historical abstract migration
