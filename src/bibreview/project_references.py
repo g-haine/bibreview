@@ -730,9 +730,13 @@ def execute_project_references_batch(
                 )
             state = "completed"
 
+        identity = (
+            publication.doi or publication.id
+            if publication is not None
+            else key
+        )
         progress_reporter.step(
-            f"References {publication.doi if publication else key}: "
-            f"{result.classification}"
+            f"References {identity}: {result.classification}"
         )
         checkpoint = plan_project_references_checkpoint(
             config,
