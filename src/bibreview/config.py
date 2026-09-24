@@ -488,13 +488,13 @@ def load_config(path: str | Path = "bibreview.yml") -> BibReviewConfig:
         campaign=_path(
             base,
             references_raw.get("campaign"),
-            "data/references/campaign.json",
+            "audit/references/campaign.json",
             "references.campaign",
         ),
         report=_path(
             base,
             references_raw.get("report"),
-            "data/references/report.json",
+            "audit/references/report.json",
             "references.report",
         ),
         batch_size=_integer(

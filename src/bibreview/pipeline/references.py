@@ -339,6 +339,73 @@ def reconstruct_provider_references(
     )
 
 
+def _with_canonical_doi_fallback(
+    publication: Publication,
+    reconstruction: ReferenceReconstruction,
+) -> ReferenceReconstruction:
+    """Fill citation-poor provider DOI entries from the exact canonical position.
+
+    Parent CrossRef records frequently expose only a cited DOI. Historical
+    BibReview collection resolved those DOI values through the DOI citation
+    formatter, so replacing a rich canonical citation with an empty provider
+    citation would create artificial drift.
+
+    Fallback is intentionally narrow: it is allowed only when the provider
+    citation is empty and the provider DOI exactly equals the canonical DOI at
+    the same 1-based position. The canonical citation is then passed through the
+    current conservative citation normalizer. Non-DOI entries and identifier
+    drift never use this fallback.
+    """
+    if not reconstruction.available:
+        return reconstruction
+
+    current = publication.references
+    candidates: list[ProviderReferenceCandidate] = []
+    for candidate in reconstruction.candidates:
+        if candidate.raw_citation.strip():
+            candidates.append(candidate)
+            continue
+
+        position = candidate.index - 1
+        if position >= len(current):
+            candidates.append(candidate)
+            continue
+
+        provider_doi = candidate.reference.identifiers.get("doi")
+        canonical = current[position]
+        canonical_doi = canonical.identifiers.get("doi")
+        if not provider_doi or provider_doi != canonical_doi:
+            candidates.append(candidate)
+            continue
+
+        normalized = normalize_structured_citation(canonical.citation)
+        citation = (
+            normalized.normalized
+            if normalized.deterministic
+            else canonical.citation
+        )
+        candidates.append(
+            ProviderReferenceCandidate(
+                index=candidate.index,
+                reference=Reference(
+                    identifiers=candidate.reference.identifiers,
+                    citation=citation,
+                ),
+                raw_citation=canonical.citation,
+                deterministic=normalized.deterministic,
+                reason=(
+                    f"canonical-doi-fallback:{normalized.reason}"
+                ),
+            )
+        )
+
+    return ReferenceReconstruction(
+        available=True,
+        reason=reconstruction.reason,
+        candidates=tuple(candidates),
+    )
+
+
 def _changed_indices(
     current: tuple[Reference, ...],
     proposed: tuple[Reference, ...],
@@ -400,12 +467,13 @@ def compare_reference_reconstruction(
         raise TypeError("reconstruction must be a ReferenceReconstruction")
 
     current = publication.references
-    proposed = reconstruction.references
+    effective = _with_canonical_doi_fallback(publication, reconstruction)
+    proposed = effective.references
 
     if not reconstruction.available:
         return _result(
             publication,
-            reconstruction,
+            effective,
             classification="unavailable",
             reason=reconstruction.reason,
             proposed=(),
@@ -417,7 +485,7 @@ def compare_reference_reconstruction(
     if not changed:
         return _result(
             publication,
-            reconstruction,
+            effective,
             classification="unchanged",
             reason="provider-reference-list-unchanged",
             proposed=proposed,
@@ -428,7 +496,7 @@ def compare_reference_reconstruction(
     if len(current) != len(proposed):
         return _result(
             publication,
-            reconstruction,
+            effective,
             classification="review-required",
             reason="reference-count-changed",
             proposed=proposed,
@@ -439,7 +507,7 @@ def compare_reference_reconstruction(
         if dict(left.identifiers) != dict(right.identifiers):
             return _result(
                 publication,
-                reconstruction,
+                effective,
                 classification="review-required",
                 reason=f"reference-identifiers-changed:{index}",
                 proposed=proposed,
@@ -447,7 +515,7 @@ def compare_reference_reconstruction(
             )
 
     for candidate, left, right in zip(
-        reconstruction.candidates,
+        effective.candidates,
         current,
         proposed,
         strict=True,
@@ -457,7 +525,7 @@ def compare_reference_reconstruction(
         if not candidate.deterministic:
             return _result(
                 publication,
-                reconstruction,
+                effective,
                 classification="review-required",
                 reason=(
                     f"provider-citation-refused:{candidate.index}:"
@@ -473,7 +541,7 @@ def compare_reference_reconstruction(
         ):
             return _result(
                 publication,
-                reconstruction,
+                effective,
                 classification="review-required",
                 reason=f"reference-citation-drift:{candidate.index}",
                 proposed=proposed,
@@ -482,7 +550,7 @@ def compare_reference_reconstruction(
 
     return _result(
         publication,
-        reconstruction,
+        effective,
         classification="safe-update",
         reason="deterministic-citation-normalization",
         proposed=proposed,

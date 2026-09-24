@@ -147,6 +147,93 @@ class ReferenceComparisonTests(unittest.TestCase):
             "Systems & Control Letters",
         )
 
+    def test_empty_provider_doi_citation_reuses_exact_canonical_position(self) -> None:
+        current = Reference(
+            identifiers={"doi": "10.2000/child"},
+            citation="Rich canonical citation",
+        )
+        item = publication(current)
+        reconstructed = reconstruct_provider_references(
+            {"reference": [{"DOI": "10.2000/child"}]}
+        )
+
+        result = compare_reference_reconstruction(item, reconstructed)
+
+        self.assertEqual(result.classification, "unchanged")
+        self.assertEqual(result.changed_indices, ())
+        self.assertEqual(
+            result.current_fingerprint,
+            result.proposed_fingerprint,
+        )
+
+    def test_empty_provider_doi_citation_can_safely_normalize_canonical_text(self) -> None:
+        current = Reference(
+            identifiers={"doi": "10.2000/child"},
+            citation="Systems &amp; Control Letters",
+        )
+        item = publication(current)
+        reconstructed = reconstruct_provider_references(
+            {"reference": [{"DOI": "10.2000/child"}]}
+        )
+
+        result = compare_reference_reconstruction(item, reconstructed)
+
+        self.assertEqual(result.classification, "safe-update")
+        self.assertEqual(result.changed_indices, (1,))
+        self.assertEqual(
+            result.proposed_references[0].citation,
+            "Systems & Control Letters",
+        )
+
+    def test_empty_provider_doi_citation_never_falls_back_across_identifier_drift(self) -> None:
+        current = Reference(
+            identifiers={"doi": "10.2000/old"},
+            citation="Rich canonical citation",
+        )
+        item = publication(current)
+        reconstructed = reconstruct_provider_references(
+            {"reference": [{"DOI": "10.2000/new"}]}
+        )
+
+        result = compare_reference_reconstruction(item, reconstructed)
+
+        self.assertEqual(result.classification, "review-required")
+        self.assertEqual(result.reason, "reference-identifiers-changed:1")
+        self.assertEqual(result.proposed_references[0].citation, "")
+
+    def test_empty_non_doi_provider_citation_never_uses_positional_fallback(self) -> None:
+        current = Reference(citation="Canonical without DOI")
+        item = publication(current)
+        reconstructed = reconstruct_provider_references(
+            {"reference": [{}]}
+        )
+
+        result = compare_reference_reconstruction(item, reconstructed)
+
+        self.assertEqual(result.classification, "review-required")
+        self.assertEqual(result.reason, "reference-citation-drift:1")
+        self.assertEqual(result.proposed_references[0].citation, "")
+
+    def test_refused_canonical_doi_fallback_is_preserved_not_repaired(self) -> None:
+        value = "A model with H<sup>1</sup> regularity"
+        current = Reference(
+            identifiers={"doi": "10.2000/child"},
+            citation=value,
+        )
+        item = publication(current)
+        reconstructed = reconstruct_provider_references(
+            {"reference": [{"DOI": "10.2000/child"}]}
+        )
+
+        result = compare_reference_reconstruction(item, reconstructed)
+
+        self.assertEqual(result.classification, "unchanged")
+        self.assertEqual(result.changed_indices, ())
+        self.assertEqual(
+            result.provider_refusals,
+            ((1, "canonical-doi-fallback:script-markup"),),
+        )
+
     def test_provider_text_change_beyond_sanitizer_requires_review(self) -> None:
         item = publication(Reference(citation="Old citation"))
         reconstructed = reconstruct_provider_references(
