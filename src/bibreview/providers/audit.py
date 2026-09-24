@@ -7,7 +7,7 @@ from typing import Protocol
 
 from ..identity import IdentityError, normalize_doi
 from ..pipeline.audit import ProviderEvidence
-from ..text import clean_abstract, clean_metadata
+from ..text import clean_metadata, normalize_provider_abstract
 from .crossref import CrossRefProvider, crossref_page_locator
 from .openalex import OpenAlexProvider, openalex_abstract
 from .semantic_scholar import SemanticScholarProvider
@@ -24,6 +24,12 @@ class AuditEvidenceSource(Protocol):
 
 def _string(value: object) -> str:
     return "" if value is None else str(value).strip()
+
+
+def _audit_abstract(value: object) -> str:
+    """Normalize only lossless provider abstract markup; retain refusals verbatim."""
+    result = normalize_provider_abstract(_string(value))
+    return result.normalized
 
 
 def _first(value: object) -> str:
@@ -156,9 +162,7 @@ class CrossRefAuditSource:
                 "title": _first(message.get("title")),
                 "authors": _crossref_names(message.get("author")),
                 "editors": _crossref_names(message.get("editor")),
-                "abstract": clean_abstract(
-                    _string(message.get("abstract"))
-                ),
+                "abstract": _audit_abstract(message.get("abstract")),
                 "container_title": _first(message.get("container-title")),
                 "publication_year": _crossref_year(message),
                 "volume": _string(message.get("volume")),
@@ -275,7 +279,9 @@ class OpenAlexAuditSource:
             fields={
                 "title": _string(data.get("title")),
                 "authors": _openalex_authors(data.get("authorships")),
-                "abstract": clean_abstract(openalex_abstract(data.get("abstract_inverted_index"))),
+                "abstract": _audit_abstract(
+                    openalex_abstract(data.get("abstract_inverted_index"))
+                ),
                 "container_title": _openalex_container(data.get("primary_location")),
                 "publication_year": year,
                 "volume": volume,
@@ -359,7 +365,7 @@ class SemanticScholarAuditSource:
             fields={
                 "title": _string(data.get("title")),
                 "authors": _semantic_authors(data.get("authors")),
-                "abstract": clean_abstract(_string(data.get("abstract"))),
+                "abstract": _audit_abstract(data.get("abstract")),
                 "container_title": _string(data.get("venue")),
                 "publication_year": year,
             },
