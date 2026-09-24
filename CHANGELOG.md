@@ -2,6 +2,38 @@
 
 All notable BibReview releases are documented here.
 
+## 1.6.19 — 2026-09-23
+
+### Conservative structured abstract normalization primitive
+
+- add a pure `normalize_structured_abstract()` Phase 2 primitive, kept separate
+  from ordinary `clean_abstract()` text cleanup;
+- normalize only corpus-justified structural forms: paragraph wrappers, JATS
+  typographic wrappers, and `inline-formula` payloads carrying complete trusted
+  `application/x-tex` or `tex-math notation="LaTeX"` representations;
+- prefer `application/x-tex` when both trustworthy formula representations are
+  present and emit canonical inline TeX delimiters;
+- preserve paragraph boundaries, inline text adjacency, formula order, ordinary
+  clean TeX, and idempotence.
+
+### Safety boundary
+
+- refuse embedded graphics, script markup, escaped markup, malformed tags,
+  incomplete formula coverage, residual XML comments, and unknown balanced
+  markup without changing the input;
+- keep the allowlist deliberately tied to the 21 PHRAISE findings reviewed in
+  Phase 1 instead of introducing generic tag stripping;
+- do not wire the new normalizer into collect, enrichment, audit, backfill,
+  refresh, or canonical migration yet;
+- leave the historical JATS stripping in `clean_metadata()` unchanged for this
+  isolated Phase 2 release.
+
+### Validation
+
+- add regression coverage for the observed PHRAISE structured-markup families,
+  trusted TeX extraction, refusal paths, and idempotence;
+- validate the release with **483 passing tests**, compilation included.
+
 ## 1.6.18 — 2026-09-23
 
 ### Complete inline TeX hygiene coverage
