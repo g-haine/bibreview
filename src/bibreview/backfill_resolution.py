@@ -252,8 +252,14 @@ def record_backfill_resolution(
     """Record or replace one human decision."""
     if decision not in _DECISIONS:
         raise ProjectStateError(f"unsupported backfill decision: {decision}")
+    proposal = candidate.proposal
     if decision == "accepted":
-        resolved_value = candidate.proposal.proposed_value
+        if proposal.review_required:
+            raise ProjectStateError(
+                "review-required backfill evidence cannot be accepted directly; "
+                "use a custom value, reject, or defer"
+            )
+        resolved_value = proposal.proposed_value
     elif decision == "custom":
         if not isinstance(resolved_value, str) or not resolved_value.strip():
             raise ProjectStateError("custom backfill resolution requires a value")
@@ -261,7 +267,6 @@ def record_backfill_resolution(
     else:
         resolved_value = None
 
-    proposal = candidate.proposal
     item = BackfillResolutionDecision(
         key=candidate.key,
         publication_id=proposal.publication_id,
