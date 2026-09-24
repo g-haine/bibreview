@@ -369,10 +369,7 @@ def _run_audit_resolution(config, args) -> int:
                 print(f"Invalid resolution: {error}")
                 continue
 
-            if review_required:
-                print("Please enter n, f VALUE, s, or q.")
-            else:
-                print("Please enter Y, n, f VALUE, s, or q.")
+            print("Please enter Y, n, f VALUE, s, or q.")
 
         if not args.dry_run:
             save_project_audit_resolutions(config, state)
