@@ -84,6 +84,37 @@ class DoiProviderTests(unittest.TestCase):
         self.assertEqual(url, "https://citation.doi.org/format")
         self.assertEqual(kwargs["params"]["doi"], "10.1/test")
 
+    def test_citation_preserves_terminal_doi_character_without_period(self) -> None:
+        transport = FakeTransport()
+        transport.request_response = Response(
+            text=(
+                "1. Ada Lovelace (2024). Example. "
+                "https://doi.org/10.1002/rnc.7151\n"
+            )
+        )
+        provider = DoiProvider(transport)
+
+        self.assertEqual(
+            provider.citation("10.1/test"),
+            "Ada Lovelace (2024). Example. https://doi.org/10.1002/rnc.7151",
+        )
+
+    def test_citation_returns_empty_string_for_empty_response(self) -> None:
+        transport = FakeTransport()
+        transport.request_response = Response(text="")
+        provider = DoiProvider(transport)
+
+        self.assertEqual(provider.citation("10.1/test"), "")
+
+    def test_citation_rejects_structured_error_payload(self) -> None:
+        transport = FakeTransport()
+        transport.request_response = Response(
+            text='{"status":"error","message":"citation unavailable"}'
+        )
+        provider = DoiProvider(transport)
+
+        self.assertEqual(provider.citation("10.1/test"), "")
+
     def test_formatter_returns_empty_string_for_non_bibtex_text(self) -> None:
         self.assertEqual(format_bibtex("not bibtex"), "")
 
