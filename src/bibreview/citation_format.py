@@ -29,6 +29,10 @@ _STYLE_RESOURCE = (
     "data/styles/springer-basic-author-date-no-et-al-with-issue.csl"
 )
 
+class CitationFormatError(ValueError):
+    """Raised when transient provider metadata cannot be rendered safely."""
+
+
 _CROSSREF_TO_CSL_TYPE = {
     "journal-article": "article-journal",
     "proceedings-article": "paper-conference",
@@ -184,24 +188,36 @@ def _render_one(item: Mapping[str, Any], style_bytes: bytes) -> str:
     return "".join(str(part) for part in entries[0]).strip()
 
 
+def format_crossref_citation(
+    doi: str,
+    message: Mapping[str, Any],
+) -> str:
+    """Render one Springer-style citation from transient CrossRef metadata."""
+    normalized = normalize_doi(doi)
+    if not isinstance(message, Mapping):
+        raise CitationFormatError(
+            f"{normalized}: CrossRef citation metadata must be a mapping"
+        )
+    try:
+        citation = _render_one(
+            crossref_work_to_csl(normalized, message),
+            _style_bytes(),
+        )
+    except Exception as error:
+        raise CitationFormatError(
+            f"{normalized}: CSL citation rendering failed: {error}"
+        ) from error
+    return citation
+
+
 def format_crossref_citations(
     messages: Mapping[str, Mapping[str, Any]],
 ) -> dict[str, str]:
-    """Render Springer-style citations for exact DOI work messages.
-
-    All metadata is transient. The returned mapping contains only non-empty
-    citation strings keyed by normalized DOI.
-    """
-    style_bytes = _style_bytes()
+    """Render citations for a provider batch without persisting metadata."""
     result: dict[str, str] = {}
     for raw_doi, message in messages.items():
         doi = normalize_doi(raw_doi)
-        if not isinstance(message, Mapping):
-            continue
-        citation = _render_one(
-            crossref_work_to_csl(doi, message),
-            style_bytes,
-        )
+        citation = format_crossref_citation(doi, message)
         if citation:
             result[doi] = citation
     return result
