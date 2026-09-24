@@ -1,4 +1,4 @@
-"""Promote completed safe refresh decisions into reviewable staging."""
+"""Promote completed refresh decisions into reviewable staging."""
 
 from __future__ import annotations
 
@@ -94,7 +94,7 @@ class ProjectRefreshApplyPlan:
 def plan_project_refresh_apply(
     config: BibReviewConfig,
 ) -> ProjectRefreshApplyPlan:
-    """Stage only human-approved fills from one safe refresh review."""
+    """Stage only human-approved fills from one refresh review."""
     staged = (
         read_bibliography(config.paths.collected)
         if config.paths.collected.exists()
