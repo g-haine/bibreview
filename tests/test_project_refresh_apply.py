@@ -14,6 +14,7 @@ from bibreview.identity import new_publication_id
 from bibreview.model import Author, Publication
 from bibreview.pipeline.backfill import BackfillCandidate
 from bibreview.project import ProjectStateError
+from bibreview.providers.base import AbstractEvidence
 from bibreview.project_refresh import (
     RefreshReview,
     refresh_review_path,
@@ -231,6 +232,44 @@ class ProjectRefreshApplyTests(unittest.TestCase):
 
         staged = read_bibliography(self.config.paths.collected)
         self.assertEqual(staged[0].abstract, "Recovered abstract")
+
+
+    def test_review_required_refresh_requires_custom_and_can_stage(self):
+        evidence = AbstractEvidence(
+            source="crossref",
+            value="(u<inf>0</inf>)<sup>T</sup>",
+            reason="script-markup",
+        )
+        abstract = BackfillCandidate(
+            publication_id=self.publication.id,
+            doi=self.publication.doi,
+            title=self.publication.title,
+            field="abstract",
+            proposed_value="",
+            review_required=True,
+            evidence=(evidence,),
+        )
+        review = self.persist_review(abstract)
+
+        with self.assertRaisesRegex(
+            ProjectStateError,
+            "cannot be accepted directly",
+        ):
+            self.resolved_state(review, (("accepted", None),))
+
+        self.resolved_state(
+            review,
+            (("custom", r"(u_0)^T"),),
+        )
+        plan = plan_project_refresh_apply(self.config)
+        self.assertEqual(len(plan.changes), 1)
+        self.assertEqual(plan.changes[0].decision, "custom")
+        self.assertEqual(plan.changes[0].value, r"(u_0)^T")
+
+        apply_project_refresh_apply(plan)
+        staged = read_bibliography(self.config.paths.collected)
+        self.assertEqual(staged[0].abstract, r"(u_0)^T")
+
 
     def test_nonempty_canonical_field_blocks_stale_proposal(self):
         volume = BackfillCandidate(
