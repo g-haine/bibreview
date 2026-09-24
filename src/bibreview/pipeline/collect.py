@@ -235,6 +235,43 @@ def _default_enrichment(message: Mapping[str, Any]) -> Enrichment:
     )
 
 
+def publication_enrichment(
+    doi: str,
+    message: Mapping[str, Any],
+    *,
+    enrichment_lookup: EnrichmentLookup | None = None,
+) -> Enrichment:
+    """Resolve safe enrichment once while retaining provider abstract evidence."""
+    normalized_doi = normalize_doi(doi)
+    base = _default_enrichment(message)
+    if enrichment_lookup is None:
+        return base
+
+    extra = enrichment_lookup(normalized_doi, message)
+    if not isinstance(extra, Enrichment):
+        raise TypeError("enrichment lookup must return Enrichment")
+
+    seen: set[tuple[str, str, str]] = set()
+    evidence: list[AbstractEvidence] = []
+    for item in (*base.abstract_evidence, *extra.abstract_evidence):
+        key = (item.source, item.value, item.reason)
+        if key in seen:
+            continue
+        seen.add(key)
+        evidence.append(item)
+
+    abstract = extra.abstract or base.abstract
+    return Enrichment(
+        abstract=abstract,
+        keywords=extra.keywords or base.keywords,
+        event=extra.event or base.event,
+        abstract_source=(
+            extra.abstract_source if extra.abstract else base.abstract_source
+        ),
+        abstract_evidence=tuple(evidence),
+    )
+
+
 SCALAR_METADATA_FIELDS = frozenset({
     "title",
     "abstract",
@@ -273,28 +310,11 @@ def scalar_metadata_values(
 
     enrichment: Enrichment | None = None
     if {"abstract", "event"} & set(requested):
-        base_enrichment = _default_enrichment(message)
-        if enrichment_lookup is None:
-            enrichment = base_enrichment
-        else:
-            extra = enrichment_lookup(normalized_doi, message)
-            if not isinstance(extra, Enrichment):
-                raise TypeError("enrichment lookup must return Enrichment")
-            abstract = extra.abstract or base_enrichment.abstract
-            enrichment = Enrichment(
-                abstract=abstract,
-                keywords=extra.keywords or base_enrichment.keywords,
-                event=extra.event or base_enrichment.event,
-                abstract_source=(
-                    extra.abstract_source
-                    if extra.abstract
-                    else base_enrichment.abstract_source
-                ),
-                abstract_evidence=(
-                    tuple(base_enrichment.abstract_evidence)
-                    + tuple(extra.abstract_evidence)
-                ),
-            )
+        enrichment = publication_enrichment(
+            normalized_doi,
+            message,
+            enrichment_lookup=enrichment_lookup,
+        )
 
     values: dict[str, str] = {}
     for field in requested:
@@ -333,6 +353,7 @@ def build_publication(
     *,
     enrichment_lookup: EnrichmentLookup | None = None,
     citation_lookup: CitationLookup | None = None,
+    enrichment: Enrichment | None = None,
 ) -> Publication:
     """Build one canonical publication from a CrossRef work message."""
     normalized_doi = normalize_doi(doi)
@@ -352,26 +373,18 @@ def build_publication(
         ),
         created=created,
     )
-    enrichment = _default_enrichment(message)
-    if enrichment_lookup is not None:
-        extra = enrichment_lookup(normalized_doi, message)
-        if not isinstance(extra, Enrichment):
-            raise TypeError("enrichment lookup must return Enrichment")
-        abstract = extra.abstract or enrichment.abstract
-        enrichment = Enrichment(
-            abstract=abstract,
-            keywords=extra.keywords or enrichment.keywords,
-            event=extra.event or enrichment.event,
-            abstract_source=(
-                extra.abstract_source
-                if extra.abstract
-                else enrichment.abstract_source
-            ),
-            abstract_evidence=(
-                tuple(enrichment.abstract_evidence)
-                + tuple(extra.abstract_evidence)
-            ),
+    if enrichment is not None and enrichment_lookup is not None:
+        raise ValueError(
+            "build_publication accepts either enrichment or enrichment_lookup, not both"
         )
+    if enrichment is None:
+        enrichment = publication_enrichment(
+            normalized_doi,
+            message,
+            enrichment_lookup=enrichment_lookup,
+        )
+    elif not isinstance(enrichment, Enrichment):
+        raise TypeError("enrichment must be an Enrichment value")
 
     identifiers: dict[str, str] = {"doi": normalized_doi}
     isbn_values = message.get("isbn-type")
