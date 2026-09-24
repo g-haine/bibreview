@@ -119,7 +119,7 @@ def plan_project_refresh_apply(
     proposal_keys = {item.key for item in review.proposals}
     if set(decisions) != proposal_keys:
         raise ProjectStateError(
-            "refresh decisions do not cover the complete safe proposal set"
+            "refresh decisions do not cover the complete proposal set"
         )
 
     canonical = read_bibliography(config.paths.bibliography)
@@ -142,6 +142,11 @@ def plan_project_refresh_apply(
             )
 
         decision = decisions[proposal.key]
+        if proposal.review_required and decision.decision == "accepted":
+            raise ProjectStateError(
+                f"{proposal.key}: review-required refresh evidence cannot be "
+                "accepted directly"
+            )
         if decision.decision == "rejected":
             continue
         if decision.decision not in {"accepted", "custom"}:
