@@ -313,7 +313,8 @@ def _normalize(
             reason="entity-decoding" if value != original else "already-clean",
         )
 
-    soup = BeautifulSoup(value, "html.parser")
+    parser_value = value.replace("&", "&amp;")
+    soup = BeautifulSoup(parser_value, "html.parser")
     if _provider_error_page(soup):
         return _refused(original, "provider-error-page")
     if any(
