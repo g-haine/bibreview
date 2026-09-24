@@ -11,7 +11,7 @@ feed.
 BibReview is designed so that provider output remains inspectable and ambiguous
 decisions remain human decisions.
 
-Current stable release: **v1.6.27**.
+Current stable release: **v1.6.28**.
 
 ## What BibReview provides
 
@@ -42,7 +42,7 @@ BibReview currently requires **Python 3.12 or newer**.
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.27"
+python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.28"
 
 bibreview --version
 ~~~
@@ -126,7 +126,22 @@ Full details: [command reference](docs/commands.md).
 
 ### Reference refresh inventory
 
-BibReview v1.6.27 introduces the first read-only `bibreview references`
+BibReview v1.6.28 refines the read-only `bibreview references` workflow after
+the first PHRAISE batch showed that parent CrossRef references often expose a
+DOI without citation text. When that DOI exactly matches the canonical DOI at
+the same position, BibReview now reuses the canonical citation as evidence,
+runs it through the current conservative sanitizer, and avoids proposing an
+empty citation. Non-DOI entries, reordered references, and identifier drift
+never use this fallback.
+
+Default reference campaign state now lives under:
+
+~~~text
+audit/references/campaign.json
+audit/references/report.json
+~~~
+
+BibReview v1.6.27 introduced the first read-only `bibreview references`
 workflow. It rebuilds reference lists from the current **parent CrossRef work
 records**, runs reconstructed citation strings through the v1.6.26 conservative
 normalizer, and compares them with canonical references without changing
@@ -144,7 +159,7 @@ The campaign is resumable and checkpointed publication-by-publication.
 must remain identical, and every citation change must be exactly explained by
 the deterministic T2 sanitizer. Any provider change beyond that is
 `review-required`. There is deliberately **no `references --apply` in
-v1.6.27**; PHRAISE validation of the report comes first.
+v1.6.28**; PHRAISE validation of the refined report comes first.
 
 ### Canonical abstract hygiene inventory
 
