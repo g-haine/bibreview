@@ -167,8 +167,8 @@ state:
 
 ~~~yaml
 references:
-  campaign: data/references/campaign.json
-  report: data/references/report.json
+  campaign: audit/references/campaign.json
+  report: audit/references/report.json
   batch_size: 50
 ~~~
 
@@ -183,12 +183,17 @@ automatically splits parent DOI lookup into CrossRef-supported chunks of at most
 
 Existing projects may omit the whole section; the defaults above are used.
 
+The v1.6.28 defaults intentionally differ from the short-lived v1.6.27
+`data/references/` location. This starts a fresh refined campaign after the
+first PHRAISE observation exposed artificial citation drift from empty parent
+CrossRef citation payloads. Explicitly configured paths are never rewritten.
+
 The campaign and report paths must differ from one another and may not overlap
 canonical bibliography, collected staging, author mappings, DOI queue/review
 files, or audit campaign/report paths. This prevents a configuration typo from
 turning reference-maintenance state into canonical data.
 
-In v1.6.27 these files are evidence/checkpoint state only. No reference result
+In v1.6.28 these files are evidence/checkpoint state only. No reference result
 is merge-ready, and there is deliberately no `references --apply` yet.
 
 ## Providers and secrets
