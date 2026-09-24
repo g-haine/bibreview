@@ -67,7 +67,7 @@ def _audit_value(value: Any, *, name: str) -> AuditValue:
 
 @dataclass(frozen=True)
 class RefreshReview:
-    """Persisted safe proposals and non-promotable collateral differences."""
+    """Persisted refresh proposals and non-promotable collateral differences."""
 
     scanned_count: int
     eligible_count: int
@@ -361,7 +361,7 @@ def plan_project_refresh(
     bibtex_lookup: BibtexLookup,
     reporter: Reporter | None = None,
 ) -> ProjectRefreshPlan:
-    """Plan safe refresh evidence without writing staging or tracked BibTeX."""
+    """Plan reviewed refresh evidence without writing staging or tracked BibTeX."""
     paths = config.paths
     existing = _optional_bibliography(paths.bibliography)
     staged = _optional_bibliography(paths.collected)
