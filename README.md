@@ -11,7 +11,7 @@ feed.
 BibReview is designed so that provider output remains inspectable and ambiguous
 decisions remain human decisions.
 
-Current stable release: **v1.6.23**.
+Current stable release: **v1.6.24**.
 
 ## What BibReview provides
 
@@ -42,7 +42,7 @@ BibReview currently requires **Python 3.12 or newer**.
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.23"
+python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.24"
 
 bibreview --version
 ~~~
@@ -163,8 +163,28 @@ abstract evidence is not persisted by the collection workflow; if no safe source
 exists, the collected publication simply has no abstract and a later reviewed
 backfill/refresh can revisit the missing field. Discovery remains non-canonical:
 refused provider text may still participate transiently in relevance matching so
-useful search evidence is not discarded. **Audit evidence and historical
-canonical migration remain separate from this ingestion policy.**
+useful search evidence is not discarded.
+
+BibReview v1.6.24 completes the historical migration workflow:
+
+~~~bash
+bibreview hygiene --review
+bibreview -v hygiene --review
+bibreview hygiene --resolve
+bibreview --dry-run hygiene --apply
+bibreview hygiene --apply
+bibreview merge
+~~~
+
+Migration proposals are always recomputed read-only from the current canonical
+bibliography; only `hygiene-resolutions.json` persists human decisions. The
+decision fingerprint includes the exact canonical abstract plus the normalizer
+result/reason, so canonical changes invalidate stale decisions. Deterministic
+proposals may be accepted, rejected, customized or deferred. Refused cases are
+`review-required` and cannot be accepted directly: they require an explicit
+custom abstract, rejection, or defer. `hygiene --apply` writes accepted/custom
+changes only to `collected.json`; the ordinary explicit `merge` command remains
+the sole canonical promotion boundary.
 
 ### Non-destructive reviewed refresh
 
@@ -259,7 +279,7 @@ canonical abstract, contributor-role disagreements, and isolated contributor
 anomalies remain informational evidence rather than automatic corrections. The
 raw audit comparisons are preserved separately from this review interpretation.
 
-Since v1.6.23, an audit provider abstract whose structured markup cannot be
+Since v1.6.24, an audit provider abstract whose structured markup cannot be
 normalized losslessly is preserved verbatim in `audit-report.json` and
 classified as `provider-review-required`. Such evidence remains visible to
 human review but is never counted as an ordinary provider disagreement and is
