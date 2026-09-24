@@ -2,6 +2,54 @@
 
 All notable BibReview releases are documented here.
 
+## 1.6.26 — 2026-09-24
+
+### Conservative title/reference normalizer
+
+- implement issue #97 T2 with dedicated `normalize_structured_title()` and
+  `normalize_structured_citation()` primitives;
+- keep the project-level workflow read-only: no canonical migration, staging,
+  collection integration, or permalink change is introduced in this release;
+- make `hygiene --titles` assess findings through the real T2 normalizer instead
+  of the earlier T1 heuristic.
+
+### Corpus-driven normalization policy
+
+- decode HTML entities iteratively and **rescan after every decoding stage**, so
+  encoded `sub/sup/inf` markup cannot be misclassified as plain text;
+- unwrap only explicit presentation/semantic wrappers observed in the PHRAISE
+  corpus;
+- preserve existing TeX unchanged;
+- extract explicit TeX from trusted `tex` / `tex-math` formula payloads;
+- convert only the semantic MathML subset observed in PHRAISE
+  (`math/mrow/mi/mn/mo/msub/msup`) to inline TeX;
+- preserve observed MathML `mathvariant` semantics conservatively;
+- refuse unsupported MathML, script markup, embedded graphics, malformed or
+  unbalanced markup, Unicode replacement characters, suspicious control
+  characters, and captured provider error pages without mutating the input.
+
+### PHRAISE T1 analysis
+
+The v1.6.25 JSON inventory was analysed exhaustively before defining T2:
+
+- **37** title findings → 8 deterministic changes, 16 existing TeX values
+  preserved unchanged, 13 review-required;
+- **3,107** citation findings → 2,843 deterministic changes, 180 existing TeX
+  values preserved unchanged, 84 review-required;
+- the 84 citation refus are 42 Unicode replacement-character cases, 30 script
+  markup cases, 11 unbalanced structured payloads, and one captured upstream
+  `502 Bad Gateway` page;
+- the 117 MathML citation findings reduce to **15 distinct semantic expression
+  shapes**, all covered by regression tests when they remain inside the
+  supported subset.
+
+### Validation
+
+- add regression coverage for nested entities, literal ampersands, safe wrapper
+  removal, explicit TeX extraction, provider error pages, corruption refusal,
+  idempotence, and all 15 PHRAISE MathML expression shapes;
+- validate with **563 passing tests**, compilation included.
+
 ## 1.6.25 — 2026-09-24
 
 ### Title/reference hygiene inventory
