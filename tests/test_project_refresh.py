@@ -8,14 +8,19 @@ import unittest
 from bibreview.config import load_config
 from bibreview.identity import new_publication_id
 from bibreview.model import Author, Publication
+from bibreview.pipeline.backfill import BackfillCandidate
 from bibreview.project import ProjectStateError
 from bibreview.project_refresh import (
     apply_project_refresh,
+    RefreshReview,
     format_project_refresh_review,
     load_project_refresh_review,
     plan_project_refresh,
+    refresh_review_fingerprint,
+    refresh_review_from_data,
     refresh_review_path,
 )
+from bibreview.providers.base import AbstractEvidence
 from bibreview.storage import read_bibliography, write_bibliography
 
 
@@ -180,6 +185,82 @@ class ProjectRefreshTests(unittest.TestCase):
         self.assertIn("Reviewed title", text)
         self.assertIn("Provider title", text)
         self.assertIn("SAFE MISSING FIELD: volume", text)
+
+
+    def test_refresh_review_round_trips_review_required_evidence(self):
+        evidence = AbstractEvidence(
+            source="crossref",
+            value=(
+                'A controller <jats:inline-graphic '
+                'xlink:href="graphic/math-0002.png"/> is proposed.'
+            ),
+            reason="embedded-graphic",
+        )
+        review = RefreshReview(
+            scanned_count=1,
+            eligible_count=1,
+            stale_dois=("10.1/stale",),
+            proposals=(
+                BackfillCandidate(
+                    publication_id="publication-id",
+                    doi="10.1/stale",
+                    title="Reviewed title",
+                    field="abstract",
+                    proposed_value="",
+                    review_required=True,
+                    evidence=(evidence,),
+                ),
+            ),
+            collateral=(),
+            unavailable=(),
+            reasons={"10.1/stale": "changed BibTeX"},
+        )
+
+        data = review.data()
+        proposal_data = data["proposals"][0]
+        self.assertTrue(proposal_data["review_required"])
+        self.assertEqual(
+            proposal_data["evidence"][0]["reason"],
+            "embedded-graphic",
+        )
+
+        loaded = refresh_review_from_data(data)
+        self.assertEqual(loaded, review)
+        self.assertEqual(
+            refresh_review_fingerprint(loaded),
+            refresh_review_fingerprint(review),
+        )
+
+        text = format_project_refresh_review(loaded, verbose=True)
+        self.assertIn("REVIEW REQUIRED: abstract", text)
+        self.assertIn("embedded-graphic", text)
+        self.assertIn("math-0002.png", text)
+
+    def test_legacy_safe_refresh_proposal_keeps_fingerprint_shape(self):
+        review = RefreshReview(
+            scanned_count=1,
+            eligible_count=1,
+            stale_dois=("10.1/stale",),
+            proposals=(
+                BackfillCandidate(
+                    publication_id="publication-id",
+                    doi="10.1/stale",
+                    title="Reviewed title",
+                    field="volume",
+                    proposed_value="12",
+                ),
+            ),
+            collateral=(),
+            unavailable=(),
+            reasons={"10.1/stale": "changed BibTeX"},
+        )
+
+        data = review.data()
+        proposal_data = data["proposals"][0]
+        self.assertNotIn("review_required", proposal_data)
+        self.assertNotIn("evidence", proposal_data)
+        self.assertEqual(refresh_review_from_data(data).data(), data)
+
 
     def test_nonempty_staging_blocks_refresh_before_network_access(self):
         write_bibliography(

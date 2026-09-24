@@ -1,4 +1,4 @@
-"""Resumable human decisions for safe refresh proposals."""
+"""Resumable human decisions for reviewed refresh proposals."""
 
 from __future__ import annotations
 
@@ -35,7 +35,7 @@ def refresh_resolution_path(config: BibReviewConfig) -> Path:
 def refresh_resolution_candidates(
     review: RefreshReview,
 ) -> tuple[BackfillResolutionCandidate, ...]:
-    """Wrap safe refresh proposals in the shared backfill resolver model."""
+    """Wrap refresh proposals in the shared backfill resolver model."""
     total = len(review.proposals)
     return tuple(
         BackfillResolutionCandidate(position=index, total=total, proposal=item)
@@ -87,6 +87,11 @@ def load_project_refresh_resolutions(
             raise ProjectStateError(
                 f"{path}: resolution metadata is inconsistent for {decision.key}"
             )
+        if proposal.review_required and decision.decision == "accepted":
+            raise ProjectStateError(
+                f"{path}: review-required refresh evidence cannot be accepted "
+                f"directly: {decision.key}"
+            )
     return state
 
 
@@ -102,7 +107,7 @@ def unresolved_refresh_candidates(
     review: RefreshReview,
     state: BackfillResolutionState,
 ) -> tuple[BackfillResolutionCandidate, ...]:
-    """Return unresolved and deferred safe refresh proposals."""
+    """Return unresolved and deferred refresh proposals."""
     terminal = {
         item.key
         for item in state.decisions

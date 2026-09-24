@@ -23,6 +23,7 @@ from .collect import (
     EnrichmentLookup,
     WorkProvider,
     build_publication,
+    publication_enrichment,
 )
 
 
@@ -171,12 +172,17 @@ def refresh(
                 f"{doi}: metadata provider returned a non-mapping work record"
             )
 
+        resolved_enrichment = publication_enrichment(
+            doi,
+            message,
+            enrichment_lookup=enrichment_lookup,
+        )
         recollected = build_publication(
             doi,
             message,
             publication.permalink,
-            enrichment_lookup=enrichment_lookup,
             citation_lookup=citation_lookup,
+            enrichment=resolved_enrichment,
         )
         current_fields = publication_audit_record(publication).fields
         proposed_fields = publication_audit_record(recollected).fields
@@ -185,6 +191,43 @@ def refresh(
         collateral: list[RefreshDifference] = []
         for field, current_value in current_fields.items():
             proposed_value = proposed_fields[field]
+
+            if (
+                field == "abstract"
+                and field in missing_fields
+                and isinstance(current_value, str)
+                and is_missing_metadata_value(field, current_value)
+            ):
+                evidence = tuple(resolved_enrichment.abstract_evidence)
+                if (
+                    isinstance(proposed_value, str)
+                    and not is_missing_metadata_value(field, proposed_value)
+                ):
+                    proposals.append(
+                        BackfillCandidate(
+                            publication_id=publication.id,
+                            doi=doi,
+                            title=publication.title,
+                            field=field,
+                            proposed_value=proposed_value,
+                            evidence=evidence,
+                        )
+                    )
+                    continue
+                if evidence:
+                    proposals.append(
+                        BackfillCandidate(
+                            publication_id=publication.id,
+                            doi=doi,
+                            title=publication.title,
+                            field=field,
+                            proposed_value="",
+                            review_required=True,
+                            evidence=evidence,
+                        )
+                    )
+                    continue
+
             classification = classify_audit_pair(
                 field,
                 current_value,

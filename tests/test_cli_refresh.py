@@ -11,8 +11,11 @@ from bibreview.cli import main
 from bibreview.config import load_config
 from bibreview.identity import new_publication_id
 from bibreview.model import Author, Publication
-from bibreview.project_refresh import load_project_refresh_review
-from bibreview.storage import read_bibliography, write_bibliography
+from bibreview.pipeline.backfill import BackfillCandidate
+from bibreview.project_refresh import RefreshReview, load_project_refresh_review, refresh_review_path
+from bibreview.providers.base import AbstractEvidence
+from bibreview.refresh_resolution import load_project_refresh_resolutions
+from bibreview.storage import read_bibliography, write_bibliography, write_json
 
 
 CONFIG = """\
@@ -209,6 +212,65 @@ class RefreshCliTests(unittest.TestCase):
         self.assertIn("volume={5}", bibtex)
         self.assertIn("title={{Reviewed title}}", bibtex)
         self.assertNotIn("Provider title", bibtex)
+
+
+    def test_review_required_refresh_evidence_requires_custom_value(self):
+        review = RefreshReview(
+            scanned_count=1,
+            eligible_count=1,
+            stale_dois=(self.publication.doi,),
+            proposals=(
+                BackfillCandidate(
+                    publication_id=self.publication.id,
+                    doi=self.publication.doi,
+                    title=self.publication.title,
+                    field="abstract",
+                    proposed_value="",
+                    review_required=True,
+                    evidence=(
+                        AbstractEvidence(
+                            source="crossref",
+                            value=(
+                                'A controller <jats:inline-graphic '
+                                'xlink:href="graphic/math-0002.png"/> is proposed.'
+                            ),
+                            reason="embedded-graphic",
+                        ),
+                    ),
+                ),
+            ),
+            collateral=(),
+            unavailable=(),
+            reasons={self.publication.doi: "changed BibTeX"},
+        )
+        write_json(refresh_review_path(self.config), review.data())
+
+        stdout = StringIO()
+        stderr = StringIO()
+        with patch(
+            "builtins.input",
+            side_effect=["", "f Reviewed safe abstract"],
+        ), redirect_stdout(stdout), redirect_stderr(stderr):
+            code = main([
+                "--config",
+                str(self.config_path),
+                "refresh",
+                "--resolve",
+            ])
+
+        self.assertEqual(code, 0, stderr.getvalue())
+        output = stdout.getvalue()
+        self.assertIn("REVIEW REQUIRED", output)
+        self.assertIn("embedded-graphic", output)
+        self.assertIn("No safe automatic value is available", output)
+
+        state = load_project_refresh_resolutions(self.config, review)
+        self.assertEqual(state.decisions[0].decision, "custom")
+        self.assertEqual(
+            state.decisions[0].resolved_value,
+            "Reviewed safe abstract",
+        )
+
 
     def test_apply_before_resolution_is_refused(self):
         self.run_refresh_scan()

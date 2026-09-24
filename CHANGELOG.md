@@ -2,6 +2,49 @@
 
 All notable BibReview releases are documented here.
 
+## 1.6.22 — 2026-09-24
+
+### Reviewed refresh abstract evidence
+
+- retain structured-normalization refusal evidence during refresh recollection
+  instead of losing it when the recollected `Publication` has no usable abstract;
+- resolve enrichment once per refresh recollection and reuse that same result for
+  both publication projection and evidence handling, avoiding duplicate provider
+  calls;
+- keep safe refreshed abstracts as normal proposals while attaching refused
+  alternatives as inspectable evidence;
+- create `review-required` refresh proposals when the canonical abstract is
+  missing, no safe automatic abstract exists, and refused provider evidence does.
+
+### Human-review boundary
+
+- persist optional provider source, refusal reason, and raw abstract payload in
+  fingerprinted `refresh.json`;
+- preserve the legacy serialization/fingerprint shape for ordinary safe refresh
+  proposals that carry no evidence;
+- show review-required evidence in verbose `refresh --review` and in
+  `refresh --resolve`;
+- forbid direct acceptance of review-required refresh evidence: require a custom
+  value, reject, or defer;
+- allow explicit custom values to follow the normal
+  `refresh --apply` → `merge` path.
+
+### Automatic collection boundary
+
+- keep `collect` fully automatic and do not add collection review state for
+  refused abstracts;
+- continue to reject unsafe abstract payloads while allowing fallback to another
+  safe automatic source when available;
+- if collection has no safe abstract source, keep the collected abstract missing
+  so a later reviewed backfill or refresh can recover it.
+
+### Validation
+
+- cover CrossRef refusal evidence, safe alternatives with refused evidence,
+  custom enrichment, legacy refresh-review serialization, interactive resolution,
+  custom staging, and automatic collection fallback behavior;
+- validate the release with **508 passing tests**, compilation included.
+
 ## 1.6.21 — 2026-09-24
 
 ### Retained refused abstract evidence

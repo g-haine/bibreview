@@ -200,7 +200,7 @@ class BuildPublicationTests(unittest.TestCase):
 
         self.assertEqual(publication.abstract, "")
 
-    def test_injected_enrichment_cannot_reintroduce_unsafe_structured_abstract(self):
+    def test_unsafe_injected_enrichment_falls_back_to_safe_crossref_abstract(self):
         data = message()
         publication = build_publication(
             "10.1/test",
@@ -211,7 +211,7 @@ class BuildPublicationTests(unittest.TestCase):
             ),
         )
 
-        self.assertEqual(publication.abstract, "")
+        self.assertEqual(publication.abstract, "CrossRef text")
 
     def test_missing_creation_date_is_rejected(self):
         data = message()
