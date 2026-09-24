@@ -532,9 +532,9 @@ def _title_reference_families(value: str) -> tuple[str, ...]:
         detected.add("html-entity")
     if _TEX_FRAGMENT_RE.search(value):
         detected.add("tex-fragment")
-    if "�" in value:
+    if "\uFFFD" in value:
         detected.add("unicode-replacement")
-    if "­" in value:
+    if "\u00AD" in value:
         detected.add("soft-hyphen")
     if _CONTROL_CHARACTER_RE.search(value):
         detected.add("control-character")
