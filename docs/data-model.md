@@ -226,8 +226,8 @@ Reference maintenance uses the generic campaign model with kind
 and collection staging:
 
 ~~~text
-data/references/campaign.json
-data/references/report.json
+audit/references/campaign.json
+audit/references/report.json
 ~~~
 
 The campaign uses persistent publication UUIDs as item keys. Each processed
@@ -250,10 +250,17 @@ reference list while retaining the exact fingerprints and counts. This keeps a
 large campaign report materially smaller without weakening the evidence needed
 to establish that no change was proposed.
 
+The effective proposed reference list may reuse one canonical citation only
+when the parent provider supplies no citation text and the provider DOI exactly
+matches the canonical DOI at the same ordered position. That reused citation is
+passed through the current conservative citation normalizer. This is evidence
+completion, not fuzzy matching: non-DOI entries, identifier drift, reordered
+references, and newly added provider references never use positional fallback.
+
 The report classifications are `unchanged`, `safe-update`,
 `review-required`, and `unavailable`. The persisted `safe-update` label is
 evidence about a sanitizer-only structural comparison; it is **not** canonical
-approval. v1.6.27 has no reference resolver or application step.
+approval. v1.6.28 has no reference resolver or application step.
 
 Neither file is canonical bibliography data and neither is interpreted by
 `merge`.
