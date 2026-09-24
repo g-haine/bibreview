@@ -526,9 +526,15 @@ def _run_refresh_resolution(config, args) -> int:
 
     for candidate in candidates:
         print(format_refresh_resolution_candidate(candidate))
+        review_required = candidate.proposal.review_required
+        prompt = (
+            "Decision [n/f VALUE/s/q]: "
+            if review_required
+            else "Decision [Y/n/f VALUE/s/q]: "
+        )
         while True:
             try:
-                raw = input("Decision [Y/n/f VALUE/s/q]: ").strip()
+                raw = input(prompt).strip()
             except (EOFError, KeyboardInterrupt):
                 print()
                 print(
@@ -541,6 +547,12 @@ def _run_refresh_resolution(config, args) -> int:
             choice = raw.lower()
             try:
                 if raw == "" or choice in {"y", "yes"}:
+                    if review_required:
+                        print(
+                            "No safe automatic value is available; use f VALUE "
+                            "for a reviewed custom value, n to reject, or s to defer."
+                        )
+                        continue
                     state = record_refresh_resolution(
                         state,
                         candidate,
@@ -594,7 +606,10 @@ def _run_refresh_resolution(config, args) -> int:
                 print(f"Invalid resolution: {error}")
                 continue
 
-            print("Please enter Y, n, f VALUE, s, or q.")
+            if review_required:
+                print("Please enter n, f VALUE, s, or q.")
+            else:
+                print("Please enter Y, n, f VALUE, s, or q.")
 
         if not args.dry_run:
             save_project_refresh_resolutions(config, state)
