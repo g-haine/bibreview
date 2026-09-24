@@ -21,7 +21,7 @@ from .campaign import (
     open_next_batch,
     record_item_result,
 )
-from .citation_format import CitationFormatError, format_crossref_citation
+from .citation_format import CitationFormatError, format_crossref_citations
 from .config import BibReviewConfig
 from .model import Publication
 from .pipeline.collect import BatchWorkProvider
@@ -734,15 +734,15 @@ def execute_project_references_batch(
         reporter=progress_reporter,
         label="cited-DOI metadata",
     )
-    formatted_citations: dict[str, str] = {}
-    for doi, message in citation_messages.items():
-        try:
-            citation = format_crossref_citation(doi, message)
-        except CitationFormatError as error:
-            progress_reporter.warning(str(error))
-            continue
-        if citation:
-            formatted_citations[doi] = citation
+    try:
+        citation_batch = format_crossref_citations(citation_messages)
+    except CitationFormatError:
+        raise
+    formatted_citations = dict(citation_batch.citations)
+    for doi, detail in citation_batch.errors.items():
+        progress_reporter.warning(
+            f"{doi}: {detail}"
+        )
 
     processed = completed = retryable = failed = 0
     classifications: Counter[str] = Counter()
