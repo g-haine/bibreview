@@ -11,6 +11,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from importlib import resources
 from io import BytesIO
+from types import MappingProxyType
 from typing import Any
 
 from citeproc import (
@@ -62,10 +63,14 @@ _CROSSREF_TO_CSL_TYPE = {
 }
 
 
+def _text(value: Any) -> str:
+    return "" if value is None else str(value).strip()
+
+
 def _first(value: Any) -> str:
     if isinstance(value, list) and value:
         first = value[0]
-        return str(first).strip() if first is not None else ""
+        return _text(first)
     if isinstance(value, str):
         return value.strip()
     return ""
@@ -78,9 +83,9 @@ def _names(value: Any) -> list[dict[str, str]]:
     for item in value:
         if not isinstance(item, Mapping):
             continue
-        given = str(item.get("given", "")).strip()
-        family = str(item.get("family", "")).strip()
-        literal = str(item.get("name", "")).strip()
+        given = _text(item.get("given"))
+        family = _text(item.get("family"))
+        literal = _text(item.get("name"))
         if not family and literal:
             family = literal
         name: dict[str, str] = {}
@@ -88,7 +93,7 @@ def _names(value: Any) -> list[dict[str, str]]:
             name["given"] = given
         if family:
             name["family"] = family
-        suffix = str(item.get("suffix", "")).strip()
+        suffix = _text(item.get("suffix"))
         if suffix:
             name["suffix"] = suffix
         if name:
@@ -145,13 +150,13 @@ def crossref_work_to_csl(
         "title": _first(message.get("title")),
         "container-title": _first(message.get("container-title")),
         "container-title-short": _first(message.get("short-container-title")),
-        "volume": str(message.get("volume", "")).strip(),
-        "issue": str(message.get("issue", "")).strip(),
+        "volume": _text(message.get("volume")),
+        "issue": _text(message.get("issue")),
         "page": crossref_page_locator(message),
-        "publisher": str(message.get("publisher", "")).strip(),
-        "publisher-place": str(message.get("publisher-location", "")).strip(),
-        "edition": str(message.get("edition", "")).strip(),
-        "URL": str(message.get("URL", "")).strip(),
+        "publisher": _text(message.get("publisher")),
+        "publisher-place": _text(message.get("publisher-location")),
+        "edition": _text(message.get("edition")),
+        "URL": _text(message.get("URL")),
     }
     item.update(
         {
@@ -181,22 +186,6 @@ def _style_bytes() -> bytes:
     )
 
 
-def _render_one(item: Mapping[str, Any], style_bytes: bytes) -> str:
-    source = CiteProcJSON([dict(item)])
-    style = CitationStylesStyle(BytesIO(style_bytes), validate=False)
-    bibliography = CitationStylesBibliography(
-        style,
-        source,
-        formatter.plain,
-    )
-    citation = Citation([CitationItem(str(item["id"]))])
-    bibliography.register(citation)
-    entries = bibliography.bibliography()
-    if not entries:
-        return ""
-    return "".join(str(part) for part in entries[0]).strip()
-
-
 def format_crossref_citations(
     messages: Mapping[str, Mapping[str, Any]],
 ) -> CitationBatchResult:
@@ -214,7 +203,10 @@ def format_crossref_citations(
             errors[doi] = str(error)
 
     if not prepared:
-        return CitationBatchResult(citations={}, errors=errors)
+        return CitationBatchResult(
+            citations=MappingProxyType({}),
+            errors=MappingProxyType(errors),
+        )
 
     try:
         style = CitationStylesStyle(BytesIO(_style_bytes()), validate=False)
@@ -247,7 +239,10 @@ def format_crossref_citations(
         else:
             errors[doi] = "CSL citation rendering returned an empty value"
 
-    return CitationBatchResult(citations=citations, errors=errors)
+    return CitationBatchResult(
+        citations=MappingProxyType(citations),
+        errors=MappingProxyType(errors),
+    )
 
 
 def format_crossref_citation(
