@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 import tempfile
 import unittest
@@ -160,11 +161,9 @@ class ProjectHygieneMigrationTests(unittest.TestCase):
         changed = tuple(
             publication
             if publication.id != self.safe.id
-            else Publication(
-                **{
-                    **publication.__dict__,
-                    "abstract": "<jats:p>Different canonical text.</jats:p>",
-                }
+            else replace(
+                publication,
+                abstract="<jats:p>Different canonical text.</jats:p>",
             )
             for publication in read_bibliography(
                 self.config.paths.bibliography
