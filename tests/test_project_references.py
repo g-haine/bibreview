@@ -105,6 +105,19 @@ class ProjectReferencesTests(unittest.TestCase):
             if path.is_file() and path.resolve() not in excluded
         }
 
+    def test_schema_one_report_is_rejected_after_citation_policy_change(self):
+        with self.assertRaisesRegex(
+            Exception,
+            "schema version 1 predates the DOI citation second round",
+        ):
+            references_report_from_data(
+                {
+                    "schema_version": 1,
+                    "campaign_items": [],
+                    "results": [],
+                }
+            )
+
     def test_start_is_read_only_until_apply(self):
         before = self.snapshot_non_reference_state()
 
