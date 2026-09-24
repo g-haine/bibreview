@@ -52,6 +52,28 @@ class CrossRefCslConversionTests(unittest.TestCase):
             {"date-parts": [[2024, 3, 5]]},
         )
 
+    def test_null_crossref_fields_never_render_literal_none(self) -> None:
+        item = crossref_work_to_csl(
+            "10.1000/nulls",
+            {
+                "type": "journal-article",
+                "title": ["Title"],
+                "container-title": [None],
+                "volume": None,
+                "issue": None,
+                "publisher": None,
+                "author": [{"given": None, "family": "Author"}],
+                "issued": {"date-parts": [[2024]]},
+            },
+        )
+
+        self.assertNotIn("container-title", item)
+        self.assertNotIn("volume", item)
+        self.assertNotIn("issue", item)
+        self.assertNotIn("publisher", item)
+        self.assertEqual(item["author"], [{"family": "Author"}])
+        self.assertNotIn("None", str(item))
+
     def test_formats_book_with_bundled_springer_style(self) -> None:
         result = format_crossref_citations(
             {
