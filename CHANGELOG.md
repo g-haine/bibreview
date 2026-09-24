@@ -2,6 +2,54 @@
 
 All notable BibReview releases are documented here.
 
+## 1.6.27 — 2026-09-24
+
+### Resumable reference refresh inventory
+
+- start issue #102 with the first top-level `bibreview references` workflow;
+- reconstruct reference lists from current **parent CrossRef work records** in
+  exact DOI batches instead of issuing one content-negotiation request per cited
+  DOI;
+- process one stable resumable campaign batch per invocation, checkpoint each
+  publication immediately, and retain retry state after transient provider
+  failures;
+- add offline `references --review`, verbose review, JSON output, `--full`,
+  `--batch-size`, and provider-free `--dry-run` planning.
+
+### Conservative comparison boundary
+
+- pass reconstructed citation strings through the v1.6.26 T2 citation
+  normalizer;
+- classify a change as `safe-update` only when reference count, order, and
+  identifiers are unchanged and every changed citation is exactly the
+  deterministic normalization of the current canonical citation;
+- classify additions, removals, reordering, identifier changes, provider text
+  drift, and provider repairs beyond the sanitizer as `review-required`;
+- preserve refused provider citation text as evidence rather than flattening it;
+- represent missing provider work/reference data and non-DOI parent
+  publications explicitly as unavailable.
+
+### Persistent state and safety
+
+- add optional `references.campaign`, `references.report`, and
+  `references.batch_size` configuration with defaults under
+  `data/references/`;
+- store exact current/proposed ordered reference fingerprints for future
+  staleness checks;
+- keep unchanged report entries compact instead of duplicating complete
+  reference lists;
+- reject reference campaign/report paths that overlap canonical, collection,
+  author/queue, or audit state files;
+- write only reference campaign/report state: v1.6.27 has **no
+  `references --apply`**, never writes `collected.json`, and never mutates
+  canonical bibliography data.
+
+### Validation
+
+- cover conservative reconstruction/comparison, resumable campaign behavior,
+  retries, non-DOI parents, configuration safeguards, CLI dry-run/review, and
+  canonical immutability with **592 passing tests**, compilation included.
+
 ## 1.6.26 — 2026-09-24
 
 ### Conservative title/reference normalizer
