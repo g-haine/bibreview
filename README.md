@@ -11,7 +11,7 @@ feed.
 BibReview is designed so that provider output remains inspectable and ambiguous
 decisions remain human decisions.
 
-Current stable release: **v1.6.21**.
+Current stable release: **v1.6.22**.
 
 ## What BibReview provides
 
@@ -42,7 +42,7 @@ BibReview currently requires **Python 3.12 or newer**.
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.21"
+python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.22"
 
 bibreview --version
 ~~~
@@ -158,10 +158,13 @@ normalized; refused structured payloads are not flattened into misleading text.
 Collection can fall through from an unsafe publisher/CrossRef abstract to another
 safe provider, and optional fallback providers skip unsafe candidates with an
 explicit warning. Publisher adapters preserve their raw abstract markup until
-this central policy boundary. Discovery remains non-canonical: refused provider
-text may still participate transiently in relevance matching so useful search
-evidence is not discarded. **Audit evidence and historical canonical migration
-remain separate and are not changed by v1.6.20.**
+this central policy boundary. **Collect remains fully automatic:** refused
+abstract evidence is not persisted by the collection workflow; if no safe source
+exists, the collected publication simply has no abstract and a later reviewed
+backfill/refresh can revisit the missing field. Discovery remains non-canonical:
+refused provider text may still participate transiently in relevance matching so
+useful search evidence is not discarded. **Audit evidence and historical
+canonical migration remain separate from this ingestion policy.**
 
 ### Non-destructive reviewed refresh
 
@@ -182,11 +185,18 @@ bibreview refresh --apply
 ~~~
 
 The resolver reuses the same resumable human decision model as backfill.
+Since v1.6.22, a refused provider abstract is retained in `refresh.json` as
+inspectable evidence when the canonical abstract is missing. If a safe provider
+abstract also exists, it remains the normal proposal and the refused alternatives
+stay attached as evidence. If no safe abstract exists, refresh creates a
+`review-required` proposal: direct accept is disabled and the reviewer must
+provide an explicit custom value, reject the evidence, or defer it.
+
 `refresh --apply` can fill only the reviewed missing-field proposals. It
 refuses stale proposals when a field has since become non-empty. Tracked BibTeX
-is edited only for accepted fields, with backup; the remote BibTeX response is
-never copied wholesale. `bibreview merge` remains the only canonical
-promotion boundary.
+is edited only for accepted/custom fields, with backup; the remote BibTeX
+response is never copied wholesale. `bibreview merge` remains the only
+canonical promotion boundary.
 
 ### Human-reviewed missing-field backfill
 
@@ -216,7 +226,7 @@ rejected if the canonical field has gained a meaningful value meanwhile. For
 abstracts, historical `Not Available` values are eligible for replacement and
 provider/fallback placeholders are never proposed as real abstracts.
 
-Since v1.6.21, an abstract rejected by the structured normalizer is **retained as
+Since v1.6.22, an abstract rejected by the structured normalizer is **retained as
 provider evidence instead of becoming `no_value`**. The local backfill review
 records the provider source, refusal reason and raw payload. If no safe abstract
 exists, the field is marked `review-required`: direct accept is disabled and
