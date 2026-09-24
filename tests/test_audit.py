@@ -68,6 +68,98 @@ class AuditComparisonTests(unittest.TestCase):
         self.assertEqual(by_field["volume"], "provider-missing")
         self.assertEqual(by_field["abstract"], "canonical-missing")
 
+    def test_unsafe_provider_abstract_is_review_required_and_retained(self):
+        raw = (
+            'A controller <jats:inline-graphic '
+            'xlink:href="graphic/math-0002.png"/> is proposed.'
+        )
+        result = compare_audit_record(
+            self.record(abstract=""),
+            (
+                ProviderEvidence(
+                    provider="crossref",
+                    fields={"abstract": raw},
+                ),
+            ),
+        )
+
+        comparison = result.comparisons[0]
+        self.assertEqual(comparison.field, "abstract")
+        self.assertEqual(
+            comparison.classification,
+            "provider-review-required",
+        )
+        self.assertEqual(comparison.provider_value, raw)
+        self.assertEqual(
+            dict(result.classification_counts()),
+            {"provider-review-required": 1},
+        )
+
+        findings = audit_review_findings(result)
+        self.assertEqual(len(findings), 1)
+        self.assertFalse(findings[0].actionable)
+        self.assertEqual(
+            findings[0].classification,
+            "provider-review-required",
+        )
+        self.assertIn("raw evidence retained", findings[0].detail)
+
+    def test_refused_abstracts_do_not_form_provider_disagreements_or_actions(self):
+        first = (
+            'A controller <jats:inline-graphic '
+            'xlink:href="graphic/math-0002.png"/> is proposed.'
+        )
+        second = "(u<inf>0</inf>)<sup>T</sup>"
+        result = compare_audit_record(
+            self.record(abstract=""),
+            (
+                ProviderEvidence(
+                    provider="crossref",
+                    fields={"abstract": first},
+                ),
+                ProviderEvidence(
+                    provider="semantic_scholar",
+                    fields={"abstract": second},
+                ),
+            ),
+        )
+
+        self.assertEqual(result.disagreements, ())
+        self.assertEqual(
+            tuple(item.classification for item in result.comparisons),
+            ("provider-review-required", "provider-review-required"),
+        )
+        findings = audit_review_findings(result)
+        self.assertEqual(len(findings), 2)
+        self.assertTrue(all(not item.actionable for item in findings))
+        self.assertEqual(
+            tuple(item.providers for item in findings),
+            (("crossref",), ("semantic_scholar",)),
+        )
+
+    def test_review_required_abstract_round_trips_and_reclassifies_stably(self):
+        raw = "(u<inf>0</inf>)<sup>T</sup>"
+        result = compare_audit_record(
+            self.record(abstract="Existing abstract"),
+            (
+                ProviderEvidence(
+                    provider="crossref",
+                    fields={"abstract": raw},
+                ),
+            ),
+        )
+
+        payload = audit_result_data(result)
+        restored = audit_result_from_data(payload)
+        reclassified = reclassify_audit_result(restored)
+
+        self.assertEqual(restored, result)
+        self.assertEqual(
+            reclassified.comparisons[0].classification,
+            "provider-review-required",
+        )
+        self.assertEqual(reclassified.comparisons[0].provider_value, raw)
+
     def test_singleton_page_ranges_are_formatting_only(self):
         for canonical, provider in (
             ("261--261", "261"),

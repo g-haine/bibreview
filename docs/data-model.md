@@ -298,12 +298,19 @@ succeeds, that result replaces the previous report entry; the campaign file
 still records the complete batch/attempt history.
 
 Pairwise provider/canonical values remain stored even when they are classified
-as formatting-only. The human review view is **derived**, not a second source of
-truth: it suppresses equal/formatting-only/provider-missing noise and groups
-review-equivalent provider alternatives before counting their support. External
-metadata differences are informational by default; a candidate correction
-becomes actionable only when at least two independent providers corroborate the
-same alternative. A substantive alternative is kept informational if another
+as formatting-only. For abstracts, a provider payload whose structured markup
+cannot be normalized losslessly is stored verbatim in the existing
+`provider_value` field and classified as `provider-review-required`. No new
+audit-report schema field is required. These refused payloads are intentionally
+excluded from ordinary provider-disagreement/corroboration calculations and
+remain informational only.
+
+The human review view is **derived**, not a second source of truth: it suppresses
+equal/formatting-only/provider-missing noise and groups review-equivalent safe
+provider alternatives before counting their support. External metadata
+differences are informational by default; a candidate correction becomes
+actionable only when at least two independent providers corroborate the same
+safe alternative. A substantive alternative is kept informational if another
 provider confirms the canonical value. One-day `created_date` offsets, obvious
 provider truncations of a fuller canonical abstract, and provider-author versus
 canonical-editor role disagreements are also informational. Existing

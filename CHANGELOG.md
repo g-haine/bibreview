@@ -2,6 +2,42 @@
 
 All notable BibReview releases are documented here.
 
+## 1.6.23 — 2026-09-24
+
+### Non-destructive audit abstract evidence
+
+- replace audit-provider abstract tag stripping with the conservative provider
+  abstract normalizer;
+- normalize only lossless structured abstract forms before comparison;
+- retain unsupported structured abstract payloads verbatim in persisted audit
+  comparisons instead of flattening their markup;
+- introduce the explicit `provider-review-required` audit classification for
+  refused provider abstracts.
+
+### Audit review safety
+
+- keep `provider-review-required` abstract evidence strictly informational;
+- exclude refused structured abstract payloads from ordinary provider-disagreement
+  calculations and corroboration;
+- keep separate refused provider payloads distinct in human review rather than
+  merging them into an apparent common alternative;
+- preserve the raw provider payload through audit report serialization and
+  offline `audit --reclassify`;
+- ensure refused provider abstracts never become actionable
+  `audit --resolve` candidates.
+
+### Compatibility and validation
+
+- keep the existing audit report schema shape unchanged: the raw payload remains
+  in the existing `provider_value` field and only the classification vocabulary
+  is extended;
+- keep historical reports readable and reclassifiable with current rules;
+- perform no canonical mutation, historical migration, OCR, or formula
+  reconstruction in this release;
+- validate adapter normalization, persisted raw evidence, review behavior,
+  disagreement exclusion, serialization, and reclassification with
+  **514 passing tests**, compilation included.
+
 ## 1.6.22 — 2026-09-24
 
 ### Reviewed refresh abstract evidence

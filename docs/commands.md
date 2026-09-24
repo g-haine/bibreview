@@ -197,10 +197,17 @@ actionable. A provider-only difference is informational by default.
 at least two independent providers corroborate the same value; a corroborated
 substantive alternative remains informational when another provider confirms
 the canonical value. Review-level equivalence also joins harmless TeX/Unicode
-and spacing variants before provider support is counted. One-day
-`created_date` offsets and obvious provider truncations of a fuller canonical
-abstract remain informational. Provider-role disagreements stay informational.
-Use `--json` for the complete machine-readable review.
+and spacing variants before provider support is counted.
+
+If an abstract contains structured markup that BibReview cannot normalize
+losslessly, the raw provider payload is retained in the audit report with
+classification `provider-review-required`. It remains visible in verbose/JSON
+review but is never counted as ordinary provider corroboration or disagreement
+and is never actionable in `audit --resolve`.
+
+One-day `created_date` offsets and obvious provider truncations of a fuller
+canonical abstract remain informational. Provider-role disagreements stay
+informational. Use `--json` for the complete machine-readable review.
 
 Resolve actionable findings interactively after the audit campaign is complete:
 
