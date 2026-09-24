@@ -68,6 +68,34 @@ application. Refresh scanning/review itself never writes staging, while
 `refresh --apply`, `audit --apply`, and `backfill --apply` all refuse to
 overwrite non-empty staging.
 
+## Backfill review evidence
+
+Backfill proposal generation writes local review state beside the configured
+audit files; it never changes canonical bibliography data directly. A normal
+candidate stores a safe `proposed_value`. Abstract candidates may additionally
+carry retained provider evidence:
+
+~~~json
+{
+  "field": "abstract",
+  "proposed_value": "",
+  "review_required": true,
+  "evidence": [
+    {
+      "source": "crossref",
+      "reason": "embedded-graphic",
+      "value": "provider payload retained verbatim"
+    }
+  ]
+}
+~~~
+
+A `review_required: true` candidate has no safe automatic proposal and therefore
+cannot be accepted directly. Only an explicit custom value can become staged
+metadata; reject and defer remain non-mutating decisions. Evidence is part of
+the backfill review fingerprint, so resolution state cannot be reused after the
+provider evidence changes.
+
 ## DOI queues
 
 BibReview's current discovery and automated collection workflow is DOI-backed
