@@ -8,20 +8,47 @@ from typing import Protocol
 
 
 @dataclass(frozen=True)
+class AbstractEvidence:
+    """One provider abstract payload retained because it was not safely usable."""
+
+    source: str
+    value: str
+    reason: str
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.source, str) or not self.source.strip():
+            raise TypeError("abstract evidence source must be a non-empty string")
+        if not isinstance(self.value, str) or not self.value:
+            raise TypeError("abstract evidence value must be a non-empty string")
+        if not isinstance(self.reason, str) or not self.reason.strip():
+            raise TypeError("abstract evidence reason must be a non-empty string")
+
+
+@dataclass(frozen=True)
 class Enrichment:
     """Provider-supplied metadata that can complement a canonical publication."""
 
     abstract: str = ""
     keywords: tuple[str, ...] = ()
     event: str = ""
+    abstract_source: str = ""
+    abstract_evidence: tuple[AbstractEvidence, ...] = ()
 
     def __post_init__(self) -> None:
         if not isinstance(self.abstract, str) or not isinstance(self.event, str):
             raise TypeError("enrichment abstract and event must be strings")
-        normalized = tuple(self.keywords)
-        if any(not isinstance(keyword, str) for keyword in normalized):
+        if not isinstance(self.abstract_source, str):
+            raise TypeError("enrichment abstract_source must be a string")
+        keywords = tuple(self.keywords)
+        if any(not isinstance(keyword, str) for keyword in keywords):
             raise TypeError("enrichment keywords must contain strings")
-        object.__setattr__(self, "keywords", normalized)
+        evidence = tuple(self.abstract_evidence)
+        if any(not isinstance(item, AbstractEvidence) for item in evidence):
+            raise TypeError(
+                "enrichment abstract_evidence must contain AbstractEvidence values"
+            )
+        object.__setattr__(self, "keywords", keywords)
+        object.__setattr__(self, "abstract_evidence", evidence)
 
 
 class EnrichmentProvider(Protocol):
