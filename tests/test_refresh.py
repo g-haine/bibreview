@@ -6,6 +6,7 @@ import unittest
 from bibreview.identity import new_publication_id
 from bibreview.model import Author, Publication
 from bibreview.pipeline.refresh import refresh
+from bibreview.providers.base import Enrichment
 
 
 class FakeProvider:
@@ -142,6 +143,68 @@ class RefreshTests(unittest.TestCase):
             proposals["abstract"],
             "Recovered abstract.",
         )
+
+
+    def test_unsafe_abstract_becomes_review_required_refresh_evidence(self):
+        item = publication("10.1/unsafe")
+        provider_message = message(title="Reviewed title")
+        provider_message["abstract"] = (
+            'A controller <jats:inline-graphic '
+            'xlink:href="graphic/math-0002.png"/> is proposed.'
+        )
+
+        result = refresh(
+            [item],
+            provider=FakeProvider({"10.1/unsafe": provider_message}),
+            stored_bibtex_lookup=lambda publication: "old\n",
+            bibtex_lookup=lambda doi: "new\n",
+            types=("journal-article",),
+            when_missing_any=("abstract",),
+        )
+
+        self.assertEqual(len(result.proposals), 1)
+        proposal = result.proposals[0]
+        self.assertEqual(proposal.field, "abstract")
+        self.assertTrue(proposal.review_required)
+        self.assertEqual(proposal.proposed_value, "")
+        self.assertEqual(len(proposal.evidence), 1)
+        self.assertEqual(proposal.evidence[0].source, "crossref")
+        self.assertEqual(proposal.evidence[0].reason, "embedded-graphic")
+        self.assertIn("math-0002.png", proposal.evidence[0].value)
+
+    def test_safe_refresh_abstract_keeps_refused_alternative_evidence(self):
+        item = publication("10.1/safe-with-evidence")
+        provider_message = message(title="Reviewed title")
+        provider_message["abstract"] = "(u<inf>0</inf>)<sup>T</sup>"
+        enrichment_calls = []
+
+        def enrich(doi, work):
+            enrichment_calls.append(doi)
+            return Enrichment(
+                abstract="Safe fallback abstract.",
+                abstract_source="openalex",
+            )
+
+        result = refresh(
+            [item],
+            provider=FakeProvider({
+                "10.1/safe-with-evidence": provider_message
+            }),
+            stored_bibtex_lookup=lambda publication: "old\n",
+            bibtex_lookup=lambda doi: "new\n",
+            types=("journal-article",),
+            when_missing_any=("abstract",),
+            enrichment_lookup=enrich,
+        )
+
+        self.assertEqual(enrichment_calls, ["10.1/safe-with-evidence"])
+        proposal = result.proposals[0]
+        self.assertFalse(proposal.review_required)
+        self.assertEqual(proposal.proposed_value, "Safe fallback abstract.")
+        self.assertEqual(len(proposal.evidence), 1)
+        self.assertEqual(proposal.evidence[0].source, "crossref")
+        self.assertEqual(proposal.evidence[0].reason, "script-markup")
+
 
     def test_existing_nonempty_configured_field_is_never_a_safe_proposal(self):
         item = publication(
