@@ -144,6 +144,10 @@ def plan_project_backfill_apply(
             )
 
         decision = decisions[proposal.key]
+        if proposal.review_required and decision.decision == "accepted":
+            raise ProjectStateError(
+                f"{proposal.key}: review-required evidence cannot be accepted directly"
+            )
         if decision.decision == "rejected":
             continue
         if decision.decision not in {"accepted", "custom"}:
