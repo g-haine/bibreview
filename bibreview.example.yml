@@ -65,6 +65,11 @@ audit:
   report: data/audit/report.json
   batch_size: 50
 
+references:
+  campaign: data/references/campaign.json
+  report: data/references/report.json
+  batch_size: 50
+
 relevance:
   patterns:
     - 'fluid[-\\s]+structure'
