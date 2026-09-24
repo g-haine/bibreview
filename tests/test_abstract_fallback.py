@@ -251,6 +251,27 @@ class AbstractFallbackTests(unittest.TestCase):
         self.assertIn("Semantic Scholar abstract for 10.1/test", stream.getvalue())
         self.assertIn("embedded-graphic", stream.getvalue())
 
+
+    def test_selection_retains_refused_evidence_with_safe_alternative(self):
+        fallback = AbstractFallback(
+            semantic_scholar=SequenceProvider(
+                'A controller <jats:inline-graphic '
+                'xlink:href="graphic/math-0002.png"/> is proposed.'
+            ),
+            openalex=SequenceProvider("Safe OpenAlex abstract."),
+            reporter=Reporter(-1),
+        )
+
+        selection = fallback.select("10.1/test")
+
+        self.assertEqual(selection.abstract, "Safe OpenAlex abstract.")
+        self.assertEqual(selection.source, "openalex")
+        self.assertEqual(len(selection.evidence), 1)
+        self.assertEqual(selection.evidence[0].source, "semantic_scholar")
+        self.assertEqual(selection.evidence[0].reason, "embedded-graphic")
+        self.assertIn("math-0002.png", selection.evidence[0].value)
+
+
     def test_semantic_scholar_429_disables_only_that_provider_for_run(self):
         semantic = SequenceProvider(
             HttpError("limited", status_code=429),

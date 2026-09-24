@@ -2,6 +2,43 @@
 
 All notable BibReview releases are documented here.
 
+## 1.6.21 — 2026-09-24
+
+### Retained refused abstract evidence
+
+- introduce explicit `AbstractEvidence` carrying provider source, raw payload,
+  and structured-normalization refusal reason;
+- propagate refused CrossRef, publisher, Semantic Scholar, OpenAlex, and Mendeley
+  abstracts through enrichment instead of discarding them after automatic refusal;
+- preserve provider provenance for publisher abstracts at the routing boundary;
+- keep the existing safe abstract selection behavior while retaining refused
+  alternative evidence alongside any usable value.
+
+### Reviewed backfill recovery
+
+- make backfill create a `review-required` candidate when an abstract field is
+  missing, no safe automatic value exists, but refused provider evidence does;
+- persist retained evidence in fingerprinted `backfill.json` review state while
+  remaining backward-compatible with existing schema-version-1 review files;
+- show full retained provider evidence and refusal reasons during
+  `backfill --resolve`;
+- forbid direct acceptance of review-required evidence: the reviewer must choose
+  a custom value, reject, or defer;
+- allow an explicit human custom value to follow the normal staged
+  `backfill --apply` → `merge` path;
+- keep refused alternatives attached to otherwise safe backfill proposals for
+  auditability.
+
+### Safety and validation
+
+- keep canonical data untouched during proposal generation and resolution;
+- retain existing stale-field and review-fingerprint application guards;
+- restore unchanged audit-resolution prompting after detecting an unrelated
+  draft-only prompt regression during review;
+- validate direct CrossRef, publisher, optional fallback, batched backfill,
+  serialization, interactive resolution, and custom staging behavior with
+  **501 passing tests**, compilation included.
+
 ## 1.6.20 — 2026-09-24
 
 ### Provider abstract ingestion prevention

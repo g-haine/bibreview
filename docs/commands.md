@@ -399,8 +399,8 @@ Review those proposals interactively:
 bibreview --config bibreview.yml backfill --resolve
 ~~~
 
-The resolver presents one missing field at a time and uses the same controls as
-the audit resolver:
+The resolver presents one missing field at a time. Normal safe proposals use
+the usual controls:
 
 - **Enter** or **Y** — accept the proposed value;
 - **n** — reject it;
@@ -408,10 +408,17 @@ the audit resolver:
 - **s** — defer it for a later session;
 - **q** — stop cleanly while preserving previous decisions.
 
-Decisions are resumable and fingerprinted against the exact proposal set.
-Proposal text is shown in full (wrapped for readability), which is especially
-important for abstracts. Provider candidates have already passed BibReview's
-normal metadata/abstract cleaning before they are proposed.
+For an abstract that has **no safe automatic value but does have refused provider
+evidence**, BibReview persists a `review-required` candidate instead of treating
+the field as `no_value`. The resolver shows each retained provider source,
+refusal reason, and raw payload. Direct **Enter/Y acceptance is disabled** for
+that case: use **f VALUE** to supply a reviewed safe abstract, **n** to reject the
+evidence, **s** to defer, or **q** to stop.
+
+If a safe provider value exists alongside refused alternatives, the safe value
+remains the ordinary proposal and the refused payloads are shown as additional
+evidence. Decisions and retained evidence are fingerprinted together, so a
+changed evidence payload invalidates stale resolution state.
 
 Nothing reaches canonical staging until every proposal has a final accepted,
 custom, or rejected decision:

@@ -14,18 +14,24 @@ from bibreview.config import load_config
 from bibreview.identity import new_publication_id
 from bibreview.model import Author, Publication
 from bibreview.pipeline.backfill import BackfillCandidate, backfill
+from bibreview.pipeline.enrich import EnrichmentService
 from bibreview.project import ProjectStateError
 from bibreview.project_backfill import (
     BackfillReview,
     apply_project_backfill_plan,
+    backfill_review_fingerprint,
+    backfill_review_from_data,
     backfill_review_path,
+    load_project_backfill_review,
     plan_project_backfill,
 )
 from bibreview.project_backfill_apply import (
     apply_project_backfill_apply,
     plan_project_backfill_apply,
 )
-from bibreview.providers.base import Enrichment
+from bibreview.providers.base import AbstractEvidence, Enrichment
+from bibreview.providers.fallback import AbstractFallback
+from bibreview.reporting import Reporter
 from bibreview.storage import read_bibliography, write_bibliography, write_json
 
 
@@ -193,6 +199,106 @@ class BackfillPipelineTests(unittest.TestCase):
         self.assertEqual(result.eligible_count, 1)
         self.assertEqual(result.candidates, ())
         self.assertEqual(result.no_value, (publication.doi,))
+
+
+    def test_unsafe_crossref_abstract_becomes_review_required_evidence(self):
+        publication = self.publication()
+        data = message()
+        data["abstract"] = (
+            'A controller <jats:inline-graphic '
+            'xlink:href="graphic/math-0002.png"/> is proposed.'
+        )
+        provider = FakeProvider({publication.doi: data})
+
+        result = backfill(
+            [publication],
+            provider=provider,
+            fields=("abstract",),
+        )
+
+        self.assertEqual(result.no_value, ())
+        self.assertEqual(len(result.candidates), 1)
+        candidate = result.candidates[0]
+        self.assertTrue(candidate.review_required)
+        self.assertEqual(candidate.proposed_value, "")
+        self.assertEqual(len(candidate.evidence), 1)
+        self.assertEqual(candidate.evidence[0].source, "crossref")
+        self.assertEqual(candidate.evidence[0].reason, "embedded-graphic")
+        self.assertIn("math-0002.png", candidate.evidence[0].value)
+
+
+    def test_batched_backfill_retains_refused_fallback_provider_abstract(self):
+        publication = self.publication()
+        provider = FakeBatchProvider({publication.doi: message()})
+
+        class UnsafeSemanticScholar:
+            BATCH_SIZE = 500
+
+            def abstracts(self, dois):
+                return {
+                    doi: (
+                        'A controller <jats:inline-graphic '
+                        'xlink:href="graphic/math-0002.png"/> is proposed.'
+                    )
+                    for doi in dois
+                }
+
+            def abstract(self, doi):
+                return (
+                    'A controller <jats:inline-graphic '
+                    'xlink:href="graphic/math-0002.png"/> is proposed.'
+                )
+
+        service = EnrichmentService(
+            fallback=AbstractFallback(
+                semantic_scholar=UnsafeSemanticScholar(),
+                reporter=Reporter(-1),
+            ),
+            reporter=Reporter(-1),
+        )
+
+        result = backfill(
+            [publication],
+            provider=provider,
+            batch_provider=provider,
+            fields=("abstract",),
+            enrichment_lookup=service.for_collection,
+            enrichment_many_lookup=service.for_collection_many,
+        )
+
+        self.assertEqual(result.no_value, ())
+        self.assertEqual(len(result.candidates), 1)
+        candidate = result.candidates[0]
+        self.assertTrue(candidate.review_required)
+        self.assertEqual(len(candidate.evidence), 1)
+        self.assertEqual(candidate.evidence[0].source, "semantic_scholar")
+        self.assertEqual(candidate.evidence[0].reason, "embedded-graphic")
+        self.assertIn("math-0002.png", candidate.evidence[0].value)
+
+
+    def test_safe_backfill_proposal_keeps_refused_alternative_evidence(self):
+        publication = self.publication()
+        data = message()
+        data["abstract"] = "(u<inf>0</inf>)<sup>T</sup>"
+        provider = FakeProvider({publication.doi: data})
+
+        result = backfill(
+            [publication],
+            provider=provider,
+            fields=("abstract",),
+            enrichment_lookup=lambda doi, work: Enrichment(
+                abstract="Safe provider abstract",
+                abstract_source="openalex",
+            ),
+        )
+
+        candidate = result.candidates[0]
+        self.assertFalse(candidate.review_required)
+        self.assertEqual(candidate.proposed_value, "Safe provider abstract")
+        self.assertEqual(len(candidate.evidence), 1)
+        self.assertEqual(candidate.evidence[0].source, "crossref")
+        self.assertEqual(candidate.evidence[0].reason, "script-markup")
+
 
     def test_batched_backfill_preserves_input_order_and_avoids_individual_work_calls(self):
         publications = tuple(
@@ -407,6 +513,29 @@ class ProjectBackfillTests(unittest.TestCase):
         self.assertTrue(backfill_review_path(self.config).exists())
         self.assertFalse(self.config.paths.collected.exists())
 
+    def test_legacy_safe_review_shape_keeps_fingerprint_compatibility(self):
+        review = self.review(
+            BackfillCandidate(
+                publication_id=self.publication.id,
+                doi=self.publication.doi,
+                title=self.publication.title,
+                field="abstract",
+                proposed_value="Candidate abstract",
+            )
+        )
+
+        data = review.data()
+        candidate_data = data["candidates"][0]
+        self.assertNotIn("review_required", candidate_data)
+        self.assertNotIn("evidence", candidate_data)
+
+        loaded = backfill_review_from_data(data)
+        self.assertEqual(loaded.data(), data)
+        self.assertEqual(
+            backfill_review_fingerprint(loaded),
+            backfill_review_fingerprint(review),
+        )
+
     def test_resolution_is_resumable_and_fingerprinted(self):
         review = self.review(
             BackfillCandidate(
@@ -445,6 +574,83 @@ class ProjectBackfillTests(unittest.TestCase):
         )
         with self.assertRaisesRegex(ProjectStateError, "do not match"):
             load_project_backfill_resolutions(self.config, changed)
+
+
+    def test_review_required_evidence_round_trips_and_cannot_be_accepted(self):
+        evidence = AbstractEvidence(
+            source="crossref",
+            value=(
+                'A controller <jats:inline-graphic '
+                'xlink:href="graphic/math-0002.png"/> is proposed.'
+            ),
+            reason="embedded-graphic",
+        )
+        review = self.review(
+            BackfillCandidate(
+                publication_id=self.publication.id,
+                doi=self.publication.doi,
+                title=self.publication.title,
+                field="abstract",
+                proposed_value="",
+                review_required=True,
+                evidence=(evidence,),
+            )
+        )
+        self.persist_review(review)
+
+        loaded = load_project_backfill_review(self.config)
+        candidate = backfill_resolution_candidates(loaded)[0]
+        self.assertTrue(candidate.proposal.review_required)
+        self.assertEqual(candidate.proposal.evidence, (evidence,))
+
+        state = load_project_backfill_resolutions(self.config, loaded)
+        with self.assertRaisesRegex(
+            ProjectStateError,
+            "cannot be accepted directly",
+        ):
+            record_backfill_resolution(
+                state,
+                candidate,
+                decision="accepted",
+            )
+
+    def test_review_required_custom_value_can_be_staged(self):
+        evidence = AbstractEvidence(
+            source="semantic_scholar",
+            value="(u<inf>0</inf>)<sup>T</sup>",
+            reason="script-markup",
+        )
+        review = self.review(
+            BackfillCandidate(
+                publication_id=self.publication.id,
+                doi=self.publication.doi,
+                title=self.publication.title,
+                field="abstract",
+                proposed_value="",
+                review_required=True,
+                evidence=(evidence,),
+            )
+        )
+        self.persist_review(review)
+        state = load_project_backfill_resolutions(self.config, review)
+        candidate = backfill_resolution_candidates(review)[0]
+        state = record_backfill_resolution(
+            state,
+            candidate,
+            decision="custom",
+            resolved_value=r"(u_0)^T",
+        )
+        save_project_backfill_resolutions(self.config, state)
+
+        plan = plan_project_backfill_apply(self.config)
+        self.assertEqual(len(plan.changes), 1)
+        self.assertEqual(plan.changes[0].decision, "custom")
+        self.assertEqual(plan.changes[0].value, r"(u_0)^T")
+
+        apply_project_backfill_apply(plan)
+        staged = read_bibliography(self.config.paths.collected)
+        self.assertEqual(staged[0].abstract, r"(u_0)^T")
+
 
     def test_apply_stages_only_human_accepted_or_custom_values(self):
         abstract = BackfillCandidate(

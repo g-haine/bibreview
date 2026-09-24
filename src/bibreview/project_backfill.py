@@ -11,6 +11,7 @@ from typing import Any, Mapping
 
 from .config import BibReviewConfig
 from .pipeline.backfill import BackfillCandidate, BackfillResult, backfill
+from .providers.base import AbstractEvidence
 from .pipeline.collect import (
     BatchWorkProvider,
     EnrichmentLookup,
@@ -23,6 +24,29 @@ from .storage import atomic_write_batch, json_bytes, read_bibliography, read_jso
 
 
 BACKFILL_REVIEW_SCHEMA_VERSION = 1
+
+
+def _backfill_candidate_data(item: BackfillCandidate) -> dict[str, Any]:
+    """Serialize one candidate without perturbing legacy safe fingerprints."""
+    data: dict[str, Any] = {
+        "publication_id": item.publication_id,
+        "doi": item.doi,
+        "title": item.title,
+        "field": item.field,
+        "proposed_value": item.proposed_value,
+    }
+    if item.review_required:
+        data["review_required"] = True
+    if item.evidence:
+        data["evidence"] = [
+            {
+                "source": evidence.source,
+                "value": evidence.value,
+                "reason": evidence.reason,
+            }
+            for evidence in item.evidence
+        ]
+    return data
 
 
 @dataclass(frozen=True)
@@ -45,13 +69,7 @@ class BackfillReview:
             "scanned_count": self.scanned_count,
             "eligible_count": self.eligible_count,
             "candidates": [
-                {
-                    "publication_id": item.publication_id,
-                    "doi": item.doi,
-                    "title": item.title,
-                    "field": item.field,
-                    "proposed_value": item.proposed_value,
-                }
+                _backfill_candidate_data(item)
                 for item in self.candidates
             ],
             "unavailable": list(self.unavailable),
@@ -59,13 +77,17 @@ class BackfillReview:
         }
 
     def summary(self) -> str:
+        review_required = sum(
+            item.review_required for item in self.candidates
+        )
         return (
             "Backfill proposals\n"
-            f"  Scanned     : {self.scanned_count}\n"
-            f"  Eligible    : {self.eligible_count}\n"
-            f"  Proposals   : {len(self.candidates)}\n"
-            f"  No value    : {len(self.no_value)}\n"
-            f"  Unavailable : {len(self.unavailable)}"
+            f"  Scanned         : {self.scanned_count}\n"
+            f"  Eligible        : {self.eligible_count}\n"
+            f"  Proposals       : {len(self.candidates)}\n"
+            f"  Review required : {review_required}\n"
+            f"  No value        : {len(self.no_value)}\n"
+            f"  Unavailable     : {len(self.unavailable)}"
         )
 
 
@@ -140,12 +162,60 @@ def backfill_review_from_data(value: Any) -> BackfillReview:
         data: dict[str, str] = {}
         for name in ("publication_id", "doi", "title", "field", "proposed_value"):
             item = raw.get(name)
-            if not isinstance(item, str) or (name != "title" and not item):
+            if not isinstance(item, str):
                 raise ProjectStateError(
                     f"backfill candidate {index}.{name} must be a string"
                 )
+            if name not in {"title", "proposed_value"} and not item:
+                raise ProjectStateError(
+                    f"backfill candidate {index}.{name} must not be empty"
+                )
             data[name] = item
-        candidates.append(BackfillCandidate(**data))
+
+        review_required = raw.get("review_required", False)
+        if not isinstance(review_required, bool):
+            raise ProjectStateError(
+                f"backfill candidate {index}.review_required must be a boolean"
+            )
+        raw_evidence = raw.get("evidence", [])
+        if not isinstance(raw_evidence, list):
+            raise ProjectStateError(
+                f"backfill candidate {index}.evidence must be a list"
+            )
+        evidence: list[AbstractEvidence] = []
+        for evidence_index, evidence_raw in enumerate(raw_evidence, 1):
+            if not isinstance(evidence_raw, Mapping):
+                raise ProjectStateError(
+                    f"backfill candidate {index}.evidence[{evidence_index}] "
+                    "must be an object"
+                )
+            evidence_data: dict[str, str] = {}
+            for name in ("source", "value", "reason"):
+                item = evidence_raw.get(name)
+                if not isinstance(item, str) or not item:
+                    raise ProjectStateError(
+                        f"backfill candidate {index}.evidence[{evidence_index}]."
+                        f"{name} must be a non-empty string"
+                    )
+                evidence_data[name] = item
+            evidence.append(AbstractEvidence(**evidence_data))
+
+        if not review_required and not data["proposed_value"]:
+            raise ProjectStateError(
+                f"backfill candidate {index}.proposed_value must not be empty"
+            )
+        try:
+            candidates.append(
+                BackfillCandidate(
+                    **data,
+                    review_required=review_required,
+                    evidence=tuple(evidence),
+                )
+            )
+        except (TypeError, ValueError) as error:
+            raise ProjectStateError(
+                f"invalid backfill candidate {index}: {error}"
+            ) from error
     keys = [item.key for item in candidates]
     if len(keys) != len(set(keys)):
         raise ProjectStateError("backfill review contains duplicate publication/field keys")

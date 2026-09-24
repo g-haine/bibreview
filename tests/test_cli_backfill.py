@@ -17,6 +17,7 @@ from bibreview.identity import new_publication_id
 from bibreview.model import Author, Publication
 from bibreview.pipeline.backfill import BackfillCandidate
 from bibreview.project_backfill import BackfillReview, backfill_review_path
+from bibreview.providers.base import AbstractEvidence
 from bibreview.storage import read_bibliography, write_bibliography, write_json
 
 
@@ -103,6 +104,66 @@ class BackfillCliTests(unittest.TestCase):
         self.assertTrue(backfill_resolution_path(self.config).exists())
         state = load_project_backfill_resolutions(self.config, self.review)
         self.assertEqual(state.decisions[0].decision, "accepted")
+
+
+    def test_review_required_evidence_requires_custom_or_reject(self):
+        review = BackfillReview(
+            fields=("abstract",),
+            types=(),
+            scanned_count=1,
+            eligible_count=1,
+            candidates=(
+                BackfillCandidate(
+                    publication_id=self.publication.id,
+                    doi=self.publication.doi,
+                    title=self.publication.title,
+                    field="abstract",
+                    proposed_value="",
+                    review_required=True,
+                    evidence=(
+                        AbstractEvidence(
+                            source="crossref",
+                            value=(
+                                'A controller <jats:inline-graphic '
+                                'xlink:href="graphic/math-0002.png"/> is proposed.'
+                            ),
+                            reason="embedded-graphic",
+                        ),
+                    ),
+                ),
+            ),
+            unavailable=(),
+            no_value=(),
+        )
+        write_json(backfill_review_path(self.config), review.data())
+
+        stdout = StringIO()
+        stderr = StringIO()
+        with patch(
+            "builtins.input",
+            side_effect=["", "f Reviewed safe abstract"],
+        ), redirect_stdout(stdout), redirect_stderr(stderr):
+            code = main([
+                "--config",
+                str(self.config_path),
+                "backfill",
+                "--resolve",
+            ])
+
+        self.assertEqual(code, 0, stderr.getvalue())
+        output = stdout.getvalue()
+        self.assertIn("REVIEW REQUIRED", output)
+        self.assertIn("embedded-graphic", output)
+        self.assertIn("math-0002.png", output)
+        self.assertIn("No safe automatic value is available", output)
+
+        state = load_project_backfill_resolutions(self.config, review)
+        self.assertEqual(state.decisions[0].decision, "custom")
+        self.assertEqual(
+            state.decisions[0].resolved_value,
+            "Reviewed safe abstract",
+        )
+
 
     def test_apply_stages_only_after_resolution(self):
         with patch("builtins.input", side_effect=[""]), redirect_stdout(

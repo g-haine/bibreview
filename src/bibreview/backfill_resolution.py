@@ -234,6 +234,11 @@ def load_project_backfill_resolutions(
             raise ProjectStateError(
                 f"{path}: resolution metadata is inconsistent for {decision.key}"
             )
+        if proposal.review_required and decision.decision == "accepted":
+            raise ProjectStateError(
+                f"{path}: review-required proposal cannot be accepted directly: "
+                f"{decision.key}"
+            )
     return state
 
 
@@ -247,8 +252,14 @@ def record_backfill_resolution(
     """Record or replace one human decision."""
     if decision not in _DECISIONS:
         raise ProjectStateError(f"unsupported backfill decision: {decision}")
+    proposal = candidate.proposal
     if decision == "accepted":
-        resolved_value = candidate.proposal.proposed_value
+        if proposal.review_required:
+            raise ProjectStateError(
+                "review-required backfill evidence cannot be accepted directly; "
+                "use a custom value, reject, or defer"
+            )
+        resolved_value = proposal.proposed_value
     elif decision == "custom":
         if not isinstance(resolved_value, str) or not resolved_value.strip():
             raise ProjectStateError("custom backfill resolution requires a value")
@@ -256,7 +267,6 @@ def record_backfill_resolution(
     else:
         resolved_value = None
 
-    proposal = candidate.proposal
     item = BackfillResolutionDecision(
         key=candidate.key,
         publication_id=proposal.publication_id,
@@ -321,23 +331,44 @@ def unresolved_backfill_candidates(
 def format_backfill_resolution_candidate(
     candidate: BackfillResolutionCandidate,
 ) -> str:
-    """Format one proposal for interactive human review."""
+    """Format one proposal or review-required evidence for human review."""
     proposal = candidate.proposal
-    rendered = fill(
-        proposal.proposed_value,
-        width=100,
-        initial_indent="  ",
-        subsequent_indent="  ",
-    )
-    return "\n".join(
-        (
-            f"[{candidate.position}/{candidate.total}] {proposal.doi} — {proposal.title}",
+    lines = [
+        f"[{candidate.position}/{candidate.total}] {proposal.doi} — {proposal.title}",
+        "",
+        f"Field: {proposal.field}",
+        "Current:",
+        "  (missing)",
+        "",
+    ]
+
+    if proposal.review_required:
+        lines.extend((
+            "Status: REVIEW REQUIRED",
+            "No safe automatic proposal is available.",
             "",
-            f"Field: {proposal.field}",
-            "Current:",
-            "  (missing)",
-            "",
-            "Proposed:",
-            rendered,
+        ))
+    else:
+        rendered = fill(
+            proposal.proposed_value,
+            width=100,
+            initial_indent="  ",
+            subsequent_indent="  ",
         )
-    )
+        lines.extend(("Proposed:", rendered, ""))
+
+    if proposal.evidence:
+        lines.append("Retained provider evidence:")
+        for index, evidence in enumerate(proposal.evidence, 1):
+            rendered = fill(
+                evidence.value,
+                width=100,
+                initial_indent="    ",
+                subsequent_indent="    ",
+            )
+            lines.extend((
+                f"  [{index}] {evidence.source} — {evidence.reason}",
+                rendered,
+            ))
+
+    return "\n".join(lines).rstrip() + "\n"

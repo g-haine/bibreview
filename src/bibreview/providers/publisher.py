@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from urllib.parse import urlsplit
 
 from ..reporting import Reporter
@@ -64,7 +65,15 @@ class PublisherEnrichmentRouter:
             return Enrichment()
 
         try:
-            return provider.enrich(doi)
+            result = provider.enrich(doi)
+            if not isinstance(result, Enrichment):
+                raise TypeError("publisher enrichment provider must return Enrichment")
+            if result.abstract and not result.abstract_source:
+                result = replace(
+                    result,
+                    abstract_source=provider_name.casefold().replace(" ", "_"),
+                )
+            return result
         except HttpError as error:
             if error.status_code in {401, 403, 429}:
                 self._disabled.add(provider_name)

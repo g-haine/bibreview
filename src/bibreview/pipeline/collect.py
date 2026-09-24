@@ -16,7 +16,7 @@ from typing import Any, Protocol
 
 from ..identity import IdentityError, new_publication_id, normalize_doi
 from ..model import Author, Editor, Publication, Reference
-from ..providers.base import Enrichment
+from ..providers.base import AbstractEvidence, Enrichment
 from ..providers.crossref import crossref_page_locator
 from ..reporting import Reporter
 from ..text import clean_metadata, normalize_provider_abstract, safe_component, slugify
@@ -207,14 +207,32 @@ def _references(value: Any, citation_lookup: CitationLookup | None) -> tuple[Ref
 
 
 def _default_enrichment(message: Mapping[str, Any]) -> Enrichment:
-    abstract = _usable_abstract(_string(message.get("abstract")))
+    raw_abstract = _string(message.get("abstract"))
+    normalized = normalize_provider_abstract(raw_abstract)
+    if normalized.deterministic:
+        abstract = normalized.normalized
+        evidence: tuple[AbstractEvidence, ...] = ()
+    else:
+        abstract = ""
+        evidence = (
+            AbstractEvidence(
+                source="crossref",
+                value=normalized.normalized,
+                reason=normalized.reason,
+            ),
+        )
     subjects = message.get("subject")
     keywords = tuple(
         clean_metadata(_string(value))
         for value in subjects
         if _string(value).strip()
     ) if isinstance(subjects, list) else ()
-    return Enrichment(abstract=abstract, keywords=keywords)
+    return Enrichment(
+        abstract=abstract,
+        keywords=keywords,
+        abstract_source="crossref" if abstract else "",
+        abstract_evidence=evidence,
+    )
 
 
 SCALAR_METADATA_FIELDS = frozenset({
@@ -262,10 +280,20 @@ def scalar_metadata_values(
             extra = enrichment_lookup(normalized_doi, message)
             if not isinstance(extra, Enrichment):
                 raise TypeError("enrichment lookup must return Enrichment")
+            abstract = extra.abstract or base_enrichment.abstract
             enrichment = Enrichment(
-                abstract=extra.abstract or base_enrichment.abstract,
+                abstract=abstract,
                 keywords=extra.keywords or base_enrichment.keywords,
                 event=extra.event or base_enrichment.event,
+                abstract_source=(
+                    extra.abstract_source
+                    if extra.abstract
+                    else base_enrichment.abstract_source
+                ),
+                abstract_evidence=(
+                    tuple(base_enrichment.abstract_evidence)
+                    + tuple(extra.abstract_evidence)
+                ),
             )
 
     values: dict[str, str] = {}
@@ -329,10 +357,20 @@ def build_publication(
         extra = enrichment_lookup(normalized_doi, message)
         if not isinstance(extra, Enrichment):
             raise TypeError("enrichment lookup must return Enrichment")
+        abstract = extra.abstract or enrichment.abstract
         enrichment = Enrichment(
-            abstract=extra.abstract or enrichment.abstract,
+            abstract=abstract,
             keywords=extra.keywords or enrichment.keywords,
             event=extra.event or enrichment.event,
+            abstract_source=(
+                extra.abstract_source
+                if extra.abstract
+                else enrichment.abstract_source
+            ),
+            abstract_evidence=(
+                tuple(enrichment.abstract_evidence)
+                + tuple(extra.abstract_evidence)
+            ),
         )
 
     identifiers: dict[str, str] = {"doi": normalized_doi}

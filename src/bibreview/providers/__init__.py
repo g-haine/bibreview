@@ -1,10 +1,10 @@
 """Built-in bibliographic provider adapters."""
 
-from .base import Enrichment, EnrichmentProvider
+from .base import AbstractEvidence, Enrichment, EnrichmentProvider
 from .crossref import CrossRefError, CrossRefProvider
 from .doi import DoiProvider, format_bibtex
 from .elsevier import ElsevierProvider
-from .fallback import AbstractFallback, AbstractProvider
+from .fallback import AbstractFallback, AbstractFallbackSelection, AbstractProvider
 from .http import HttpError, HttpTransport
 from .ieee import IeeeProvider
 from .mendeley import MendeleyProvider, mendeley_abstract
@@ -14,7 +14,9 @@ from .semantic_scholar import SemanticScholarProvider
 from .springer import SpringerProvider
 
 __all__ = [
+    "AbstractEvidence",
     "AbstractFallback",
+    "AbstractFallbackSelection",
     "AbstractProvider",
     "CrossRefError",
     "CrossRefProvider",

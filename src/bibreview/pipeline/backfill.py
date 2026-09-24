@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from ..model import Publication
-from ..providers.base import Enrichment
+from ..providers.base import AbstractEvidence, Enrichment
 from ..providers.http import HttpError
 from ..reporting import Reporter
 from ..text import is_missing_metadata_value
@@ -18,6 +18,7 @@ from .collect import (
     WorkProvider,
     scalar_metadata_values,
 )
+from .enrich import crossref_enrichment
 
 
 BACKFILL_FIELDS = frozenset({
@@ -35,13 +36,34 @@ BACKFILL_FIELDS = frozenset({
 
 @dataclass(frozen=True)
 class BackfillCandidate:
-    """One proposed value for one currently-empty canonical field."""
+    """One safe proposal or review-required evidence for a missing field."""
 
     publication_id: str
     doi: str
     title: str
     field: str
     proposed_value: str
+    review_required: bool = False
+    evidence: tuple[AbstractEvidence, ...] = ()
+
+    def __post_init__(self) -> None:
+        evidence = tuple(self.evidence)
+        if any(not isinstance(item, AbstractEvidence) for item in evidence):
+            raise TypeError("backfill candidate evidence must contain AbstractEvidence")
+        if self.review_required:
+            if self.field != "abstract":
+                raise ValueError(
+                    "review-required backfill candidates are currently abstract-only"
+                )
+            if self.proposed_value:
+                raise ValueError(
+                    "review-required backfill candidate must not define proposed_value"
+                )
+            if not evidence:
+                raise ValueError(
+                    "review-required backfill candidate requires provider evidence"
+                )
+        object.__setattr__(self, "evidence", evidence)
 
     @property
     def key(self) -> str:
@@ -257,6 +279,36 @@ def backfill(
             return Enrichment()
         return enrichment_lookup(doi, message)
 
+    def complete_enrichment(
+        doi: str,
+        message: Mapping[str, Any],
+    ) -> Enrichment:
+        """Combine CrossRef evidence with the configured enrichment result."""
+        base = crossref_enrichment(message, doi=doi)
+        extra = cached_enrichment(doi, message)
+        if not isinstance(extra, Enrichment):
+            raise TypeError("enrichment lookup must return Enrichment")
+
+        seen: set[tuple[str, str, str]] = set()
+        evidence: list[AbstractEvidence] = []
+        for item in (*base.abstract_evidence, *extra.abstract_evidence):
+            key = (item.source, item.value, item.reason)
+            if key in seen:
+                continue
+            seen.add(key)
+            evidence.append(item)
+
+        abstract = extra.abstract or base.abstract
+        return Enrichment(
+            abstract=abstract,
+            keywords=extra.keywords or base.keywords,
+            event=extra.event or base.event,
+            abstract_source=(
+                extra.abstract_source if extra.abstract else base.abstract_source
+            ),
+            abstract_evidence=tuple(evidence),
+        )
+
     for publication, missing in eligible:
         doi = publication.doi
         assert doi is not None
@@ -265,20 +317,46 @@ def backfill(
             unavailable.append(doi)
             continue
 
+        resolved_enrichment: Enrichment | None = None
+        enrichment_for_scalar = None
+        if {"abstract", "event"} & set(missing):
+            resolved_enrichment = complete_enrichment(doi, message)
+
+            def enrichment_for_scalar(
+                _doi: str,
+                _message: Mapping[str, Any],
+            ) -> Enrichment:
+                assert resolved_enrichment is not None
+                return resolved_enrichment
+
         proposed = scalar_metadata_values(
             doi,
             message,
             missing,
-            enrichment_lookup=(
-                cached_enrichment
-                if {"abstract", "event"} & set(missing)
-                else None
-            ),
+            enrichment_lookup=enrichment_for_scalar,
         )
         found = False
         for field in missing:
             value = proposed[field]
+            evidence = (
+                tuple(resolved_enrichment.abstract_evidence)
+                if field == "abstract" and resolved_enrichment is not None
+                else ()
+            )
             if is_missing_metadata_value(field, value):
+                if field == "abstract" and evidence:
+                    found = True
+                    candidates.append(
+                        BackfillCandidate(
+                            publication_id=publication.id,
+                            doi=doi,
+                            title=publication.title,
+                            field=field,
+                            proposed_value="",
+                            review_required=True,
+                            evidence=evidence,
+                        )
+                    )
                 continue
             found = True
             candidates.append(
@@ -288,6 +366,7 @@ def backfill(
                     title=publication.title,
                     field=field,
                     proposed_value=value,
+                    evidence=evidence,
                 )
             )
         if not found:
