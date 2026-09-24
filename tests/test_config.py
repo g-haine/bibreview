@@ -45,6 +45,15 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(config.audit.campaign, root / "data/audit/campaign.json")
         self.assertEqual(config.audit.report, root / "data/audit/report.json")
         self.assertEqual(config.audit.batch_size, 50)
+        self.assertEqual(
+            config.references.campaign,
+            root / "data/references/campaign.json",
+        )
+        self.assertEqual(
+            config.references.report,
+            root / "data/references/report.json",
+        )
+        self.assertEqual(config.references.batch_size, 50)
         self.assertEqual(config.discovery.query, "fluid-structure interaction")
         self.assertEqual(config.discovery.accepted_types, DEFAULT_DISCOVERY_TYPES)
         self.assertEqual(config.discovery.exclude_doi_substrings, ())
@@ -177,6 +186,48 @@ class ConfigTests(unittest.TestCase):
         )
         _, path = self.write(invalid_size)
         with self.assertRaisesRegex(ConfigError, "audit.batch_size"):
+            load_config(path)
+
+    def test_loads_references_configuration(self):
+        root, path = self.write(BASE.replace(
+            "relevance:\n",
+            "references:\n"
+            "  campaign: state/references.json\n"
+            "  report: reports/references.json\n"
+            "  batch_size: 125\n"
+            "relevance:\n",
+        ))
+        config = load_config(path)
+        self.assertEqual(
+            config.references.campaign,
+            root / "state/references.json",
+        )
+        self.assertEqual(
+            config.references.report,
+            root / "reports/references.json",
+        )
+        self.assertEqual(config.references.batch_size, 125)
+
+    def test_rejects_identical_reference_paths_and_invalid_batch_size(self):
+        same_path = BASE.replace(
+            "relevance:\n",
+            "references:\n"
+            "  campaign: data/references.json\n"
+            "  report: data/references.json\n"
+            "relevance:\n",
+        )
+        _, path = self.write(same_path)
+        with self.assertRaisesRegex(ConfigError, "must be different paths"):
+            load_config(path)
+
+        invalid_size = BASE.replace(
+            "relevance:\n",
+            "references:\n"
+            "  batch_size: 0\n"
+            "relevance:\n",
+        )
+        _, path = self.write(invalid_size)
+        with self.assertRaisesRegex(ConfigError, "references.batch_size"):
             load_config(path)
 
     def test_loads_provider_min_interval_seconds(self):
