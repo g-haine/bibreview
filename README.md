@@ -11,7 +11,7 @@ feed.
 BibReview is designed so that provider output remains inspectable and ambiguous
 decisions remain human decisions.
 
-Current stable release: **v1.6.19**.
+Current stable release: **v1.6.20**.
 
 ## What BibReview provides
 
@@ -42,7 +42,7 @@ BibReview currently requires **Python 3.12 or newer**.
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.19"
+python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.20"
 
 bibreview --version
 ~~~
@@ -148,15 +148,20 @@ could discard mathematical content. Subscript/superscript markup such as IEEE
 unwrapping would lose mathematical position semantics. **Phase 1 never rewrites
 canonical metadata.**
 
-BibReview v1.6.19 also exposes the library-level
+BibReview v1.6.20 introduced the library-level
 `bibreview.structured_abstract.normalize_structured_abstract()` primitive for
-Phase 2 normalization experiments. It handles only the structured forms whose
-lossless path is justified by the audited corpus: paragraph wrappers,
-JATS typographic wrappers, and inline formulas carrying complete trusted TeX.
-Unsafe or unsupported markup is returned unchanged with an explicit refusal
-reason. This primitive is **not yet wired into collect, enrichment, audit,
-backfill, refresh, or canonical migration**, so existing project behavior
-remains unchanged.
+lossless structured normalization.
+
+BibReview v1.6.20 routes incoming provider abstracts through that conservative
+primitive before canonical collection/enrichment. Safe structural markup is
+normalized; refused structured payloads are not flattened into misleading text.
+Collection can fall through from an unsafe publisher/CrossRef abstract to another
+safe provider, and optional fallback providers skip unsafe candidates with an
+explicit warning. Publisher adapters preserve their raw abstract markup until
+this central policy boundary. Discovery remains non-canonical: refused provider
+text may still participate transiently in relevance matching so useful search
+evidence is not discarded. **Audit evidence and historical canonical migration
+remain separate and are not changed by v1.6.20.**
 
 ### Non-destructive reviewed refresh
 
