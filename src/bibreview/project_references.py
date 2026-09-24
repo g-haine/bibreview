@@ -23,7 +23,7 @@ from .campaign import (
 )
 from .citation_format import format_crossref_citations
 from .config import BibReviewConfig
-from .model import Publication
+from .model import Publication, Reference
 from .pipeline.collect import BatchWorkProvider
 from .pipeline.references import (
     ReferenceReconstruction,
@@ -153,6 +153,7 @@ class ProjectReferencesReview:
     review_required: int
     unavailable: int
     items: tuple[ReferenceRefreshResult, ...]
+    current_references: Mapping[str, tuple[Reference, ...]]
 
     def summary(self) -> str:
         return (
@@ -869,6 +870,10 @@ def project_references_review(
         for entry in report.entries
         if entry.result.classification != "unchanged"
     )
+    publications = {
+        publication.id: publication
+        for publication in read_bibliography(config.paths.bibliography)
+    }
     return ProjectReferencesReview(
         audited_publications=len(report.entries),
         classification_counts=MappingProxyType(dict(sorted(counts.items()))),
@@ -876,17 +881,24 @@ def project_references_review(
         review_required=counts["review-required"],
         unavailable=counts["unavailable"],
         items=items,
+        current_references=MappingProxyType(
+            {
+                item.publication_id: publications[item.publication_id].references
+                for item in items
+                if item.publication_id in publications
+            }
+        ),
     )
 
 
 def format_project_references_review(
     review: ProjectReferencesReview,
     *,
-    verbose: bool = False,
+    verbose: int = 0,
 ) -> str:
     """Format the offline reference-refresh review."""
     text = review.summary()
-    if not verbose:
+    if verbose < 1:
         return text
 
     lines = [text]
@@ -913,6 +925,28 @@ def format_project_references_review(
                 + ", ".join(
                     f"{index}:{reason}"
                     for index, reason in item.provider_refusals
+                )
+            )
+        if verbose < 2:
+            continue
+
+        current = review.current_references.get(item.publication_id, ())
+        proposed = item.proposed_references
+        for index in item.changed_indices:
+            left = current[index - 1] if index <= len(current) else None
+            right = proposed[index - 1] if index <= len(proposed) else None
+            left_doi = left.doi if left is not None else None
+            right_doi = right.doi if right is not None else None
+            lines.extend(
+                (
+                    "",
+                    f"  Reference {index}",
+                    f"    Current DOI : {left_doi or '(none)'}",
+                    f"    Proposed DOI: {right_doi or '(none)'}",
+                    "    Current     : "
+                    + (left.citation if left is not None else "(missing)"),
+                    "    Proposed    : "
+                    + (right.citation if right is not None else "(missing)"),
                 )
             )
     return "\n".join(lines)
