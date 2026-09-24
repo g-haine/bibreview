@@ -20,6 +20,7 @@ from typing import Any
 
 from ..identity import normalize_identifiers, validate_publication_id
 from ..model import Author, Editor, Publication
+from ..text import normalize_provider_abstract
 
 
 _PAIR_CLASSIFICATIONS = frozenset(
@@ -28,6 +29,7 @@ _PAIR_CLASSIFICATIONS = frozenset(
         "formatting-only",
         "canonical-missing",
         "provider-missing",
+        "provider-review-required",
         "substantive-difference",
         "identity-problem",
     }
@@ -524,6 +526,12 @@ def _classify_pair(
     *,
     identity: bool = False,
 ) -> str:
+    if field == "abstract" and isinstance(provider, str) and provider.strip():
+        prepared = normalize_provider_abstract(provider)
+        if not prepared.deterministic:
+            return "provider-review-required"
+        provider = prepared.normalized
+
     if _is_empty(canonical) and _is_empty(provider):
         return "equal"
     if _is_empty(canonical):
@@ -565,7 +573,17 @@ def _provider_disagreements(
         values = tuple(
             (item.provider, item.fields[field])
             for item in available
-            if field in item.fields and not _is_empty(item.fields[field])
+            if (
+                field in item.fields
+                and not _is_empty(item.fields[field])
+                and not (
+                    field == "abstract"
+                    and isinstance(item.fields[field], str)
+                    and not normalize_provider_abstract(
+                        item.fields[field]
+                    ).deterministic
+                )
+            )
         )
         representatives: list[AuditValue] = []
         for _, value in values:
@@ -690,7 +708,10 @@ def _disagreements_from_comparisons(
 ) -> tuple[AuditDisagreement, ...]:
     grouped: dict[str, list[tuple[str, AuditValue]]] = {}
     for item in comparisons:
-        if _is_empty(item.provider_value):
+        if (
+            _is_empty(item.provider_value)
+            or item.classification == "provider-review-required"
+        ):
             continue
         grouped.setdefault(item.field, []).append(
             (item.provider, item.provider_value)
@@ -837,6 +858,10 @@ def _merge_review_findings(
 ) -> tuple[AuditReviewFinding, ...]:
     merged: list[AuditReviewFinding] = []
     for finding in findings:
+        if finding.classification == "provider-review-required":
+            merged.append(finding)
+            continue
+
         representative = (
             finding.provider_values[0][1]
             if finding.provider_values
@@ -885,6 +910,13 @@ def _review_actionability(
     finding: AuditReviewFinding,
     comparisons: tuple[AuditComparison, ...],
 ) -> tuple[bool, str]:
+    if finding.classification == "provider-review-required":
+        return (
+            False,
+            "provider abstract contains unsupported structured markup; "
+            "raw evidence retained for manual inspection",
+        )
+
     if finding.classification not in {
         "canonical-missing",
         "substantive-difference",
