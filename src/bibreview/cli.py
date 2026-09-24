@@ -504,7 +504,7 @@ def _run_backfill_resolution(config, args) -> int:
 
 
 def _run_refresh_resolution(config, args) -> int:
-    """Run resumable human review for safe refresh proposals."""
+    """Run resumable human review for refresh proposals."""
     if args.quiet:
         raise ProjectStateError(
             "--quiet cannot be used with interactive refresh --resolve"
@@ -518,7 +518,7 @@ def _run_refresh_resolution(config, args) -> int:
     if not candidates:
         prefix = "Dry run: " if args.dry_run else ""
         print(prefix + refresh_resolution_summary(state))
-        print("No unresolved safe refresh proposals.")
+        print("No unresolved refresh proposals.")
         print(f"Resolutions: {path}")
         return 0
 
