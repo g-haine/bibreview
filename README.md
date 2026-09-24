@@ -11,7 +11,7 @@ feed.
 BibReview is designed so that provider output remains inspectable and ambiguous
 decisions remain human decisions.
 
-Current stable release: **v1.6.24**.
+Current stable release: **v1.6.25**.
 
 ## What BibReview provides
 
@@ -42,7 +42,7 @@ BibReview currently requires **Python 3.12 or newer**.
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.24"
+python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.25"
 
 bibreview --version
 ~~~
@@ -107,7 +107,7 @@ A curated project should inspect staged metadata and BibTeX before merging.
 | **validate** | Validate project configuration. |
 | **status** | Show the resolved project configuration summary. |
 | **providers** | Inspect credential provenance and optionally live-check providers. |
-| **hygiene** | Read-only inventory of structured markup contaminating canonical abstracts. |
+| **hygiene** | Read-only metadata hygiene inventories plus reviewed canonical abstract migration. |
 | **audit** | Incrementally audit new/retryable canonical publications; use `--full` for a complete pass. |
 | **discover** | Discover and screen new DOI candidates. |
 | **collect** | Collect pending DOI metadata into canonical staging. |
@@ -165,7 +165,26 @@ backfill/refresh can revisit the missing field. Discovery remains non-canonical:
 refused provider text may still participate transiently in relevance matching so
 useful search evidence is not discarded.
 
-BibReview v1.6.24 completes the historical migration workflow:
+BibReview v1.6.25 starts the separate title/reference hygiene campaign with a
+strictly read-only T1 inventory:
+
+~~~bash
+bibreview hygiene --titles
+bibreview -v hygiene --titles
+bibreview hygiene --titles --json
+~~~
+
+This scans canonical publication titles and complete stored `Reference.citation`
+strings separately. It reports structural/encoding families such as HTML/XML,
+small-caps markup, entities, TeX/math fragments, MathML/JATS, script markup,
+escaped markup, and selected Unicode/control signals. Reference findings use
+their DOI when available; otherwise BibReview reports a SHA-256 fingerprint of
+the complete original citation, adding an ordinal only for duplicates within
+the same publication. Plain TeX is inventoried but marked `preserve-tex`, not
+as an automatic cleanup candidate. **No title/citation normalizer or migration
+is introduced in v1.6.25.**
+
+BibReview v1.6.24 completes the historical abstract migration workflow:
 
 ~~~bash
 bibreview hygiene --review

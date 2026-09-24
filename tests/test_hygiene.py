@@ -4,10 +4,12 @@ import unittest
 
 from bibreview.hygiene import (
     format_abstract_hygiene_report,
+    format_title_reference_hygiene_report,
     scan_abstract_hygiene,
+    scan_title_reference_hygiene,
 )
 from bibreview.identity import new_publication_id
-from bibreview.model import Author, Publication
+from bibreview.model import Author, Publication, Reference
 
 
 def publication(abstract: str, *, doi: str = "10.1/example", title: str = "Example") -> Publication:
@@ -201,6 +203,152 @@ class AbstractHygieneTests(unittest.TestCase):
         verbose = format_abstract_hygiene_report(report, verbose=True)
         self.assertIn("10.1/html: HTML", verbose)
         self.assertIn("10.1/math: Math", verbose)
+
+
+
+class TitleReferenceHygieneTests(unittest.TestCase):
+    def item(
+        self,
+        *,
+        title: str = "Plain title",
+        references: tuple[Reference, ...] = (),
+        doi: str = "10.1/title",
+    ) -> Publication:
+        return Publication(
+            id=new_publication_id(),
+            identifiers={"doi": doi},
+            title=title,
+            authors=(Author(literal="Example Author"),),
+            references=references,
+        )
+
+    def test_clean_title_and_citation_are_not_flagged(self) -> None:
+        report = scan_title_reference_hygiene(
+            (
+                self.item(
+                    references=(
+                        Reference(
+                            identifiers={"doi": "10.2/ref"},
+                            citation="A. Author. Plain referenced work. Journal, 2024.",
+                        ),
+                    ),
+                ),
+            )
+        )
+
+        self.assertEqual(report.scanned_publications, 1)
+        self.assertEqual(report.titles_present, 1)
+        self.assertEqual(report.references_scanned, 1)
+        self.assertEqual(report.citations_present, 1)
+        self.assertEqual(report.title_findings, ())
+        self.assertEqual(report.citation_findings, ())
+
+    def test_small_caps_title_is_apparent_structural_candidate(self) -> None:
+        report = scan_title_reference_hygiene(
+            (self.item(title="A Port-<scp>H</scp>amiltonian approach"),)
+        )
+        finding = report.title_findings[0]
+
+        self.assertEqual(
+            finding.families,
+            ("small-caps-markup", "html-xml-markup"),
+        )
+        self.assertTrue(finding.deterministic_candidate)
+        self.assertEqual(finding.normalization_hint, "structural-unwrapping")
+        self.assertEqual(finding.target, "title")
+
+    def test_html_entity_in_reference_is_candidate_for_decoding(self) -> None:
+        report = scan_title_reference_hygiene(
+            (
+                self.item(
+                    references=(
+                        Reference(
+                            citation="Learning for Dynamics &amp; Control",
+                        ),
+                    ),
+                ),
+            )
+        )
+        finding = report.citation_findings[0]
+
+        self.assertEqual(finding.families, ("html-entity",))
+        self.assertTrue(finding.deterministic_candidate)
+        self.assertEqual(finding.normalization_hint, "entity-decoding")
+        self.assertTrue(finding.reference_key.startswith("sha256:"))
+
+    def test_plain_tex_is_inventory_only_not_a_cleanup_candidate(self) -> None:
+        report = scan_title_reference_hygiene(
+            (self.item(title=r"Boundary control of \(H^1\) systems"),)
+        )
+        finding = report.title_findings[0]
+
+        self.assertEqual(finding.families, ("tex-fragment",))
+        self.assertFalse(finding.deterministic_candidate)
+        self.assertEqual(finding.normalization_hint, "preserve-tex")
+
+    def test_script_markup_requires_review(self) -> None:
+        report = scan_title_reference_hygiene(
+            (
+                self.item(
+                    references=(
+                        Reference(citation="A model with H<sup>1</sup> regularity"),
+                    ),
+                ),
+            )
+        )
+        finding = report.citation_findings[0]
+
+        self.assertIn("script-markup", finding.families)
+        self.assertFalse(finding.deterministic_candidate)
+        self.assertEqual(finding.normalization_hint, "script-markup-review")
+
+    def test_reference_identity_prefers_doi_and_disambiguates_duplicate_hashes(self) -> None:
+        duplicate = "Same citation without DOI"
+        report = scan_title_reference_hygiene(
+            (
+                self.item(
+                    references=(
+                        Reference(
+                            identifiers={"doi": "10.2/ref"},
+                            citation="DOI reference &amp; metadata",
+                        ),
+                        Reference(citation=duplicate + " &amp;"),
+                        Reference(citation=duplicate + " &amp;"),
+                    ),
+                ),
+            )
+        )
+
+        keys = tuple(item.reference_key for item in report.citation_findings)
+        self.assertEqual(keys[0], "doi:10.2/ref")
+        self.assertRegex(keys[1], r"^sha256:[0-9a-f]{16}#1$")
+        self.assertRegex(keys[2], r"^sha256:[0-9a-f]{16}#2$")
+        self.assertEqual(keys[1][:-2], keys[2][:-2])
+
+    def test_report_separates_title_and_citation_family_counts(self) -> None:
+        report = scan_title_reference_hygiene(
+            (
+                self.item(
+                    title="<scp>H</scp> systems",
+                    references=(Reference(citation="A &amp; B"),),
+                ),
+                self.item(title="Plain", doi="10.1/plain"),
+            )
+        )
+
+        self.assertEqual(report.suspicious_titles, 1)
+        self.assertEqual(report.suspicious_citations, 1)
+        self.assertEqual(report.title_family_counts["small-caps-markup"], 1)
+        self.assertEqual(report.citation_family_counts["html-entity"], 1)
+
+        compact = format_title_reference_hygiene_report(report)
+        self.assertIn("Titles with hygiene signals   : 1", compact)
+        self.assertIn("Citations with hygiene signals: 1", compact)
+
+        verbose = format_title_reference_hygiene_report(report, verbose=True)
+        self.assertIn("Title findings:", verbose)
+        self.assertIn("Reference citation findings:", verbose)
+        self.assertIn("Reference: sha256:", verbose)
 
 
 if __name__ == "__main__":

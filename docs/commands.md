@@ -113,8 +113,44 @@ either an `application/x-tex` annotation or
 review-required. That label is diagnostic only: **`hygiene` never normalizes,
 stages, or mutates canonical metadata.**
 
-The plain command remains the inventory phase of canonical-data hygiene.
-Historical migration is an explicit second workflow:
+The plain command remains the abstract inventory phase of canonical-data
+hygiene.
+
+### Title and reference-citation inventory
+
+Issue #97 starts with a separate **T1 read-only inventory**:
+
+~~~bash
+bibreview --config bibreview.yml hygiene --titles
+bibreview --config bibreview.yml -v hygiene --titles
+bibreview --config bibreview.yml hygiene --titles --json
+~~~
+
+This scans canonical publication titles and complete stored
+`Reference.citation` strings separately. It does not attempt to infer a title
+substring from a free-form citation.
+
+The T1 families include HTML/XML markup, MathML/JATS/formula markup, small-caps
+markup such as `<scp>`, HTML entities, TeX/math fragments, embedded graphics,
+script markup, escaped markup, selected Unicode/control-character signals, and
+obviously unbalanced structured tags.
+
+An `apparent candidate` count means only that the observed signal appears to
+have a lossless structural path worth designing in T2. **No title/reference
+normalizer exists yet.** Plain TeX is intentionally reported as
+`preserve-tex`, not as an automatic cleanup candidate.
+
+For stable reporting, a reference uses its DOI when available. Otherwise the
+inventory uses a SHA-256 fingerprint of the complete original citation; an
+ordinal is added only when duplicate identities occur within one publication.
+This reporting identity does not introduce fuzzy bibliographic matching.
+
+`hygiene --titles` is mutually exclusive with the migration actions below and
+never writes project state.
+
+### Reviewed historical abstract migration
+
+Historical abstract migration is an explicit second workflow:
 
 ~~~bash
 bibreview --config bibreview.yml hygiene --review

@@ -12,7 +12,7 @@ from bibreview.cli import main
 from bibreview.config import load_config
 from bibreview.hygiene_resolution import load_project_hygiene_resolutions
 from bibreview.identity import new_publication_id
-from bibreview.model import Author, Publication
+from bibreview.model import Author, Publication, Reference
 from bibreview.project_hygiene import project_hygiene_migration_review
 from bibreview.storage import read_bibliography, write_bibliography
 
@@ -105,6 +105,77 @@ class HygieneCliTests(unittest.TestCase):
         self.assertEqual(
             payload["findings"][0]["normalization_hint"],
             "embedded-tex-annotation",
+        )
+
+    def test_title_reference_inventory_is_read_only(self) -> None:
+        item = Publication(
+            id=new_publication_id(),
+            identifiers={"doi": "10.1/title"},
+            title="A Port-<scp>H</scp>amiltonian approach",
+            authors=(Author(literal="Ada Lovelace"),),
+            references=(
+                Reference(citation="Learning for Dynamics &amp; Control"),
+            ),
+        )
+        write_bibliography(self.config.paths.bibliography, (item,))
+        before = self.snapshot()
+
+        code, stdout, stderr = self.run_cli("hygiene", "--titles")
+
+        self.assertEqual(code, 0, stderr)
+        self.assertIn("Publications scanned          : 1", stdout)
+        self.assertIn("Titles with hygiene signals   : 1", stdout)
+        self.assertIn("Citations with hygiene signals: 1", stdout)
+        self.assertNotIn("10.1/title", stdout)
+        self.assertEqual(before, self.snapshot())
+
+    def test_verbose_title_reference_inventory_lists_stable_reference_identity(self) -> None:
+        item = Publication(
+            id=new_publication_id(),
+            identifiers={"doi": "10.1/title"},
+            title="<scp>H</scp> systems",
+            authors=(Author(literal="Ada Lovelace"),),
+            references=(
+                Reference(
+                    identifiers={"doi": "10.2/reference"},
+                    citation="A &amp; B",
+                ),
+            ),
+        )
+        write_bibliography(self.config.paths.bibliography, (item,))
+
+        code, stdout, stderr = self.run_cli("-v", "hygiene", "--titles")
+
+        self.assertEqual(code, 0, stderr)
+        self.assertIn("Title findings:", stdout)
+        self.assertIn("10.1/title", stdout)
+        self.assertIn("Reference: doi:10.2/reference", stdout)
+        self.assertIn("html-entity", stdout)
+
+    def test_title_reference_inventory_json_is_complete(self) -> None:
+        item = Publication(
+            id=new_publication_id(),
+            identifiers={"doi": "10.1/title"},
+            title="<scp>H</scp> systems",
+            authors=(Author(literal="Ada Lovelace"),),
+            references=(Reference(citation="A &amp; B"),),
+        )
+        write_bibliography(self.config.paths.bibliography, (item,))
+
+        code, stdout, stderr = self.run_cli("hygiene", "--titles", "--json")
+
+        self.assertEqual(code, 0, stderr)
+        payload = json.loads(stdout)
+        self.assertEqual(payload["titles_with_hygiene_signals"], 1)
+        self.assertEqual(payload["citations_with_hygiene_signals"], 1)
+        self.assertEqual(
+            payload["title_findings"][0]["families"],
+            ["small-caps-markup", "html-xml-markup"],
+        )
+        self.assertTrue(
+            payload["citation_findings"][0]["reference_key"].startswith(
+                "sha256:"
+            )
         )
 
     def test_hygiene_review_derives_proposals_without_writing_state(self) -> None:
