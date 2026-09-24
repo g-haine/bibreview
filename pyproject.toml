@@ -19,6 +19,7 @@ dependencies = [
   "requests>=2.32,<3",
   "urllib3>=2,<3",
   "python-dotenv>=1,<2",
+  "citeproc-py>=0.10,<0.12",
 ]
 
 [project.scripts]
@@ -26,3 +27,7 @@ bibreview = "bibreview.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+
+[tool.setuptools.package-data]
+"bibreview" = ["data/styles/*.csl", "data/styles/NOTICE.txt"]
