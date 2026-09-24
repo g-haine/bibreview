@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from typing import Protocol
 
 from ..reporting import Reporter
-from ..text import clean_abstract
+from ..text import normalize_provider_abstract
 from .http import HttpError
 
 
@@ -55,6 +55,23 @@ class AbstractFallback:
             "still be tried."
         )
 
+    def _clean_candidate(
+        self,
+        value: str,
+        *,
+        doi: str,
+        provider_name: str,
+    ) -> str:
+        """Return one safe fallback abstract or skip refused structured markup."""
+        result = normalize_provider_abstract(value)
+        if result.deterministic:
+            return result.normalized
+        self.reporter.warning(
+            f"{provider_name} abstract for {doi} contains unsupported structured "
+            f"markup ({result.reason}); continuing with other fallback providers."
+        )
+        return ""
+
     def _individual_values(
         self,
         provider: AbstractProvider,
@@ -85,7 +102,11 @@ class AbstractFallback:
                     "continuing with other fallback providers."
                 )
                 continue
-            values[doi] = clean_abstract(value)
+            values[doi] = self._clean_candidate(
+                value,
+                doi=doi,
+                provider_name=provider_name,
+            )
         return values
 
     def _provider_values_many(
@@ -123,7 +144,11 @@ class AbstractFallback:
                         raise TypeError(
                             f"batch abstract lookup returned a non-string value for {doi}"
                         )
-                    result[doi] = clean_abstract(value)
+                    result[doi] = self._clean_candidate(
+                        value,
+                        doi=doi,
+                        provider_name=provider_name,
+                    )
             except HttpError as error:
                 if error.status_code == 429:
                     setattr(self, limited_attr, True)
@@ -176,7 +201,7 @@ class AbstractFallback:
 
         for values in (semantic, openalex):
             for doi in normalized:
-                value = clean_abstract(values.get(doi, ""))
+                value = values.get(doi, "")
                 if value:
                     candidates[doi].append(value)
 
@@ -206,11 +231,20 @@ class AbstractFallback:
                         "continuing with other fallback providers."
                     )
                     continue
-                cleaned = clean_abstract(value)
+                cleaned = self._clean_candidate(
+                    value,
+                    doi=doi,
+                    provider_name="Mendeley",
+                )
                 if cleaned:
                     candidates[doi].append(cleaned)
 
-        default = clean_abstract(self.unavailable_text)
+        default_result = normalize_provider_abstract(self.unavailable_text)
+        default = (
+            default_result.normalized
+            if default_result.deterministic
+            else ""
+        )
         return {
             doi: max(candidates[doi], key=len, default=default)
             for doi in normalized
@@ -229,7 +263,11 @@ class AbstractFallback:
                 self._semantic_scholar_limited = True
                 self._warn_limited("Semantic Scholar")
             else:
-                cleaned = clean_abstract(value)
+                cleaned = self._clean_candidate(
+                    value,
+                    doi=doi,
+                    provider_name="Semantic Scholar",
+                )
                 if cleaned:
                     candidates.append(cleaned)
 
@@ -242,7 +280,11 @@ class AbstractFallback:
                 self._openalex_limited = True
                 self._warn_limited("OpenAlex")
             else:
-                cleaned = clean_abstract(value)
+                cleaned = self._clean_candidate(
+                    value,
+                    doi=doi,
+                    provider_name="OpenAlex",
+                )
                 if cleaned:
                     candidates.append(cleaned)
 
@@ -258,7 +300,11 @@ class AbstractFallback:
                     "rest of this run. Check the configured Mendeley token before a future run."
                 )
             else:
-                cleaned = clean_abstract(value)
+                cleaned = self._clean_candidate(
+                    value,
+                    doi=doi,
+                    provider_name="Mendeley",
+                )
                 if cleaned:
                     candidates.append(cleaned)
 
@@ -266,5 +312,9 @@ class AbstractFallback:
         return max(
             candidates,
             key=len,
-            default=clean_abstract(self.unavailable_text),
+            default=(
+                normalize_provider_abstract(self.unavailable_text).normalized
+                if normalize_provider_abstract(self.unavailable_text).deterministic
+                else ""
+            ),
         )
