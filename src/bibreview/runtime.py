@@ -70,6 +70,13 @@ class CollectionServices:
 
 
 @dataclass(frozen=True)
+class ReferenceServices:
+    """Concrete collaborators required by reference refresh."""
+
+    batch_provider: BatchWorkProvider
+
+
+@dataclass(frozen=True)
 class DiscoveryServices:
     """Concrete collaborators required by canonical project discovery."""
 
@@ -349,6 +356,34 @@ def _build_core_services(
             reporter=reporter,
         ),
     )
+
+
+def build_reference_services(
+    config: BibReviewConfig,
+    *,
+    reporter: Reporter | None = None,
+    environ: Mapping[str, str] | None = None,
+) -> ReferenceServices:
+    """Compose the minimal CrossRef service required by reference refresh."""
+    progress = reporter or Reporter()
+    environment = _runtime_environment(
+        config,
+        environ=environ,
+        reporter=progress,
+    )
+    crossref_config = config.providers.get("crossref")
+    if crossref_config is not None and not crossref_config.enabled:
+        raise ValueError("CrossRef must be enabled for DOI-backed workflows")
+
+    transport = HttpTransport(
+        reporter=progress,
+        default_headers={"User-Agent": f"BibReview/{__version__}"},
+    )
+    crossref = CrossRefProvider(
+        _provider_transport(transport, crossref_config),
+        mailto=config.project.contact_email,
+    )
+    return ReferenceServices(batch_provider=crossref)
 
 
 def build_collection_services(
