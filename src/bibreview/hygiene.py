@@ -384,6 +384,337 @@ def scan_abstract_hygiene(
     )
 
 
+@dataclass(frozen=True)
+class TitleReferenceHygieneFinding:
+    """One publication title or reference citation carrying a hygiene signal."""
+
+    target: str
+    publication_id: str
+    doi: str | None
+    publication_title: str
+    value: str
+    families: tuple[str, ...]
+    deterministic_candidate: bool
+    normalization_hint: str
+    context: str
+    reference_key: str = ""
+    reference_doi: str | None = None
+    reference_index: int | None = None
+
+    def data(self) -> dict[str, object]:
+        """Return a JSON-serializable representation."""
+        data: dict[str, object] = {
+            "target": self.target,
+            "publication_id": self.publication_id,
+            "doi": self.doi,
+            "publication_title": self.publication_title,
+            "value": self.value,
+            "families": list(self.families),
+            "deterministic_candidate": self.deterministic_candidate,
+            "normalization_hint": self.normalization_hint,
+            "context": self.context,
+        }
+        if self.target == "reference-citation":
+            data.update(
+                {
+                    "reference_key": self.reference_key,
+                    "reference_doi": self.reference_doi,
+                    "reference_index": self.reference_index,
+                }
+            )
+        return data
+
+
+@dataclass(frozen=True)
+class TitleReferenceHygieneReport:
+    """Read-only inventory of title and reference-citation hygiene signals."""
+
+    scanned_publications: int
+    titles_present: int
+    references_scanned: int
+    citations_present: int
+    title_findings: tuple[TitleReferenceHygieneFinding, ...]
+    citation_findings: tuple[TitleReferenceHygieneFinding, ...]
+
+    @property
+    def suspicious_titles(self) -> int:
+        return len(self.title_findings)
+
+    @property
+    def suspicious_citations(self) -> int:
+        return len(self.citation_findings)
+
+    @property
+    def deterministic_title_candidates(self) -> int:
+        return sum(item.deterministic_candidate for item in self.title_findings)
+
+    @property
+    def deterministic_citation_candidates(self) -> int:
+        return sum(item.deterministic_candidate for item in self.citation_findings)
+
+    @staticmethod
+    def _family_counts(
+        findings: tuple[TitleReferenceHygieneFinding, ...],
+    ) -> dict[str, int]:
+        counts: Counter[str] = Counter()
+        for finding in findings:
+            counts.update(finding.families)
+        return {
+            family: counts[family]
+            for family in _TITLE_REFERENCE_FAMILY_ORDER
+            if counts[family]
+        }
+
+    @property
+    def title_family_counts(self) -> dict[str, int]:
+        return self._family_counts(self.title_findings)
+
+    @property
+    def citation_family_counts(self) -> dict[str, int]:
+        return self._family_counts(self.citation_findings)
+
+    def summary(self) -> str:
+        """Return a compact human-readable inventory summary."""
+        lines = [
+            "Canonical title/reference hygiene",
+            f"  Publications scanned          : {self.scanned_publications}",
+            f"  Titles present                : {self.titles_present}",
+            f"  Titles with hygiene signals   : {self.suspicious_titles}",
+            f"  Apparent title candidates     : {self.deterministic_title_candidates}",
+            f"  References scanned            : {self.references_scanned}",
+            f"  Citations present             : {self.citations_present}",
+            f"  Citations with hygiene signals: {self.suspicious_citations}",
+            f"  Apparent citation candidates  : {self.deterministic_citation_candidates}",
+            "  Title families:",
+        ]
+        if self.title_family_counts:
+            width = max(len(name) for name in self.title_family_counts)
+            lines.extend(
+                f"    {name:<{width}} : {count}"
+                for name, count in self.title_family_counts.items()
+            )
+        else:
+            lines.append("    none")
+        lines.append("  Citation families:")
+        if self.citation_family_counts:
+            width = max(len(name) for name in self.citation_family_counts)
+            lines.extend(
+                f"    {name:<{width}} : {count}"
+                for name, count in self.citation_family_counts.items()
+            )
+        else:
+            lines.append("    none")
+        return "\n".join(lines)
+
+    def data(self) -> dict[str, object]:
+        """Return the complete machine-readable inventory."""
+        return {
+            "scanned_publications": self.scanned_publications,
+            "titles_present": self.titles_present,
+            "titles_with_hygiene_signals": self.suspicious_titles,
+            "deterministic_title_candidates": self.deterministic_title_candidates,
+            "references_scanned": self.references_scanned,
+            "citations_present": self.citations_present,
+            "citations_with_hygiene_signals": self.suspicious_citations,
+            "deterministic_citation_candidates": self.deterministic_citation_candidates,
+            "title_family_counts": self.title_family_counts,
+            "citation_family_counts": self.citation_family_counts,
+            "title_findings": [item.data() for item in self.title_findings],
+            "citation_findings": [item.data() for item in self.citation_findings],
+        }
+
+
+def _title_reference_families(value: str) -> tuple[str, ...]:
+    detected = set(_families(value))
+    if _SMALL_CAPS_RE.search(value):
+        detected.add("small-caps-markup")
+    if _HTML_ENTITY_RE.search(value):
+        detected.add("html-entity")
+    if _TEX_FRAGMENT_RE.search(value):
+        detected.add("tex-fragment")
+    if "�" in value:
+        detected.add("unicode-replacement")
+    if "­" in value:
+        detected.add("soft-hyphen")
+    if _CONTROL_CHARACTER_RE.search(value):
+        detected.add("control-character")
+    return tuple(
+        family for family in _TITLE_REFERENCE_FAMILY_ORDER if family in detected
+    )
+
+
+def _title_reference_assessment(
+    value: str,
+    families: tuple[str, ...],
+) -> tuple[bool, str]:
+    family_set = set(families)
+    if family_set & {
+        "unicode-replacement",
+        "soft-hyphen",
+        "control-character",
+        "unbalanced-structured-tags",
+    }:
+        return False, "review-required"
+
+    structured = tuple(
+        family for family in _FAMILY_ORDER if family in family_set
+    )
+    if structured:
+        deterministic, hint = _normalization_assessment(value, structured)
+        if not deterministic:
+            return False, hint
+    else:
+        hint = ""
+
+    if family_set == {"tex-fragment"}:
+        return False, "preserve-tex"
+    if "small-caps-markup" in family_set:
+        return True, "structural-unwrapping"
+    if "html-entity" in family_set and not structured:
+        return True, "entity-decoding"
+    if structured:
+        return True, hint or "structural-unwrapping"
+    if "html-entity" in family_set:
+        return True, "entity-decoding"
+    return False, "inventory-only"
+
+
+def _reference_keys(publication: Publication) -> tuple[str, ...]:
+    bases: list[str] = []
+    for reference in publication.references:
+        doi = reference.identifiers.get("doi")
+        if doi:
+            bases.append(f"doi:{doi}")
+        else:
+            digest = sha256(reference.citation.encode("utf-8")).hexdigest()[:16]
+            bases.append(f"sha256:{digest}")
+
+    totals = Counter(bases)
+    seen: Counter[str] = Counter()
+    keys: list[str] = []
+    for base in bases:
+        seen[base] += 1
+        if totals[base] > 1:
+            keys.append(f"{base}#{seen[base]}")
+        else:
+            keys.append(base)
+    return tuple(keys)
+
+
+def scan_title_reference_hygiene(
+    publications: Iterable[Publication],
+) -> TitleReferenceHygieneReport:
+    """Inventory title/reference hygiene signals without mutating canonical data."""
+    items = tuple(publications)
+    title_findings: list[TitleReferenceHygieneFinding] = []
+    citation_findings: list[TitleReferenceHygieneFinding] = []
+    titles_present = 0
+    references_scanned = 0
+    citations_present = 0
+
+    for publication in items:
+        title = publication.title
+        if title.strip():
+            titles_present += 1
+            families = _title_reference_families(title)
+            if families:
+                deterministic, hint = _title_reference_assessment(title, families)
+                title_findings.append(
+                    TitleReferenceHygieneFinding(
+                        target="title",
+                        publication_id=publication.id,
+                        doi=publication.doi,
+                        publication_title=publication.title,
+                        value=title,
+                        families=families,
+                        deterministic_candidate=deterministic,
+                        normalization_hint=hint,
+                        context=_context(title),
+                    )
+                )
+
+        keys = _reference_keys(publication)
+        for index, (reference, reference_key) in enumerate(
+            zip(publication.references, keys),
+            1,
+        ):
+            references_scanned += 1
+            citation = reference.citation
+            if not citation.strip():
+                continue
+            citations_present += 1
+            families = _title_reference_families(citation)
+            if not families:
+                continue
+            deterministic, hint = _title_reference_assessment(citation, families)
+            citation_findings.append(
+                TitleReferenceHygieneFinding(
+                    target="reference-citation",
+                    publication_id=publication.id,
+                    doi=publication.doi,
+                    publication_title=publication.title,
+                    value=citation,
+                    families=families,
+                    deterministic_candidate=deterministic,
+                    normalization_hint=hint,
+                    context=_context(citation),
+                    reference_key=reference_key,
+                    reference_doi=reference.identifiers.get("doi"),
+                    reference_index=index,
+                )
+            )
+
+    return TitleReferenceHygieneReport(
+        scanned_publications=len(items),
+        titles_present=titles_present,
+        references_scanned=references_scanned,
+        citations_present=citations_present,
+        title_findings=tuple(title_findings),
+        citation_findings=tuple(citation_findings),
+    )
+
+
+def format_title_reference_hygiene_report(
+    report: TitleReferenceHygieneReport,
+    *,
+    verbose: bool = False,
+) -> str:
+    """Format a title/reference hygiene inventory."""
+    text = report.summary()
+    if not verbose:
+        return text
+
+    details = [text]
+    if report.title_findings:
+        details.extend(("", "Title findings:"))
+        for index, finding in enumerate(report.title_findings, 1):
+            identity = finding.doi or finding.publication_id
+            details.extend(
+                (
+                    f"[{index}/{len(report.title_findings)}] {identity}",
+                    "  Families: " + ", ".join(finding.families),
+                    f"  Assessment: {finding.normalization_hint}",
+                    f"  Value: {finding.value}",
+                )
+            )
+
+    if report.citation_findings:
+        details.extend(("", "Reference citation findings:"))
+        for index, finding in enumerate(report.citation_findings, 1):
+            identity = finding.doi or finding.publication_id
+            details.extend(
+                (
+                    f"[{index}/{len(report.citation_findings)}] "
+                    f"{identity} — {finding.publication_title}",
+                    f"  Reference: {finding.reference_key}",
+                    "  Families: " + ", ".join(finding.families),
+                    f"  Assessment: {finding.normalization_hint}",
+                    f"  Context: {finding.context}",
+                )
+            )
+    return "\n".join(details)
+
+
 def format_abstract_hygiene_report(
     report: AbstractHygieneReport,
     *,
