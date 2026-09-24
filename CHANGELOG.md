@@ -32,6 +32,16 @@ All notable BibReview releases are documented here.
 - keep CrossRef metadata transient: only final citation strings enter proposed
   reference lists.
 
+### Reference report compatibility
+
+- bump the dedicated reference report schema from v1 to **v2** because the
+  proposed citation semantics now include a mandatory DOI citation second
+  round;
+- explicitly reject v1 report state instead of mixing v1.6.28 pilot results
+  with v1.6.29 two-round results;
+- require users to archive both reference campaign/report files and start a
+  fresh campaign after upgrading from the v1.6.28 pilot.
+
 ### Resilience and observability
 
 - leave Round-1 citation evidence untouched when cited-DOI metadata is absent
