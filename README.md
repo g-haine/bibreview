@@ -11,7 +11,7 @@ feed.
 BibReview is designed so that provider output remains inspectable and ambiguous
 decisions remain human decisions.
 
-Current stable release: **v1.6.26**.
+Current stable release: **v1.6.27**.
 
 ## What BibReview provides
 
@@ -42,7 +42,7 @@ BibReview currently requires **Python 3.12 or newer**.
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.26"
+python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.27"
 
 bibreview --version
 ~~~
@@ -109,6 +109,7 @@ A curated project should inspect staged metadata and BibTeX before merging.
 | **providers** | Inspect credential provenance and optionally live-check providers. |
 | **hygiene** | Read-only metadata hygiene inventories plus reviewed canonical abstract migration. |
 | **audit** | Incrementally audit new/retryable canonical publications; use `--full` for a complete pass. |
+| **references** | Rebuild and compare one resumable batch of canonical reference lists from current CrossRef parent-work metadata. |
 | **discover** | Discover and screen new DOI candidates. |
 | **collect** | Collect pending DOI metadata into canonical staging. |
 | **backfill** | Propose missing-field enrichment, resolve it interactively, then stage accepted values. |
@@ -122,6 +123,28 @@ Use **--dry-run** with mutating workflows when you want to inspect the plan
 without writing project files.
 
 Full details: [command reference](docs/commands.md).
+
+### Reference refresh inventory
+
+BibReview v1.6.27 introduces the first read-only `bibreview references`
+workflow. It rebuilds reference lists from the current **parent CrossRef work
+records**, runs reconstructed citation strings through the v1.6.26 conservative
+normalizer, and compares them with canonical references without changing
+`bibliography.json` or `collected.json`.
+
+~~~bash
+bibreview --dry-run references
+bibreview references
+bibreview references --review
+bibreview -v references --review
+~~~
+
+The campaign is resumable and checkpointed publication-by-publication.
+`safe-update` is intentionally narrow: reference count, order, and identifiers
+must remain identical, and every citation change must be exactly explained by
+the deterministic T2 sanitizer. Any provider change beyond that is
+`review-required`. There is deliberately **no `references --apply` in
+v1.6.27**; PHRAISE validation of the report comes first.
 
 ### Canonical abstract hygiene inventory
 

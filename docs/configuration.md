@@ -159,6 +159,38 @@ the defaults shown above are then used.
 Audit state is intentionally not placed under **paths.collected** and is never
 interpreted as merge-ready bibliographic data.
 
+## Reference refresh state
+
+The provider-driven reference refresh workflow keeps its own resumable campaign
+and machine-readable report separate from audit and canonical bibliography
+state:
+
+~~~yaml
+references:
+  campaign: data/references/campaign.json
+  report: data/references/report.json
+  batch_size: 50
+~~~
+
+**campaign** stores the stable canonical publication UUID snapshot, batch
+history, attempts, and retry state. **report** stores the latest reconstructed
+reference comparison for each processed publication.
+
+**batch_size** is the number of parent publications placed in each newly opened
+BibReview campaign batch. It is not the CrossRef API batch limit: BibReview
+automatically splits parent DOI lookup into CrossRef-supported chunks of at most
+25 DOI values.
+
+Existing projects may omit the whole section; the defaults above are used.
+
+The campaign and report paths must differ from one another and may not overlap
+canonical bibliography, collected staging, author mappings, DOI queue/review
+files, or audit campaign/report paths. This prevents a configuration typo from
+turning reference-maintenance state into canonical data.
+
+In v1.6.27 these files are evidence/checkpoint state only. No reference result
+is merge-ready, and there is deliberately no `references --apply` yet.
+
 ## Providers and secrets
 
 CrossRef is the mandatory metadata provider for DOI-backed workflows.

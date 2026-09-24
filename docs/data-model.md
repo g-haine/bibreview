@@ -155,7 +155,8 @@ one. Do not generate a citation merely to satisfy the renderer.
 
 ## Resumable campaign state
 
-Long-running workflows such as the planned **audit** and **init** commands share
+Long-running workflows such as **audit** and **references** (and the planned
+**init** command) share
 a small generic campaign model. Campaign state is deliberately separate from
 the canonical bibliography, DOI queues and `collected.json`.
 
@@ -217,6 +218,45 @@ shared mechanics.
 The optional per-item `detail` field is persisted verbatim and therefore must
 contain only already-sanitized diagnostic text. Credentials, authorization
 headers and raw provider responses must never be stored in campaign state.
+
+### Reference refresh campaign and report
+
+Reference maintenance uses the generic campaign model with kind
+`"references"` and stores its evidence separately from canonical bibliography
+and collection staging:
+
+~~~text
+data/references/campaign.json
+data/references/report.json
+~~~
+
+The campaign uses persistent publication UUIDs as item keys. Each processed
+publication has at most one latest report entry, associated with the batch and
+attempt that produced it.
+
+Reference report schema version 1 stores:
+
+- publication UUID, DOI when present, and title context;
+- classification and explicit reason;
+- current/provider reference counts;
+- 1-based changed reference indices;
+- SHA-256 fingerprints of the exact ordered current and proposed reference
+  lists;
+- proposed references for changed/review-required cases;
+- provider citation-normalizer refusal indices/reasons when relevant.
+
+An unchanged result deliberately omits a duplicate copy of the full proposed
+reference list while retaining the exact fingerprints and counts. This keeps a
+large campaign report materially smaller without weakening the evidence needed
+to establish that no change was proposed.
+
+The report classifications are `unchanged`, `safe-update`,
+`review-required`, and `unavailable`. The persisted `safe-update` label is
+evidence about a sanitizer-only structural comparison; it is **not** canonical
+approval. v1.6.27 has no reference resolver or application step.
+
+Neither file is canonical bibliography data and neither is interpreted by
+`merge`.
 
 ### Refresh review and resolution state
 

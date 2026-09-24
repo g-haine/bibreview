@@ -192,6 +192,118 @@ canonical abstract, then writes accepted/custom replacements to
 `collected.json`. It never edits `bibliography.json` directly; use the normal
 explicit `bibreview merge` step after inspecting the staged diff.
 
+## references
+
+Refresh one stable batch of canonical reference lists from current parent-work
+provider metadata:
+
+~~~bash
+bibreview --config bibreview.yml references
+~~~
+
+The first invocation creates a dedicated reference-refresh campaign/report,
+opens one stable batch, retrieves the corresponding **parent publication**
+records from CrossRef, reconstructs their reference lists, passes reconstructed
+citation strings through the conservative title/citation normalizer, compares
+them with canonical references, checkpoints every publication result
+immediately, closes the batch, and stops.
+
+The workflow is deliberately read-only with respect to bibliographic project
+state in v1.6.27. It writes only the configured reference campaign/report files.
+It never edits `bibliography.json`, never writes `collected.json`, and has no
+`references --apply` action yet.
+
+Choose the number of **parent publications** processed by the next unopened
+campaign batch with:
+
+~~~bash
+bibreview --config bibreview.yml references --batch-size 100
+~~~
+
+The configured `references.batch_size` remains the campaign default (50 unless
+changed in configuration). This size is distinct from the provider transport
+batch size: CrossRef exact work lookup is internally chunked into groups of at
+most 25 parent DOI values. A reference campaign batch of 100 publications
+therefore remains bounded by four CrossRef batch requests when all 100 parents
+have DOI values.
+
+As with audit, an already-open interrupted batch resumes its persisted
+membership. Never-visited pending publications are processed before retryable
+provider failures.
+
+Preview the next batch without writing campaign state and without making any
+provider request:
+
+~~~bash
+bibreview --config bibreview.yml --dry-run references --batch-size 100
+~~~
+
+Run a deliberate new pass over current publications with:
+
+~~~bash
+bibreview --config bibreview.yml references --full
+~~~
+
+`--full` preserves campaign history and requeues previously attempted current
+publications. If never-visited pending items still exist, the generic campaign
+contract finishes those first. An interrupted open batch must be resumed before
+a full reset can be planned.
+
+### Reference refresh classifications
+
+Each parent publication receives one of four classifications:
+
+- **unchanged** — reconstructed references are exactly identical to the
+  canonical ordered list;
+- **safe-update** — the list has the same length, order, and exact identifiers,
+  and every citation change is exactly the deterministic v1.6.26 citation
+  normalization of the current canonical citation;
+- **review-required** — the provider added/removed/reordered references, changed
+  identifiers, changed citation text beyond the sanitizer, or otherwise
+  introduced a difference that cannot be promoted automatically;
+- **unavailable** — no usable parent work/reference list was available, the
+  canonical parent has no DOI, or a provider attempt was unavailable.
+
+`safe-update` is intentionally narrow. Provider improvements such as repairing
+a Unicode replacement character or adding a DOI to an existing reference are
+still `review-required`: they may be good corrections, but they are not merely
+sanitization of existing canonical evidence.
+
+The refresh works from the parent CrossRef `reference` payload. It does **not**
+perform one DOI content-negotiation request per cited reference.
+
+Transient provider batch failures remain retryable. Missing parent work records,
+missing reference lists, and non-DOI canonical parents are recorded explicitly
+without discarding current canonical references.
+
+### Offline review
+
+Summarize the persisted campaign report without network access:
+
+~~~bash
+bibreview --config bibreview.yml references --review
+~~~
+
+Show all non-unchanged publication results:
+
+~~~bash
+bibreview --config bibreview.yml -v references --review
+~~~
+
+Machine-readable review:
+
+~~~bash
+bibreview --config bibreview.yml references --review --json
+~~~
+
+Changed/review-required report entries contain exact ordered-list fingerprints,
+changed reference indices, refusal reasons where applicable, and the proposed
+reference list. Unchanged entries keep fingerprints/counts but deliberately omit
+a duplicate copy of the full list.
+
+**v1.6.27 is an observation release.** Inspect the PHRAISE campaign/report before
+designing the resolver and application boundary in a later v1.6.x release.
+
 ## audit
 
 Audit one stable batch of existing canonical publications against current
