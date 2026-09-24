@@ -6,6 +6,7 @@ from dataclasses import dataclass
 import hashlib
 import json
 from pathlib import Path
+from textwrap import fill
 from types import MappingProxyType
 from typing import Any, Mapping
 
@@ -450,9 +451,13 @@ def format_project_refresh_review(
     *,
     verbose: bool = False,
 ) -> str:
-    """Format safe proposals plus non-promotable collateral differences."""
+    """Format safe proposals, retained evidence, and collateral differences."""
     lines = [review.summary()]
     if not verbose:
+        if any(proposal.review_required for proposal in review.proposals):
+            lines.append(
+                "Use -v refresh --review to inspect review-required provider evidence."
+            )
         if review.collateral:
             lines.append(
                 "Use -v refresh --review to inspect every collateral difference."
@@ -463,10 +468,33 @@ def format_project_refresh_review(
         lines.extend((
             "",
             f"{proposal.doi} — {proposal.title}",
-            f"  SAFE MISSING FIELD: {proposal.field}",
-            "    current : (missing)",
-            f"    proposed: {proposal.proposed_value}",
         ))
+        if proposal.review_required:
+            lines.extend((
+                f"  REVIEW REQUIRED: {proposal.field}",
+                "    current : (missing)",
+                "    proposed: (no safe automatic value)",
+            ))
+        else:
+            lines.extend((
+                f"  SAFE MISSING FIELD: {proposal.field}",
+                "    current : (missing)",
+                f"    proposed: {proposal.proposed_value}",
+            ))
+
+        for index, evidence in enumerate(proposal.evidence, 1):
+            lines.append(
+                f"    evidence [{index}]: {evidence.source} — {evidence.reason}"
+            )
+            lines.append(
+                fill(
+                    evidence.value,
+                    width=100,
+                    initial_indent="      ",
+                    subsequent_indent="      ",
+                )
+            )
+
     for item in review.collateral:
         lines.extend((
             "",
