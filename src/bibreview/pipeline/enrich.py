@@ -29,10 +29,11 @@ def _prepared_abstract(
     *,
     reporter: Reporter | None = None,
     context: str = "Provider abstract",
+    preserve_refused: bool = False,
 ) -> str:
     """Return one safe provider abstract, warning when structured markup is refused."""
     result = normalize_provider_abstract(value)
-    if result.deterministic:
+    if result.deterministic or preserve_refused:
         return result.normalized
     if reporter is not None:
         reporter.warning(
@@ -47,6 +48,7 @@ def crossref_enrichment(
     *,
     reporter: Reporter | None = None,
     doi: str = "",
+    preserve_refused: bool = False,
 ) -> Enrichment:
     """Extract safely normalized enrichment fields from a CrossRef work message."""
     raw_abstract = str(message.get("abstract") or "")
@@ -55,6 +57,7 @@ def crossref_enrichment(
         raw_abstract,
         reporter=reporter,
         context=context,
+        preserve_refused=preserve_refused,
     )
 
     raw_subjects = message.get("subject")
@@ -73,11 +76,13 @@ def _clean_enrichment(
     *,
     reporter: Reporter | None = None,
     context: str = "Provider abstract",
+    preserve_refused: bool = False,
 ) -> Enrichment:
     abstract = _prepared_abstract(
         value.abstract,
         reporter=reporter,
         context=context,
+        preserve_refused=preserve_refused,
     )
     keywords = tuple(
         cleaned
@@ -185,6 +190,7 @@ class EnrichmentService:
             message,
             reporter=self.reporter,
             doi=doi,
+            preserve_refused=discovery,
         )
         extra = self.publisher.enrich(doi) if self.publisher is not None else Enrichment()
         if not isinstance(extra, Enrichment):
@@ -193,6 +199,7 @@ class EnrichmentService:
             extra,
             reporter=self.reporter,
             context=f"Publisher abstract for {doi}",
+            preserve_refused=discovery,
         )
 
         if discovery:
@@ -215,4 +222,5 @@ class EnrichmentService:
             ),
             reporter=self.reporter,
             context=f"Fallback abstract for {doi}",
+            preserve_refused=discovery,
         )
