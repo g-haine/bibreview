@@ -251,23 +251,38 @@ def publication_enrichment(
     if not isinstance(extra, Enrichment):
         raise TypeError("enrichment lookup must return Enrichment")
 
+    extra_abstract = extra.abstract
+    extra_source = extra.abstract_source or "provider"
+    extra_evidence = list(extra.abstract_evidence)
+    if extra_abstract:
+        normalized = normalize_provider_abstract(extra_abstract)
+        if normalized.deterministic:
+            extra_abstract = normalized.normalized
+        else:
+            extra_evidence.append(
+                AbstractEvidence(
+                    source=extra_source,
+                    value=normalized.normalized,
+                    reason=normalized.reason,
+                )
+            )
+            extra_abstract = ""
+
     seen: set[tuple[str, str, str]] = set()
     evidence: list[AbstractEvidence] = []
-    for item in (*base.abstract_evidence, *extra.abstract_evidence):
+    for item in (*base.abstract_evidence, *extra_evidence):
         key = (item.source, item.value, item.reason)
         if key in seen:
             continue
         seen.add(key)
         evidence.append(item)
 
-    abstract = extra.abstract or base.abstract
+    abstract = extra_abstract or base.abstract
     return Enrichment(
         abstract=abstract,
         keywords=extra.keywords or base.keywords,
         event=extra.event or base.event,
-        abstract_source=(
-            extra.abstract_source if extra.abstract else base.abstract_source
-        ),
+        abstract_source=extra_source if extra_abstract else base.abstract_source,
         abstract_evidence=tuple(evidence),
     )
 
