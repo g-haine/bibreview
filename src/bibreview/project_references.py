@@ -46,7 +46,7 @@ from .storage import (
 )
 
 
-REFERENCES_REPORT_SCHEMA_VERSION = 1
+REFERENCES_REPORT_SCHEMA_VERSION = 2
 
 
 @dataclass(frozen=True)
@@ -216,6 +216,12 @@ def references_report_from_data(value: Mapping[str, Any]) -> ReferenceReport:
         or isinstance(version, bool)
         or version != REFERENCES_REPORT_SCHEMA_VERSION
     ):
+        if version == 1:
+            raise ProjectStateError(
+                "reference report schema version 1 predates the DOI citation "
+                "second round; archive both reference campaign/report files "
+                "and start a fresh campaign"
+            )
         raise ProjectStateError(
             f"unsupported reference report schema version: {version!r}"
         )
