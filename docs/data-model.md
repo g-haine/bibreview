@@ -220,8 +220,8 @@ headers and raw provider responses must never be stored in campaign state.
 
 ### Refresh review and resolution state
 
-Safe refresh keeps its provider-comparison evidence and human decisions beside
-the configured audit report:
+Reviewed refresh keeps its provider-comparison evidence and human decisions
+beside the configured audit report:
 
 ~~~text
 data/audit/refresh.json
@@ -229,21 +229,30 @@ data/audit/refresh-resolutions.json
 ~~~
 
 `refresh.json` records the DOI values whose remote BibTeX changed or was
-missing, safe proposals for configured fields that were canonically empty, and
-all meaningful collateral provider differences on other fields. Collateral
+missing, proposals for configured fields that were canonically empty, and all
+meaningful collateral provider differences on other fields. Collateral
 differences preserve both current and provider values but are explicitly
 non-promotable.
 
+Abstract proposals may carry the same optional evidence shape used by reviewed
+backfill. A safe proposal may retain refused alternatives. If no safe abstract
+exists, a proposal may instead contain an empty `proposed_value`,
+`review_required: true`, and one or more evidence objects containing
+`source`, `reason`, and the raw provider `value`. Ordinary safe proposals
+omit these optional fields when unused, preserving legacy review fingerprints.
+
 `refresh-resolutions.json` stores accepted, custom, rejected, and deferred
-human decisions only for the safe missing-field proposals. It is fingerprinted
-against the exact refresh review, so a new provider scan cannot silently reuse
-stale decisions.
+human decisions for the refresh proposal set. Review-required evidence cannot be
+accepted directly; only a custom reviewed value can become staged metadata.
+The resolution state is fingerprinted against the exact refresh review,
+including retained evidence, so a new provider scan cannot silently reuse stale
+decisions.
 
 Neither file is canonical data or staging. Only `refresh --apply` may turn
-completed accepted/custom safe proposals into `collected.json`, after
-rechecking that the canonical field is still empty. Applicable tracked BibTeX
-fields are edited locally and backed up; the remote BibTeX is never used as a
-wholesale replacement.
+completed accepted/custom proposals into `collected.json`, after rechecking
+that the canonical field is still empty. Applicable tracked BibTeX fields are
+edited locally and backed up; the remote BibTeX is never used as a wholesale
+replacement.
 
 ### Backfill proposal and resolution state
 
