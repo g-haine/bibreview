@@ -254,7 +254,7 @@ class StructuredCitationNormalizationTests(unittest.TestCase):
             (
                 "<mml:msub><mml:mrow><mml:mi>H</mml:mi></mml:mrow>"
                 "<mml:mrow><mml:mi>∞</mml:mi></mml:mrow></mml:msub>",
-                r"H_{\\infty}",
+                r"H_{\infty}",
             ),
             (
                 "<mml:msub><mml:mrow><mml:mi>L</mml:mi></mml:mrow>"
@@ -263,7 +263,7 @@ class StructuredCitationNormalizationTests(unittest.TestCase):
             ),
             (
                 "<mml:msub><mml:mi>H</mml:mi><mml:mi>∞</mml:mi></mml:msub>",
-                r"H_{\\infty}",
+                r"H_{\infty}",
             ),
             (
                 "<mml:msub><mml:mrow><mml:mi>H</mml:mi></mml:mrow>"
@@ -273,30 +273,30 @@ class StructuredCitationNormalizationTests(unittest.TestCase):
             (
                 "<mml:mrow><mml:msub><mml:mrow><mml:mi>H</mml:mi></mml:mrow>"
                 "<mml:mrow><mml:mi>∞</mml:mi></mml:mrow></mml:msub></mml:mrow>",
-                r"H_{\\infty}",
+                r"H_{\infty}",
             ),
             (
                 "<mml:mrow><mml:msub><mml:mi>H</mml:mi>"
                 "<mml:mi>∞</mml:mi></mml:msub></mml:mrow>",
-                r"H_{\\infty}",
+                r"H_{\infty}",
             ),
             (
                 "<mml:msub><mml:mrow><mml:mi>ℒ</mml:mi></mml:mrow>"
                 "<mml:mrow><mml:mn>2</mml:mn></mml:mrow></mml:msub>",
-                r"\\mathcal{L}_{2}",
+                r"\mathcal{L}_{2}",
             ),
             ("<mml:mi>N</mml:mi>", "N"),
             (
                 "<mml:msub><mml:mrow><mml:mi>H</mml:mi></mml:mrow>"
                 "<mml:mrow><mml:mo>∞</mml:mo></mml:mrow></mml:msub>",
-                r"H_{\\infty}",
+                r"H_{\infty}",
             ),
             (
                 "<mml:msub><mml:mrow><mml:mi>h</mml:mi></mml:mrow>"
                 "<mml:mrow><mml:mn>2</mml:mn></mml:mrow></mml:msub>",
                 r"h_{2}",
             ),
-            ("<mml:mi>ϑ</mml:mi>", r"\\vartheta"),
+            ("<mml:mi>ϑ</mml:mi>", r"\vartheta"),
             (
                 "<mml:mrow><mml:mi>n</mml:mi><mml:mo>+</mml:mo>"
                 "<mml:mi>m</mml:mi></mml:mrow>",
@@ -304,7 +304,7 @@ class StructuredCitationNormalizationTests(unittest.TestCase):
             ),
             (
                 "<mml:msup><mml:mi>L</mml:mi><mml:mo>∞</mml:mo></mml:msup>",
-                r"L^{\\infty}",
+                r"L^{\infty}",
             ),
             (
                 '<mml:msub><mml:mrow><mml:mi mathvariant="italic">RH</mml:mi>'
@@ -314,7 +314,7 @@ class StructuredCitationNormalizationTests(unittest.TestCase):
             (
                 '<mml:msub><mml:mrow><mml:mi mathvariant="italic">RH</mml:mi>'
                 "</mml:mrow><mml:mrow><mml:mo>∞</mml:mo></mml:mrow></mml:msub>",
-                r"RH_{\\infty}",
+                r"RH_{\infty}",
             ),
         )
 
@@ -327,19 +327,19 @@ class StructuredCitationNormalizationTests(unittest.TestCase):
                 )
                 result = normalize_structured_citation(value)
                 self.assertTrue(result.deterministic)
-                self.assertEqual(result.normalized, rf"\\({expected}\\)")
+                self.assertEqual(result.normalized, rf"\({expected}\)")
 
     def test_formula_tex_wrapper_is_supported(self) -> None:
         value = (
             'Interpolation-based <formula formulatype="inline">'
-            '<tex Notation="TeX">\${\\cal H}_{2}$</tex></formula> model reduction'
+            '<tex Notation="TeX">${\\cal H}_{2}$</tex></formula> model reduction'
         )
         result = normalize_structured_citation(value)
 
         self.assertTrue(result.deterministic)
         self.assertEqual(
             result.normalized,
-            r"Interpolation-based \\({\\cal H}_{2}\\) model reduction",
+            r"Interpolation-based \({\cal H}_{2}\) model reduction",
         )
         self.assertEqual(result.reason, "embedded-tex")
 
