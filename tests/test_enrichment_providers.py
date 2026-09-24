@@ -103,7 +103,7 @@ class PublisherProviderTests(unittest.TestCase):
         }
         result = ElsevierProvider(transport, api_key=" secret ").enrich("10.1/TEST")
 
-        self.assertEqual(result, Enrichment("Text", ("control", "energy"), "Conference"))
+        self.assertEqual(result, Enrichment("<p>Text</p>", ("control", "energy"), "Conference"))
         url, kwargs = transport.json_calls[0]
         self.assertIn("10.1%2Ftest", url)
         self.assertEqual(kwargs["headers"]["X-ELS-APIKey"], "secret")
@@ -119,7 +119,7 @@ class PublisherProviderTests(unittest.TestCase):
         }
         result = SpringerProvider(transport, api_key=" secret ").enrich("10.1/TEST")
 
-        self.assertEqual(result, Enrichment("Text", ("control", "energy"), "Conference"))
+        self.assertEqual(result, Enrichment("<p>Text</p>", ("control", "energy"), "Conference"))
         url, kwargs = transport.json_calls[0]
         self.assertEqual(url, "https://api.springernature.com/meta/v2/json")
         self.assertEqual(kwargs["params"]["api_key"], "secret")
@@ -138,7 +138,7 @@ class PublisherProviderTests(unittest.TestCase):
         }
         result = IeeeProvider(transport, api_key=" secret ").enrich("10.1/TEST")
 
-        self.assertEqual(result, Enrichment("Text", ("control", "energy"), "Conference"))
+        self.assertEqual(result, Enrichment("<p>Text</p>", ("control", "energy"), "Conference"))
         url, kwargs = transport.json_calls[0]
         self.assertIn("10.1%2Ftest", url)
         self.assertEqual(kwargs["params"]["apikey"], "secret")
