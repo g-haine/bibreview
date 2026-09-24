@@ -279,7 +279,7 @@ canonical abstract, contributor-role disagreements, and isolated contributor
 anomalies remain informational evidence rather than automatic corrections. The
 raw audit comparisons are preserved separately from this review interpretation.
 
-Since v1.6.24, an audit provider abstract whose structured markup cannot be
+Since v1.6.23, an audit provider abstract whose structured markup cannot be
 normalized losslessly is preserved verbatim in `audit-report.json` and
 classified as `provider-review-required`. Such evidence remains visible to
 human review but is never counted as an ordinary provider disagreement and is
