@@ -83,6 +83,13 @@ from .project_audit import (
     plan_project_audit_reclassify,
     project_audit_review,
 )
+from .project_references import (
+    apply_project_references_plan,
+    execute_project_references_batch,
+    format_project_references_review,
+    plan_project_references_batch,
+    project_references_review,
+)
 from .project_audit_apply import (
     apply_project_audit_apply,
     format_project_audit_apply_plan,
@@ -114,6 +121,7 @@ from .runtime import (
     build_audit_services,
     build_collection_services,
     build_discovery_services,
+    build_reference_services,
 )
 from .storage import StorageError
 
@@ -233,6 +241,33 @@ def _parser() -> argparse.ArgumentParser:
         dest="json_output",
         action="store_true",
         help="Print the audit result as JSON",
+    )
+    references = commands.add_parser(
+        "references",
+        help="Refresh one stable batch of canonical reference lists from current provider data",
+    )
+    references.add_argument(
+        "--batch-size",
+        type=int,
+        default=None,
+        help="Override the size of the next new reference batch; campaign default otherwise",
+    )
+    references_actions = references.add_mutually_exclusive_group()
+    references_actions.add_argument(
+        "--full",
+        action="store_true",
+        help="Re-run reference refresh for every current canonical publication",
+    )
+    references_actions.add_argument(
+        "--review",
+        action="store_true",
+        help="Show the persisted reference-refresh review without provider requests",
+    )
+    references.add_argument(
+        "--json",
+        dest="json_output",
+        action="store_true",
+        help="Print reference refresh output as JSON",
     )
     commands.add_parser("discover", help="Discover and screen new DOI candidates")
     commands.add_parser("collect", help="Collect pending DOI metadata into canonical staging state")
@@ -1128,6 +1163,130 @@ def main(argv: list[str] | None = None) -> int:
         elif not args.quiet:
             print(execution.summary())
             print(f"Report: {config.audit.report}")
+        return 0
+
+    if args.command == "references":
+        reporter = Reporter(-1 if args.quiet else args.verbose)
+
+        if args.review:
+            try:
+                if args.batch_size is not None:
+                    raise ProjectStateError(
+                        "--batch-size cannot be used with references --review"
+                    )
+                review = project_references_review(config)
+            except (
+                OSError,
+                StorageError,
+                ProjectStateError,
+                ValueError,
+                TypeError,
+            ) as error:
+                print(f"bibreview references: {error}", file=sys.stderr)
+                return 1
+
+            if args.json_output:
+                print(json.dumps(review.data(), ensure_ascii=False, indent=2))
+            elif not args.quiet:
+                print(
+                    format_project_references_review(
+                        review,
+                        verbose=bool(args.verbose),
+                    )
+                )
+            return 0
+
+        try:
+            plan = plan_project_references_batch(
+                config,
+                batch_size=args.batch_size,
+                full=args.full,
+            )
+            if args.dry_run:
+                progress = campaign_progress(plan.campaign)
+                payload = {
+                    "dry_run": True,
+                    "batch_id": plan.batch.id if plan.batch is not None else None,
+                    "keys": list(plan.batch.keys) if plan.batch is not None else [],
+                    "progress": {
+                        **progress.data(),
+                        "exhausted": progress.exhausted,
+                        "successful": progress.successful,
+                    },
+                    "campaign": str(config.references.campaign),
+                    "report": str(config.references.report),
+                }
+                if args.json_output:
+                    print(json.dumps(payload, ensure_ascii=False, indent=2))
+                elif not args.quiet:
+                    print(f"Dry run: {plan.summary()}")
+                    if plan.batch is not None:
+                        print(
+                            f"Would refresh references for {len(plan.batch.keys)} "
+                            f"publication(s) in {plan.batch.id}."
+                        )
+                return 0
+
+            apply_project_references_plan(plan)
+            if plan.batch is None:
+                progress = campaign_progress(plan.campaign)
+                payload = {
+                    "batch_id": None,
+                    "processed": 0,
+                    "progress": {
+                        **progress.data(),
+                        "exhausted": progress.exhausted,
+                        "successful": progress.successful,
+                    },
+                    "campaign": str(config.references.campaign),
+                    "report": str(config.references.report),
+                }
+                if args.json_output:
+                    print(json.dumps(payload, ensure_ascii=False, indent=2))
+                elif not args.quiet:
+                    print("Reference refresh campaign complete.")
+                    print(progress.summary())
+                    print(f"Report: {config.references.report}")
+                return 0
+
+            services = build_reference_services(config, reporter=reporter)
+            execution = execute_project_references_batch(
+                config,
+                batch_id=plan.batch.id,
+                batch_provider=services.batch_provider,
+                reporter=reporter,
+            )
+        except (
+            OSError,
+            StorageError,
+            ProjectStateError,
+            ValueError,
+            TypeError,
+        ) as error:
+            print(f"bibreview references: {error}", file=sys.stderr)
+            return 1
+
+        progress = campaign_progress(execution.campaign)
+        payload = {
+            "batch_id": execution.batch_id,
+            "processed": execution.processed_count,
+            "completed": execution.completed_count,
+            "retryable": execution.retryable_count,
+            "failed": execution.failed_count,
+            "classifications": dict(execution.classifications),
+            "progress": {
+                **progress.data(),
+                "exhausted": progress.exhausted,
+                "successful": progress.successful,
+            },
+            "campaign": str(config.references.campaign),
+            "report": str(config.references.report),
+        }
+        if args.json_output:
+            print(json.dumps(payload, ensure_ascii=False, indent=2))
+        elif not args.quiet:
+            print(execution.summary())
+            print(f"Report: {config.references.report}")
         return 0
 
     if args.command == "discover":
