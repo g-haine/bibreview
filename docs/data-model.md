@@ -250,7 +250,15 @@ reference list while retaining the exact fingerprints and counts. This keeps a
 large campaign report materially smaller without weakening the evidence needed
 to establish that no change was proposed.
 
-The effective proposed reference list may reuse one canonical citation only
+Reference reconstruction is explicitly two-round. Round 1 persists no remote
+state but establishes the parent-provided reference structure. Round 2 gathers
+the unique DOI values found in those slots, obtains transient cited-work
+CrossRef metadata in batches, renders a local CSL citation string, and injects
+only that string back into the matching Round-1 slot. No Round-2 work metadata
+or secondary BibReview notice is stored in the report.
+
+If a DOI cannot be formatted in Round 2, Round-1 evidence remains in place. The
+effective proposed reference list may then reuse one canonical citation only
 when the parent provider supplies no citation text and the provider DOI exactly
 matches the canonical DOI at the same ordered position. That reused citation is
 passed through the current conservative citation normalizer. This is evidence
@@ -260,7 +268,7 @@ references, and newly added provider references never use positional fallback.
 The report classifications are `unchanged`, `safe-update`,
 `review-required`, and `unavailable`. The persisted `safe-update` label is
 evidence about a sanitizer-only structural comparison; it is **not** canonical
-approval. v1.6.28 has no reference resolver or application step.
+approval. v1.6.29 has no reference resolver or application step.
 
 Neither file is canonical bibliography data and neither is interpreted by
 `merge`.
