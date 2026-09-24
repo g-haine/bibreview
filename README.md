@@ -11,7 +11,7 @@ feed.
 BibReview is designed so that provider output remains inspectable and ambiguous
 decisions remain human decisions.
 
-Current stable release: **v1.6.20**.
+Current stable release: **v1.6.21**.
 
 ## What BibReview provides
 
@@ -42,7 +42,7 @@ BibReview currently requires **Python 3.12 or newer**.
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.20"
+python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.21"
 
 bibreview --version
 ~~~
@@ -148,7 +148,7 @@ could discard mathematical content. Subscript/superscript markup such as IEEE
 unwrapping would lose mathematical position semantics. **Phase 1 never rewrites
 canonical metadata.**
 
-BibReview v1.6.20 introduced the library-level
+BibReview v1.6.19 introduced the library-level
 `bibreview.structured_abstract.normalize_structured_abstract()` primitive for
 lossless structured normalization.
 
@@ -214,8 +214,20 @@ resolution: accept, reject, choose a custom value, defer, or quit. Only
 accepted/custom values can reach `collected.json`, and a stale proposal is
 rejected if the canonical field has gained a meaningful value meanwhile. For
 abstracts, historical `Not Available` values are eligible for replacement and
-provider/fallback placeholders are never proposed as real abstracts. The ordinary
-`bibreview merge` command remains the only canonical promotion boundary.
+provider/fallback placeholders are never proposed as real abstracts.
+
+Since v1.6.21, an abstract rejected by the structured normalizer is **retained as
+provider evidence instead of becoming `no_value`**. The local backfill review
+records the provider source, refusal reason and raw payload. If no safe abstract
+exists, the field is marked `review-required`: direct accept is disabled and
+the reviewer must provide an explicit custom value, reject the evidence, or
+defer it. If another provider supplies a safe abstract, that value remains the
+normal proposal while refused alternatives stay attached as inspectable
+evidence. Evidence participates in the review fingerprint, so changed provider
+payloads stale existing resolutions.
+
+The ordinary `bibreview merge` command remains the only canonical promotion
+boundary.
 
 ### Incremental audit history
 
