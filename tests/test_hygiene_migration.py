@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 import tempfile
 import unittest
@@ -272,12 +273,7 @@ class ProjectHygieneMigrationTests(unittest.TestCase):
         write_bibliography(
             self.config.paths.bibliography,
             (
-                Publication(
-                    **{
-                        **self.safe.__dict__,
-                        "abstract": "New human correction.",
-                    }
-                ),
+                replace(self.safe, abstract="New human correction."),
                 self.unsafe,
             ),
         )
