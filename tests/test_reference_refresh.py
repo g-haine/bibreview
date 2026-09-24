@@ -6,8 +6,10 @@ from bibreview.model import Author, Publication, Reference
 from bibreview.pipeline.references import (
     compare_reference_reconstruction,
     reconstruct_provider_references,
+    reconstruction_dois,
     reference_refresh_result_from_data,
     references_fingerprint,
+    with_formatted_doi_citations,
 )
 
 
@@ -94,6 +96,76 @@ class ReferenceReconstructionTests(unittest.TestCase):
 
         self.assertFalse(reconstructed.available)
         self.assertEqual(reconstructed.reason, "provider-reference-2-invalid")
+
+
+class ReferenceSecondRoundTests(unittest.TestCase):
+    def test_collects_unique_dois_without_changing_order(self) -> None:
+        reconstructed = reconstruct_provider_references(
+            {
+                "reference": [
+                    {"DOI": "10.2/A", "unstructured": "First"},
+                    {"unstructured": "No DOI"},
+                    {"DOI": "10.2/a", "unstructured": "Repeated"},
+                    {"DOI": "10.2/B", "unstructured": "Second DOI"},
+                ]
+            }
+        )
+
+        self.assertEqual(
+            reconstruction_dois(reconstructed),
+            ("10.2/a", "10.2/b"),
+        )
+
+    def test_second_round_replaces_only_doi_citation_string(self) -> None:
+        reconstructed = reconstruct_provider_references(
+            {
+                "reference": [
+                    {
+                        "DOI": "10.2/a",
+                        "unstructured": "Rough parent citation",
+                    },
+                    {"unstructured": "Non DOI citation"},
+                ]
+            }
+        )
+
+        enriched = with_formatted_doi_citations(
+            reconstructed,
+            {"10.2/A": "Clean formatted citation"},
+        )
+
+        self.assertEqual(
+            enriched.candidates[0].reference.identifiers,
+            reconstructed.candidates[0].reference.identifiers,
+        )
+        self.assertEqual(
+            enriched.candidates[0].reference.citation,
+            "Clean formatted citation",
+        )
+        self.assertEqual(
+            enriched.candidates[0].reason,
+            "doi-citation:already-clean",
+        )
+        self.assertEqual(
+            enriched.candidates[1],
+            reconstructed.candidates[1],
+        )
+
+    def test_missing_second_round_citation_preserves_round_one_evidence(self) -> None:
+        reconstructed = reconstruct_provider_references(
+            {
+                "reference": [
+                    {
+                        "DOI": "10.2/a",
+                        "unstructured": "Round one citation",
+                    }
+                ]
+            }
+        )
+
+        enriched = with_formatted_doi_citations(reconstructed, {})
+
+        self.assertEqual(enriched, reconstructed)
 
 
 class ReferenceComparisonTests(unittest.TestCase):

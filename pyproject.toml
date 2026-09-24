@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bibreview"
-version = "1.6.28"
+version = "1.6.29"
 description = "Generic bibliographic engine for reproducible literature-review websites"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -19,6 +19,7 @@ dependencies = [
   "requests>=2.32,<3",
   "urllib3>=2,<3",
   "python-dotenv>=1,<2",
+  "citeproc-py>=0.10,<0.12",
 ]
 
 [project.scripts]
@@ -26,3 +27,7 @@ bibreview = "bibreview.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+
+[tool.setuptools.package-data]
+"bibreview" = ["data/styles/*.csl", "data/styles/NOTICE.txt"]

@@ -209,7 +209,7 @@ them with canonical references, checkpoints every publication result
 immediately, closes the batch, and stops.
 
 The workflow is deliberately read-only with respect to bibliographic project
-state in v1.6.28. It writes only the configured reference campaign/report files.
+state in v1.6.29. It writes only the configured reference campaign/report files.
 It never edits `bibliography.json`, never writes `collected.json`, and has no
 `references --apply` action yet.
 
@@ -224,8 +224,11 @@ The configured `references.batch_size` remains the campaign default (50 unless
 changed in configuration). This size is distinct from the provider transport
 batch size: CrossRef exact work lookup is internally chunked into groups of at
 most 25 parent DOI values. A reference campaign batch of 100 publications
-therefore remains bounded by four CrossRef batch requests when all 100 parents
-have DOI values.
+therefore remains bounded by four CrossRef **parent** batch requests when
+all 100 parents have DOI values. Round 2 then performs additional exact CrossRef
+batch requests for the unique DOI values cited by those parents, again chunked
+at at most 25 DOI values. Repeated cited DOI values are requested once per
+campaign batch, regardless of how many parent publications cite them.
 
 As with audit, an already-open interrupted batch resumes its persisted
 membership. Never-visited pending publications are processed before retryable
@@ -269,15 +272,30 @@ a Unicode replacement character or adding a DOI to an existing reference are
 still `review-required`: they may be good corrections, but they are not merely
 sanitization of existing canonical evidence.
 
-The refresh works from the parent CrossRef `reference` payload. It does **not**
-perform one DOI content-negotiation request per cited reference.
+Reference refresh uses two distinct provider rounds.
 
-Parent payloads may contain only a cited DOI and no citation text. In v1.6.28,
-BibReview fills that missing text only when the provider DOI exactly equals the
-canonical DOI at the same ordered position. It then runs the canonical citation
-through the current conservative sanitizer. This avoids artificial drift while
-remaining structurally strict. Non-DOI entries, identifier drift, reordered
-references, and new provider references never use this fallback.
+**Round 1 — parent structure.** Parent CrossRef `reference` payloads define the
+ordered reference list, DOI identifiers, and fallback citation text.
+
+**Round 2 — citation strings.** BibReview collects every DOI found in the
+Round-1 slots across the whole campaign batch, de-duplicates those DOI values,
+retrieves cited-work CrossRef metadata through the same exact multi-DOI batch
+endpoint, and renders each cited work locally using the bundled
+`springer-basic-author-date-no-et-al-with-issue` CSL style. Only the rendered
+citation string is reinjected into the original Round-1 slot. Round 2 never
+creates a replacement BibReview publication/reference structure.
+
+The local CSL renderer uses `citeproc-py`; it loads the style once per cited
+DOI batch and renders each DOI separately so the exact `DOI -> citation`
+mapping is preserved. The full external style collection is not required.
+
+If cited-work metadata is absent or local formatting fails for one DOI,
+BibReview retains the Round-1 citation evidence. If an entire cited-DOI
+CrossRef transport chunk fails transiently, affected parent publications remain
+retryable rather than being finalized from incomplete evidence.
+
+The v1.6.28 exact same-position canonical DOI fallback remains a final safety net
+only when Round 2 cannot provide a citation and Round 1 has no usable text.
 
 Transient provider batch failures remain retryable. Missing parent work records,
 missing reference lists, and non-DOI canonical parents are recorded explicitly
@@ -308,8 +326,18 @@ changed reference indices, refusal reasons where applicable, and the proposed
 reference list. Unchanged entries keep fingerprints/counts but deliberately omit
 a duplicate copy of the full list.
 
-**v1.6.28 is an observation release.** Inspect the PHRAISE campaign/report before
-designing the resolver and application boundary in a later v1.6.x release.
+v1.6.29 uses reference report **schema v2**. A v1.6.28 schema-v1
+campaign/report cannot be resumed under the new two-round semantics. Archive
+both files together, then start a fresh campaign. For the default layout:
+
+~~~bash
+mv audit/references audit/references-v1.6.28
+bibreview references --batch-size 100
+~~~
+
+**v1.6.29 is an observation release.** Inspect the fresh PHRAISE
+campaign/report before designing the resolver and application boundary in a
+later v1.6.x release.
 
 ## audit
 

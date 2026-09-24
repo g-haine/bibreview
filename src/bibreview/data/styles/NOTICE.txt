@@ -1,0 +1,15 @@
+Springer - Basic (author-date, no "et al.", with issue numbers)
+=====================================================================
+
+Source:
+https://github.com/citation-style-language/styles/blob/b83e63f6edb9f17d03de6fc3c44e6187f44dd892/springer-basic-author-date-no-et-al-with-issue.csl
+
+Upstream style ID:
+http://www.zotero.org/styles/springer-basic-author-date-no-et-al-with-issue
+
+The CSL file declares:
+Creative Commons Attribution-ShareAlike 3.0
+http://creativecommons.org/licenses/by-sa/3.0/
+
+The style is distributed as third-party data. BibReview's Python source remains
+licensed under GPL-3.0-only.

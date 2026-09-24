@@ -16,6 +16,7 @@ from bibreview.project_references import (
     project_references_review,
     references_report_from_data,
 )
+from bibreview.project import ProjectStateError
 from bibreview.providers.http import HttpError
 from bibreview.reporting import Reporter
 from bibreview.storage import read_json, write_bibliography
@@ -105,6 +106,19 @@ class ProjectReferencesTests(unittest.TestCase):
             if path.is_file() and path.resolve() not in excluded
         }
 
+    def test_schema_one_report_is_rejected_after_citation_policy_change(self):
+        with self.assertRaisesRegex(
+            ProjectStateError,
+            "schema version 1 predates the DOI citation second round",
+        ):
+            references_report_from_data(
+                {
+                    "schema_version": 1,
+                    "campaign_items": [],
+                    "results": [],
+                }
+            )
+
     def test_start_is_read_only_until_apply(self):
         before = self.snapshot_non_reference_state()
 
@@ -193,6 +207,92 @@ class ProjectReferencesTests(unittest.TestCase):
         self.assertEqual(progress.completed, 2)
         self.assertEqual(progress.pending, 1)
         self.assertIsNone(progress.open_batch)
+
+    def test_second_round_fetches_each_cited_doi_once_per_batch(self):
+        child = "10.2000/child"
+        publications = (
+            Publication(
+                id=new_publication_id(),
+                identifiers={"doi": "10.1000/one"},
+                title="One",
+                authors=(Author(literal="Author One"),),
+                references=(
+                    Reference(
+                        identifiers={"doi": child},
+                        citation="Historical citation",
+                    ),
+                ),
+            ),
+            Publication(
+                id=new_publication_id(),
+                identifiers={"doi": "10.1000/two"},
+                title="Two",
+                authors=(Author(literal="Author Two"),),
+                references=(
+                    Reference(
+                        identifiers={"doi": child},
+                        citation="Historical citation",
+                    ),
+                ),
+            ),
+        )
+        write_bibliography(self.config.paths.bibliography, publications)
+        plan = plan_project_references_batch(self.config)
+        apply_project_references_plan(plan)
+        provider = FakeBatchProvider(
+            {
+                "10.1000/one": {
+                    "reference": [
+                        {"DOI": child, "unstructured": "Parent citation"}
+                    ]
+                },
+                "10.1000/two": {
+                    "reference": [
+                        {"DOI": child, "unstructured": "Parent citation"}
+                    ]
+                },
+                child: {
+                    "type": "book",
+                    "title": ["Referenced book"],
+                    "author": [{"given": "A", "family": "Author"}],
+                    "issued": {"date-parts": [[2024]]},
+                    "publisher": "Publisher",
+                    "DOI": child,
+                },
+            }
+        )
+
+        execution = execute_project_references_batch(
+            self.config,
+            batch_id=plan.batch.id,
+            batch_provider=provider,
+            reporter=Reporter(-1),
+        )
+
+        self.assertEqual(
+            provider.calls,
+            [
+                ("10.1000/one", "10.1000/two"),
+                (child,),
+            ],
+        )
+        self.assertEqual(execution.cited_doi_count, 1)
+        self.assertEqual(execution.formatted_citation_count, 1)
+        self.assertEqual(execution.unavailable_citation_count, 0)
+
+        report = references_report_from_data(
+            read_json(self.config.references.report, dict)
+        )
+        self.assertEqual(len(report.entries), 2)
+        for entry in report.entries:
+            self.assertEqual(
+                entry.result.proposed_references[0].identifiers["doi"],
+                child,
+            )
+            self.assertIn(
+                "Referenced book",
+                entry.result.proposed_references[0].citation,
+            )
 
     def test_provider_batch_failure_is_retryable_and_does_not_touch_canonical(self):
         canonical_before = self.config.paths.bibliography.read_bytes()
