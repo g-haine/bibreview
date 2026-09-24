@@ -19,6 +19,8 @@ from bibreview.project import ProjectStateError
 from bibreview.project_backfill import (
     BackfillReview,
     apply_project_backfill_plan,
+    backfill_review_fingerprint,
+    backfill_review_from_data,
     backfill_review_path,
     load_project_backfill_review,
     plan_project_backfill,
@@ -510,6 +512,29 @@ class ProjectBackfillTests(unittest.TestCase):
 
         self.assertTrue(backfill_review_path(self.config).exists())
         self.assertFalse(self.config.paths.collected.exists())
+
+    def test_legacy_safe_review_shape_keeps_fingerprint_compatibility(self):
+        review = self.review(
+            BackfillCandidate(
+                publication_id=self.publication.id,
+                doi=self.publication.doi,
+                title=self.publication.title,
+                field="abstract",
+                proposed_value="Candidate abstract",
+            )
+        )
+
+        data = review.data()
+        candidate_data = data["candidates"][0]
+        self.assertNotIn("review_required", candidate_data)
+        self.assertNotIn("evidence", candidate_data)
+
+        loaded = backfill_review_from_data(data)
+        self.assertEqual(loaded.data(), data)
+        self.assertEqual(
+            backfill_review_fingerprint(loaded),
+            backfill_review_fingerprint(review),
+        )
 
     def test_resolution_is_resumable_and_fingerprinted(self):
         review = self.review(
