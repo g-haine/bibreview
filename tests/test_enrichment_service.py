@@ -180,6 +180,10 @@ class EnrichmentServiceTests(unittest.TestCase):
 
         self.assertEqual(result.abstract, "Fallback abstract")
         self.assertEqual(fallback.calls, ["10.1/test"])
+        self.assertEqual(len(result.abstract_evidence), 1)
+        self.assertEqual(result.abstract_evidence[0].source, "crossref")
+        self.assertEqual(result.abstract_evidence[0].reason, "embedded-graphic")
+        self.assertIn("math-0002.png", result.abstract_evidence[0].value)
         self.assertIn("CrossRef abstract for 10.1/test", stream.getvalue())
         self.assertIn("embedded-graphic", stream.getvalue())
 
@@ -203,6 +207,10 @@ class EnrichmentServiceTests(unittest.TestCase):
 
         self.assertEqual(result.abstract, "CrossRef text")
         self.assertEqual(result.keywords, ("publisher",))
+        self.assertEqual(len(result.abstract_evidence), 1)
+        self.assertEqual(result.abstract_evidence[0].source, "publisher")
+        self.assertEqual(result.abstract_evidence[0].reason, "script-markup")
+        self.assertIn("<inf>0</inf>", result.abstract_evidence[0].value)
         self.assertIn("Publisher abstract for 10.1/test", stream.getvalue())
         self.assertIn("script-markup", stream.getvalue())
 
