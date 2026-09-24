@@ -123,6 +123,7 @@ class ReferenceComparisonTests(unittest.TestCase):
             result.current_fingerprint,
             result.proposed_fingerprint,
         )
+        self.assertEqual(result.proposed_references, ())
 
     def test_exact_t2_citation_cleanup_is_safe_update(self) -> None:
         current = Reference(citation="Systems &amp; Control Letters")
