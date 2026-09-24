@@ -11,7 +11,7 @@ feed.
 BibReview is designed so that provider output remains inspectable and ambiguous
 decisions remain human decisions.
 
-Current stable release: **v1.6.25**.
+Current stable release: **v1.6.26**.
 
 ## What BibReview provides
 
@@ -42,7 +42,7 @@ BibReview currently requires **Python 3.12 or newer**.
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.25"
+python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.26"
 
 bibreview --version
 ~~~
@@ -164,6 +164,15 @@ exists, the collected publication simply has no abstract and a later reviewed
 backfill/refresh can revisit the missing field. Discovery remains non-canonical:
 refused provider text may still participate transiently in relevance matching so
 useful search evidence is not discarded.
+
+BibReview v1.6.26 adds the conservative T2 title/reference normalizer while
+keeping the workflow read-only at project level. `hygiene --titles` now assesses
+each finding with the real normalizer rather than the earlier T1 heuristic.
+Entity decoding is iterative and followed by rescanning, explicit TeX is
+preserved, the small semantic MathML subset observed in PHRAISE can be converted
+losslessly to inline TeX, and script markup / malformed structures / replacement
+characters remain review-required. No canonical title or citation is migrated
+automatically in v1.6.26.
 
 BibReview v1.6.25 starts the separate title/reference hygiene campaign with a
 strictly read-only T1 inventory:
