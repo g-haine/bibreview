@@ -13,6 +13,7 @@ from .config import BibReviewConfig
 from .identity import IdentityError, normalize_doi
 from .pipeline.audit import AuditValue
 from .pipeline.backfill import BackfillCandidate
+from .providers.base import AbstractEvidence
 from .pipeline.collect import BibtexLookup, CitationLookup, EnrichmentLookup, WorkProvider
 from .pipeline.refresh import RefreshDifference, RefreshResult, refresh as refresh_publications
 from .project import ProjectStateError
@@ -26,6 +27,29 @@ from .storage import (
 
 
 REFRESH_REVIEW_SCHEMA_VERSION = 1
+
+
+def _refresh_proposal_data(item: BackfillCandidate) -> dict[str, Any]:
+    """Serialize one proposal without perturbing legacy safe fingerprints."""
+    data: dict[str, Any] = {
+        "publication_id": item.publication_id,
+        "doi": item.doi,
+        "title": item.title,
+        "field": item.field,
+        "proposed_value": item.proposed_value,
+    }
+    if item.review_required:
+        data["review_required"] = True
+    if item.evidence:
+        data["evidence"] = [
+            {
+                "source": evidence.source,
+                "value": evidence.value,
+                "reason": evidence.reason,
+            }
+            for evidence in item.evidence
+        ]
+    return data
 
 
 def _json_value(value: AuditValue) -> str | list[str]:
@@ -59,13 +83,7 @@ class RefreshReview:
             "eligible_count": self.eligible_count,
             "stale_dois": list(self.stale_dois),
             "proposals": [
-                {
-                    "publication_id": item.publication_id,
-                    "doi": item.doi,
-                    "title": item.title,
-                    "field": item.field,
-                    "proposed_value": item.proposed_value,
-                }
+                _refresh_proposal_data(item)
                 for item in self.proposals
             ],
             "collateral": [
@@ -85,14 +103,19 @@ class RefreshReview:
         }
 
     def summary(self) -> str:
+        review_required = sum(
+            proposal.review_required for proposal in self.proposals
+        )
+        safe = len(self.proposals) - review_required
         return (
             "Refresh review\n"
-            f"  Scanned              : {self.scanned_count}\n"
-            f"  Eligible             : {self.eligible_count}\n"
-            f"  Stale BibTeX         : {len(self.stale_dois)}\n"
-            f"  Safe proposals       : {len(self.proposals)}\n"
+            f"  Scanned               : {self.scanned_count}\n"
+            f"  Eligible              : {self.eligible_count}\n"
+            f"  Stale BibTeX          : {len(self.stale_dois)}\n"
+            f"  Safe proposals        : {safe}\n"
+            f"  Review required       : {review_required}\n"
             f"  Collateral differences: {len(self.collateral)}\n"
-            f"  Unavailable          : {len(self.unavailable)}"
+            f"  Unavailable           : {len(self.unavailable)}"
         )
 
 
@@ -165,12 +188,60 @@ def refresh_review_from_data(value: Any) -> RefreshReview:
         data: dict[str, str] = {}
         for name in ("publication_id", "doi", "title", "field", "proposed_value"):
             item = raw.get(name)
-            if not isinstance(item, str) or (name != "title" and not item):
+            if not isinstance(item, str):
                 raise ProjectStateError(
                     f"refresh proposal {index}.{name} must be a string"
                 )
+            if name not in {"title", "proposed_value"} and not item:
+                raise ProjectStateError(
+                    f"refresh proposal {index}.{name} must not be empty"
+                )
             data[name] = item
-        proposals.append(BackfillCandidate(**data))
+
+        review_required = raw.get("review_required", False)
+        if not isinstance(review_required, bool):
+            raise ProjectStateError(
+                f"refresh proposal {index}.review_required must be a boolean"
+            )
+        raw_evidence = raw.get("evidence", [])
+        if not isinstance(raw_evidence, list):
+            raise ProjectStateError(
+                f"refresh proposal {index}.evidence must be a list"
+            )
+        evidence: list[AbstractEvidence] = []
+        for evidence_index, evidence_raw in enumerate(raw_evidence, 1):
+            if not isinstance(evidence_raw, Mapping):
+                raise ProjectStateError(
+                    f"refresh proposal {index}.evidence[{evidence_index}] "
+                    "must be an object"
+                )
+            evidence_data: dict[str, str] = {}
+            for name in ("source", "value", "reason"):
+                item = evidence_raw.get(name)
+                if not isinstance(item, str) or not item:
+                    raise ProjectStateError(
+                        f"refresh proposal {index}.evidence[{evidence_index}]."
+                        f"{name} must be a non-empty string"
+                    )
+                evidence_data[name] = item
+            evidence.append(AbstractEvidence(**evidence_data))
+
+        if not review_required and not data["proposed_value"]:
+            raise ProjectStateError(
+                f"refresh proposal {index}.proposed_value must not be empty"
+            )
+        try:
+            proposals.append(
+                BackfillCandidate(
+                    **data,
+                    review_required=review_required,
+                    evidence=tuple(evidence),
+                )
+            )
+        except (TypeError, ValueError) as error:
+            raise ProjectStateError(
+                f"invalid refresh proposal {index}: {error}"
+            ) from error
 
     raw_collateral = value.get("collateral")
     if not isinstance(raw_collateral, list):
