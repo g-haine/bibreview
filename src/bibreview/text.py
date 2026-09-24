@@ -6,6 +6,11 @@ import re
 
 from unidecode import unidecode
 
+from .structured_abstract import (
+    StructuredAbstractNormalization,
+    normalize_structured_abstract,
+)
+
 
 def slugify(value: str) -> str:
     """Return a portable ASCII slug using the established 240-character input limit."""
@@ -74,3 +79,42 @@ def clean_abstract(value: str) -> str:
     """Normalize one abstract and collapse known missing placeholders to empty."""
     cleaned = clean_metadata(value, abstract=True).strip()
     return "" if is_missing_metadata_value("abstract", cleaned) else cleaned
+
+
+def normalize_provider_abstract(value: str) -> StructuredAbstractNormalization:
+    """Prepare one provider abstract without destructive structured-markup stripping.
+
+    Structured markup is normalized only when the dedicated structured
+    normalizer can preserve its scholarly content. Refused payloads remain
+    unchanged in the returned result so callers can decide how to handle the
+    provider evidence without losing it.
+    """
+    structured = normalize_structured_abstract(value)
+    if not structured.deterministic:
+        return structured
+
+    cleaned = re.sub(r"[\t\n\r\f\v]+", " ", structured.normalized)
+    cleaned = re.sub(
+        r"[\x00-\x08\x0b\x0c\x0e-\x19]",
+        "",
+        cleaned,
+    ).strip()
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    while cleaned and (match := _ABSTRACT_LABEL.match(cleaned)) is not None:
+        cleaned = cleaned[match.end():].strip()
+    if is_missing_metadata_value("abstract", cleaned):
+        cleaned = ""
+
+    if cleaned == value:
+        reason = "already-clean"
+    elif structured.changed:
+        reason = structured.reason
+    else:
+        reason = "text-normalized"
+
+    return StructuredAbstractNormalization(
+        normalized=cleaned,
+        deterministic=True,
+        changed=cleaned != value,
+        reason=reason,
+    )
