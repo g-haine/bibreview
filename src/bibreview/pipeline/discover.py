@@ -135,7 +135,7 @@ def discover(
         enrichment = (
             enrichment_lookup(doi, message)
             if enrichment_lookup is not None
-            else crossref_enrichment(message)
+            else crossref_enrichment(message, preserve_refused=True)
         )
         if not isinstance(enrichment, Enrichment):
             raise TypeError("discovery enrichment lookup must return Enrichment")

@@ -19,7 +19,7 @@ from ..model import Author, Editor, Publication, Reference
 from ..providers.base import Enrichment
 from ..providers.crossref import crossref_page_locator
 from ..reporting import Reporter
-from ..text import clean_abstract, clean_metadata, safe_component, slugify
+from ..text import clean_metadata, normalize_provider_abstract, safe_component, slugify
 
 
 class WorkProvider(Protocol):
@@ -94,6 +94,12 @@ def prepare_dois(submitted: Iterable[str], known: Iterable[str] = ()) -> tuple[s
 
 def _string(value: Any) -> str:
     return "" if value is None else str(value)
+
+
+def _usable_abstract(value: str) -> str:
+    """Return one safely normalized provider abstract or an empty value."""
+    result = normalize_provider_abstract(value)
+    return result.normalized if result.deterministic else ""
 
 
 def _first(value: Any) -> str:
@@ -201,7 +207,7 @@ def _references(value: Any, citation_lookup: CitationLookup | None) -> tuple[Ref
 
 
 def _default_enrichment(message: Mapping[str, Any]) -> Enrichment:
-    abstract = clean_abstract(_string(message.get("abstract")))
+    abstract = _usable_abstract(_string(message.get("abstract")))
     subjects = message.get("subject")
     keywords = tuple(
         clean_metadata(_string(value))
@@ -268,7 +274,7 @@ def scalar_metadata_values(
             values[field] = _MATHML.sub("", _first(message.get("title")))
         elif field == "abstract":
             assert enrichment is not None
-            values[field] = clean_abstract(enrichment.abstract)
+            values[field] = _usable_abstract(enrichment.abstract)
         elif field == "container_title":
             values[field] = _first(message.get("container-title"))
         elif field == "publication_year":
@@ -343,7 +349,7 @@ def build_publication(
         title=scalar["title"],
         authors=_authors(message.get("author")),
         editors=_editors(message.get("editor")),
-        abstract=clean_abstract(enrichment.abstract),
+        abstract=_usable_abstract(enrichment.abstract),
         container_title=scalar["container_title"],
         publication_year=scalar["publication_year"],
         volume=scalar["volume"],

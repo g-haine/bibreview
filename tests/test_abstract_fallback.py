@@ -232,6 +232,25 @@ class AbstractFallbackTests(unittest.TestCase):
         )
         self.assertEqual(fallback.abstract("10.1/test"), "")
 
+
+    def test_unsafe_structured_candidate_is_skipped_for_safe_fallback(self):
+        stream = io.StringIO()
+        fallback = AbstractFallback(
+            semantic_scholar=SequenceProvider(
+                'A controller <jats:inline-graphic '
+                'xlink:href="graphic/math-0002.png"/> is proposed.'
+            ),
+            openalex=SequenceProvider("Safe OpenAlex abstract."),
+            reporter=Reporter(0, stream),
+        )
+
+        self.assertEqual(
+            fallback.abstract("10.1/test"),
+            "Safe OpenAlex abstract.",
+        )
+        self.assertIn("Semantic Scholar abstract for 10.1/test", stream.getvalue())
+        self.assertIn("embedded-graphic", stream.getvalue())
+
     def test_semantic_scholar_429_disables_only_that_provider_for_run(self):
         semantic = SequenceProvider(
             HttpError("limited", status_code=429),

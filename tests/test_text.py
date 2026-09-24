@@ -1,6 +1,13 @@
 import unittest
 
-from bibreview.text import clean_abstract, clean_metadata, is_missing_metadata_value, safe_component, slugify
+from bibreview.text import (
+    clean_abstract,
+    clean_metadata,
+    is_missing_metadata_value,
+    normalize_provider_abstract,
+    safe_component,
+    slugify,
+)
 
 
 class TextTests(unittest.TestCase):
@@ -71,6 +78,30 @@ class TextTests(unittest.TestCase):
             ),
             "This abstract studies abstract systems.",
         )
+
+    def test_provider_abstract_normalizes_safe_structured_markup(self):
+        result = normalize_provider_abstract(
+            '<jats:p>A space <inline-formula>'
+            '<mml:annotation encoding="application/x-tex">V</mml:annotation>'
+            '</inline-formula>.</jats:p>'
+        )
+        self.assertTrue(result.deterministic)
+        self.assertEqual(result.normalized, r"A space \(V\).")
+
+    def test_provider_abstract_refuses_unsafe_structured_markup_without_mutation(self):
+        value = (
+            'A controller <jats:inline-graphic '
+            'xlink:href="graphic/math-0002.png"/> is proposed.'
+        )
+        result = normalize_provider_abstract(value)
+        self.assertFalse(result.deterministic)
+        self.assertEqual(result.reason, "embedded-graphic")
+        self.assertEqual(result.normalized, value)
+
+    def test_provider_abstract_keeps_placeholder_semantics(self):
+        result = normalize_provider_abstract(" Abstract: NOT   AVAILABLE ")
+        self.assertTrue(result.deterministic)
+        self.assertEqual(result.normalized, "")
 
 
 if __name__ == "__main__":

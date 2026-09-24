@@ -176,6 +176,43 @@ class BuildPublicationTests(unittest.TestCase):
         self.assertEqual(publication.keywords, ("Control", "Energy"))
         self.assertEqual(publication.event, "")
 
+
+    def test_default_enrichment_normalizes_lossless_structured_abstract(self):
+        data = message()
+        data["abstract"] = (
+            '<jats:p>A space <inline-formula>'
+            '<mml:annotation encoding="application/x-tex">V</mml:annotation>'
+            '</inline-formula>.</jats:p>'
+        )
+
+        publication = build_publication("10.1/test", data, "safe-structured")
+
+        self.assertEqual(publication.abstract, r"A space \(V\).")
+
+    def test_default_enrichment_does_not_flatten_unsafe_structured_abstract(self):
+        data = message()
+        data["abstract"] = (
+            'A controller <jats:inline-graphic '
+            'xlink:href="graphic/math-0002.png"/> is proposed.'
+        )
+
+        publication = build_publication("10.1/test", data, "unsafe-structured")
+
+        self.assertEqual(publication.abstract, "")
+
+    def test_injected_enrichment_cannot_reintroduce_unsafe_structured_abstract(self):
+        data = message()
+        publication = build_publication(
+            "10.1/test",
+            data,
+            "unsafe-enrichment",
+            enrichment_lookup=lambda doi, work: Enrichment(
+                abstract="(u<inf>0</inf>)<sup>T</sup>"
+            ),
+        )
+
+        self.assertEqual(publication.abstract, "")
+
     def test_missing_creation_date_is_rejected(self):
         data = message()
         data["created"] = {"date-parts": [[2024, 3]]}

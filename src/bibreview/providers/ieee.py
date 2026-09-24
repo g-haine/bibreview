@@ -5,7 +5,7 @@ from __future__ import annotations
 from urllib.parse import quote
 
 from ..identity import normalize_doi
-from .base import Enrichment, normalized_keywords, plain_text
+from .base import Enrichment, normalized_keywords
 from .http import HttpTransport
 
 
@@ -45,7 +45,7 @@ class IeeeProvider:
             else ""
         )
         return Enrichment(
-            abstract=plain_text(record.get("abstract")),
+            abstract=str(record.get("abstract") or ""),
             keywords=normalized_keywords(terms),
             event=event,
         )
