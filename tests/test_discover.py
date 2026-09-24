@@ -132,6 +132,27 @@ class DiscoveryTests(unittest.TestCase):
         )
         self.assertEqual(result.queued, ("10.1/subject", "10.1/abstract"))
 
+
+    def test_discovery_preserves_refused_provider_text_for_relevance_only(self):
+        provider = FakeProvider({
+            "10.1/unsafe": {
+                "type": "journal-article",
+                "title": ["Generic title"],
+                "abstract": (
+                    'Interface coupling uses <jats:inline-graphic '
+                    'xlink:href="graphic/math-0002.png"/> in the derivation.'
+                ),
+            }
+        })
+
+        result = discover(
+            ["10.1/unsafe"],
+            provider=provider,
+            patterns=(r"interface coupling",),
+        )
+
+        self.assertEqual(result.queued, ("10.1/unsafe",))
+
     def test_rejects_invalid_unmatched_policy(self):
         with self.assertRaisesRegex(ValueError, "unmatched policy"):
             discover([], provider=FakeProvider({}), unmatched="maybe")
