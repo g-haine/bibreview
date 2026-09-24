@@ -2,6 +2,51 @@
 
 All notable BibReview releases are documented here.
 
+## 1.6.28 — 2026-09-24
+
+### Reference refresh reconstruction refinement
+
+- refine issue #102 after the first real PHRAISE v1.6.27 batch showed that
+  parent CrossRef reference payloads are frequently DOI-rich but citation-poor;
+- when a provider reference has an empty citation, reuse the canonical citation
+  only if the provider DOI exactly equals the canonical DOI at the same ordered
+  position;
+- pass that reused canonical citation through the v1.6.26 conservative citation
+  normalizer so historical sanitizer-only contamination can still become a
+  `safe-update`;
+- never use positional fallback for non-DOI references, identifier drift,
+  reordered references, or new provider references;
+- preserve sanitizer-refused canonical fallback text unchanged rather than
+  guessing or repairing it.
+
+### PHRAISE evidence
+
+The first v1.6.27 batch of 100 parent publications produced 93
+`review-required` and 7 `unavailable` results, with no unchanged/safe cases.
+Inspection of the persisted report found 2,339 proposed references, including
+1,898 DOI references; **1,262 DOI references had an empty parent-payload
+citation**. Historical canonical citations were richer because DOI-backed
+references had been formatted through the DOI citation service during
+collection.
+
+The refined policy therefore treats parent CrossRef data as authoritative
+evidence for list structure/order/identifiers while avoiding artificial
+citation drift caused solely by absent parent-payload citation text.
+
+### Reference state layout
+
+- change omitted-config defaults from `data/references/` to
+  **`audit/references/`**;
+- explicitly configured reference campaign/report paths remain unchanged;
+- the new default intentionally starts a fresh refined campaign for projects
+  that used the short-lived v1.6.27 defaults.
+
+### Validation
+
+- add regressions for exact DOI fallback, sanitizer-only fallback updates,
+  identifier-drift refusal, non-DOI refusal, and sanitizer-refused fallback;
+- validate behavior with **597 passing tests**, compilation included.
+
 ## 1.6.27 — 2026-09-24
 
 ### Resumable reference refresh inventory
