@@ -507,7 +507,7 @@ def compare_reference_reconstruction(
         if dict(left.identifiers) != dict(right.identifiers):
             return _result(
                 publication,
-                reconstruction,
+                effective,
                 classification="review-required",
                 reason=f"reference-identifiers-changed:{index}",
                 proposed=proposed,
@@ -525,7 +525,7 @@ def compare_reference_reconstruction(
         if not candidate.deterministic:
             return _result(
                 publication,
-                reconstruction,
+                effective,
                 classification="review-required",
                 reason=(
                     f"provider-citation-refused:{candidate.index}:"
@@ -541,7 +541,7 @@ def compare_reference_reconstruction(
         ):
             return _result(
                 publication,
-                reconstruction,
+                effective,
                 classification="review-required",
                 reason=f"reference-citation-drift:{candidate.index}",
                 proposed=proposed,
@@ -550,7 +550,7 @@ def compare_reference_reconstruction(
 
     return _result(
         publication,
-        reconstruction,
+        effective,
         classification="safe-update",
         reason="deterministic-citation-normalization",
         proposed=proposed,
