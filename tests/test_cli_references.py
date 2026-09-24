@@ -163,6 +163,73 @@ class ReferencesCliTests(unittest.TestCase):
         self.assertIn("10.1000/parent", stdout)
         self.assertIn("safe-update", stdout)
 
+    def test_double_verbose_review_shows_current_and_proposed_references(self):
+        provider = FakeBatchProvider(
+            {
+                "10.1000/parent": {
+                    "reference": [
+                        {"unstructured": "Systems &amp; Control Letters"}
+                    ]
+                }
+            }
+        )
+        with patch(
+            "bibreview.cli.build_reference_services",
+            return_value=SimpleNamespace(batch_provider=provider),
+        ):
+            code, _, stderr = self.run_cli("references")
+        self.assertEqual(code, 0, stderr)
+
+        with patch("bibreview.cli.build_reference_services") as services:
+            code, stdout, stderr = self.run_cli(
+                "-vv",
+                "references",
+                "--review",
+            )
+
+        self.assertEqual(code, 0, stderr)
+        services.assert_not_called()
+        self.assertIn("Reference 1", stdout)
+        self.assertIn("Current DOI : (none)", stdout)
+        self.assertIn("Proposed DOI: (none)", stdout)
+        self.assertIn(
+            "Current     : Systems &amp; Control Letters",
+            stdout,
+        )
+        self.assertIn(
+            "Proposed    : Systems & Control Letters",
+            stdout,
+        )
+
+    def test_single_verbose_review_omits_reference_diff(self):
+        provider = FakeBatchProvider(
+            {
+                "10.1000/parent": {
+                    "reference": [
+                        {"unstructured": "Systems &amp; Control Letters"}
+                    ]
+                }
+            }
+        )
+        with patch(
+            "bibreview.cli.build_reference_services",
+            return_value=SimpleNamespace(batch_provider=provider),
+        ):
+            code, _, stderr = self.run_cli("references")
+        self.assertEqual(code, 0, stderr)
+
+        code, stdout, stderr = self.run_cli(
+            "-v",
+            "references",
+            "--review",
+        )
+
+        self.assertEqual(code, 0, stderr)
+        self.assertIn("Changed       : 1", stdout)
+        self.assertNotIn("Reference 1", stdout)
+        self.assertNotIn("Current     :", stdout)
+        self.assertNotIn("Proposed    :", stdout)
+
     def test_review_json_contains_persisted_proposal(self):
         provider = FakeBatchProvider(
             {
