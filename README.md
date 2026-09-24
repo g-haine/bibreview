@@ -11,7 +11,7 @@ feed.
 BibReview is designed so that provider output remains inspectable and ambiguous
 decisions remain human decisions.
 
-Current stable release: **v1.6.29**.
+Current stable release: **v1.6.30**.
 
 ## What BibReview provides
 
@@ -42,7 +42,7 @@ BibReview currently requires **Python 3.12 or newer**.
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.29"
+python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.30"
 
 bibreview --version
 ~~~
@@ -126,7 +126,7 @@ Full details: [command reference](docs/commands.md).
 
 ### Reference refresh inventory
 
-BibReview v1.6.29 adds the missing **second citation round** to the read-only
+BibReview v1.6.30 adds the missing **second citation round** to the read-only
 `bibreview references` workflow. Parent CrossRef records still define the
 ordered reference structure. BibReview then collects every cited DOI across the
 whole campaign batch, de-duplicates them, retrieves their CrossRef metadata in
@@ -140,7 +140,7 @@ The local renderer uses `citeproc-py` plus the single bundled
 its upstream provenance/license notice under `bibreview/data/styles/`; the
 full multi-style package is not required.
 
-Because v1.6.29 changes reference-report semantics materially, the references
+Because v1.6.30 changes reference-report semantics materially, the references
 report schema is bumped to **v2**. A v1.6.28 pilot campaign/report is refused
 rather than silently mixed with two-round results; archive both files and start
 a fresh campaign.
@@ -178,7 +178,7 @@ The campaign is resumable and checkpointed publication-by-publication.
 must remain identical, and every citation change must be exactly explained by
 the deterministic T2 sanitizer. Any provider change beyond that is
 `review-required`. There is deliberately **no `references --apply` in
-v1.6.29**; PHRAISE validation of the two-round report comes first.
+v1.6.30**; PHRAISE validation of the two-round report comes first.
 
 ### Canonical abstract hygiene inventory
 
