@@ -135,10 +135,24 @@ markup such as `<scp>`, HTML entities, TeX/math fragments, embedded graphics,
 script markup, escaped markup, selected Unicode/control-character signals, and
 obviously unbalanced structured tags.
 
-An `apparent candidate` count means only that the observed signal appears to
-have a lossless structural path worth designing in T2. **No title/reference
-normalizer exists yet.** Plain TeX is intentionally reported as
-`preserve-tex`, not as an automatic cleanup candidate.
+In v1.6.26 the inventory assessment is driven by the conservative T2
+normalizer. A deterministic candidate therefore means that the actual
+normalizer can produce a changed lossless value; plain TeX remains
+`preserve-tex` and is not counted as a cleanup candidate.
+
+T2 decodes entities iteratively and rescans the decoded value before deciding
+whether it is safe. This matters for encoded script markup such as
+`L&lt;inf&gt;2&lt;/inf&gt;`, which is review-required after decoding rather
+than blindly flattened. Presentation wrappers can be unwrapped, explicit
+`tex` / `tex-math` payloads can be retained as inline TeX, and the small
+semantic MathML subset observed in PHRAISE can be converted to TeX. Unsupported
+MathML, `sub/sup/inf`, malformed markup, Unicode replacement characters,
+control characters, embedded graphics, and provider error pages are refused
+without changing the value.
+
+The normalizer is still **read-only at the project level** in v1.6.26:
+`hygiene --titles` reports what would be safe but does not stage or mutate
+titles/citations.
 
 For stable reporting, a reference uses its DOI when available. Otherwise the
 inventory uses a SHA-256 fingerprint of the complete original citation; an

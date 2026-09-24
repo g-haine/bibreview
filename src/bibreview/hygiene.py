@@ -9,6 +9,10 @@ import re
 from typing import Iterable
 
 from .model import Publication
+from .structured_title import (
+    normalize_structured_citation,
+    normalize_structured_title,
+)
 
 
 _FAMILY_ORDER = (
@@ -546,37 +550,24 @@ def _title_reference_families(value: str) -> tuple[str, ...]:
 def _title_reference_assessment(
     value: str,
     families: tuple[str, ...],
+    *,
+    target: str,
 ) -> tuple[bool, str]:
-    family_set = set(families)
-    if family_set & {
-        "unicode-replacement",
-        "soft-hyphen",
-        "control-character",
-        "unbalanced-structured-tags",
-    }:
-        return False, "review-required"
-
-    structured = tuple(
-        family for family in _FAMILY_ORDER if family in family_set
-    )
-    if structured:
-        deterministic, hint = _normalization_assessment(value, structured)
-        if not deterministic:
-            return False, hint
+    """Assess one hygiene finding using the real conservative normalizer."""
+    if target == "title":
+        result = normalize_structured_title(value)
+    elif target == "reference-citation":
+        result = normalize_structured_citation(value)
     else:
-        hint = ""
+        raise ValueError(f"unsupported hygiene target: {target}")
 
-    if family_set == {"tex-fragment"}:
+    if not result.deterministic:
+        return False, result.reason
+    if result.changed:
+        return True, result.reason
+    if set(families) == {"tex-fragment"}:
         return False, "preserve-tex"
-    if "small-caps-markup" in family_set:
-        return True, "structural-unwrapping"
-    if "html-entity" in family_set and not structured:
-        return True, "entity-decoding"
-    if structured:
-        return True, hint or "structural-unwrapping"
-    if "html-entity" in family_set:
-        return True, "entity-decoding"
-    return False, "inventory-only"
+    return False, "already-clean"
 
 
 def _reference_keys(publication: Publication) -> tuple[str, ...]:
@@ -618,7 +609,11 @@ def scan_title_reference_hygiene(
             titles_present += 1
             families = _title_reference_families(title)
             if families:
-                deterministic, hint = _title_reference_assessment(title, families)
+                deterministic, hint = _title_reference_assessment(
+                    title,
+                    families,
+                    target="title",
+                )
                 title_findings.append(
                     TitleReferenceHygieneFinding(
                         target="title",
@@ -646,7 +641,11 @@ def scan_title_reference_hygiene(
             families = _title_reference_families(citation)
             if not families:
                 continue
-            deterministic, hint = _title_reference_assessment(citation, families)
+            deterministic, hint = _title_reference_assessment(
+                citation,
+                families,
+                target="reference-citation",
+            )
             citation_findings.append(
                 TitleReferenceHygieneFinding(
                     target="reference-citation",
