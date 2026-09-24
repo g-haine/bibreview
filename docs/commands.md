@@ -457,9 +457,15 @@ tracked BibTeX. For each stale publication, BibReview recollects metadata in
 memory and compares it with the canonical record using the audit equivalence
 rules.
 
-Only configured fields that are currently empty may become safe proposals.
+Only configured fields that are currently empty may become proposals.
 Meaningful differences on any already-populated field are stored as collateral
 evidence and can never be applied by refresh.
+
+For a missing abstract, structured provider payloads follow the same conservative
+normalization policy as collection. A safe abstract becomes a normal proposal.
+Refused alternatives remain attached as provider evidence. If no safe abstract
+exists but refused evidence does, refresh stores a `review-required` proposal
+instead of discarding the payload.
 
 Review the persisted result offline:
 
@@ -468,16 +474,18 @@ bibreview --config bibreview.yml refresh --review
 bibreview --config bibreview.yml -v refresh --review
 ~~~
 
-The default review prints aggregate counts. Verbose review shows every safe
-missing-field proposal plus every collateral current/provider difference.
+The default review prints aggregate counts, including the number of
+review-required proposals. Verbose review shows every safe missing-field
+proposal, every retained provider abstract evidence item, and every collateral
+current/provider difference.
 
-Resolve safe proposals interactively:
+Resolve proposals interactively:
 
 ~~~bash
 bibreview --config bibreview.yml refresh --resolve
 ~~~
 
-The resolver reuses the backfill decision model:
+The resolver reuses the backfill decision model. For an ordinary safe proposal:
 
 - **Enter** or **Y** — accept the proposed missing-field value;
 - **n** — reject it;
@@ -485,10 +493,15 @@ The resolver reuses the backfill decision model:
 - **s** — defer it;
 - **q** — stop and resume later.
 
+For a `review-required` abstract, direct **Enter/Y acceptance is disabled**.
+The resolver displays the provider source, refusal reason, and raw payload; use
+**f VALUE** for an explicit reviewed replacement, **n** to reject, **s** to
+defer, or **q** to stop.
+
 Collateral differences are deliberately absent from the resolver because refresh
 has no code path that can promote them.
 
-After every safe proposal has a final decision:
+After every proposal has a final decision:
 
 ~~~bash
 bibreview --config bibreview.yml --dry-run refresh --apply
