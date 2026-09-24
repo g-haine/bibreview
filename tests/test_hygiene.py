@@ -83,7 +83,7 @@ class AbstractHygieneTests(unittest.TestCase):
             ("script-markup", "html-xml-markup"),
         )
         self.assertFalse(finding.deterministic_candidate)
-        self.assertEqual(finding.normalization_hint, "script-markup")
+        self.assertEqual(finding.normalization_hint, "script-markup-review")
         self.assertIn("<inf>", finding.context)
 
     def test_tex_math_latex_for_every_inline_formula_is_deterministic(self) -> None:
@@ -300,7 +300,7 @@ class TitleReferenceHygieneTests(unittest.TestCase):
 
         self.assertIn("script-markup", finding.families)
         self.assertFalse(finding.deterministic_candidate)
-        self.assertEqual(finding.normalization_hint, "script-markup-review")
+        self.assertEqual(finding.normalization_hint, "script-markup")
 
     def test_entity_decoding_is_reassessed_before_marking_title_safe(self) -> None:
         report = scan_title_reference_hygiene(
