@@ -83,7 +83,7 @@ class AbstractHygieneTests(unittest.TestCase):
             ("script-markup", "html-xml-markup"),
         )
         self.assertFalse(finding.deterministic_candidate)
-        self.assertEqual(finding.normalization_hint, "script-markup-review")
+        self.assertEqual(finding.normalization_hint, "script-markup")
         self.assertIn("<inf>", finding.context)
 
     def test_tex_math_latex_for_every_inline_formula_is_deterministic(self) -> None:
@@ -301,6 +301,20 @@ class TitleReferenceHygieneTests(unittest.TestCase):
         self.assertIn("script-markup", finding.families)
         self.assertFalse(finding.deterministic_candidate)
         self.assertEqual(finding.normalization_hint, "script-markup-review")
+
+    def test_entity_decoding_is_reassessed_before_marking_title_safe(self) -> None:
+        report = scan_title_reference_hygiene(
+            (
+                self.item(
+                    title="Global finite-gain L&lt;inf&gt;2&lt;/inf&gt; stabilization"
+                ),
+            )
+        )
+        finding = report.title_findings[0]
+
+        self.assertIn("html-entity", finding.families)
+        self.assertFalse(finding.deterministic_candidate)
+        self.assertEqual(finding.normalization_hint, "script-markup")
 
     def test_reference_identity_prefers_doi_and_disambiguates_duplicate_hashes(self) -> None:
         duplicate = "Same citation without DOI"
