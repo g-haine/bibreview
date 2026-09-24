@@ -202,7 +202,6 @@ class ProjectReferencesTests(unittest.TestCase):
             error=HttpError(
                 "temporary",
                 status_code=429,
-                url="https://api.crossref.org/works",
             )
         )
 
@@ -264,7 +263,7 @@ class ProjectReferencesTests(unittest.TestCase):
         self.assertIn("10.1000/two", verbose)
         self.assertIn("review-required", verbose)
 
-    def test_full_requeues_completed_current_publications(self):
+    def test_full_requeues_completed_items_without_skipping_pending_first_pass(self):
         first = plan_project_references_batch(self.config)
         apply_project_references_plan(first)
         provider = FakeBatchProvider(
@@ -292,10 +291,16 @@ class ProjectReferencesTests(unittest.TestCase):
             full=True,
         )
 
+        # The generic campaign contract completes never-visited pending work
+        # before retrying items requeued by --full.
         self.assertEqual(
-            set(full.batch.keys),
-            set(publication.id for publication in self.publications),
+            full.batch.keys,
+            (self.publications[2].id,),
         )
+        states = {item.key: item.state for item in full.campaign.items}
+        self.assertEqual(states[self.publications[0].id], "retryable")
+        self.assertEqual(states[self.publications[1].id], "retryable")
+        self.assertEqual(states[self.publications[2].id], "active")
 
     def test_non_doi_publication_is_completed_as_unavailable_without_provider_call(self):
         item = Publication(
