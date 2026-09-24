@@ -11,7 +11,7 @@ feed.
 BibReview is designed so that provider output remains inspectable and ambiguous
 decisions remain human decisions.
 
-Current stable release: **v1.6.22**.
+Current stable release: **v1.6.23**.
 
 ## What BibReview provides
 
@@ -42,7 +42,7 @@ BibReview currently requires **Python 3.12 or newer**.
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.22"
+python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.23"
 
 bibreview --version
 ~~~
@@ -226,7 +226,7 @@ rejected if the canonical field has gained a meaningful value meanwhile. For
 abstracts, historical `Not Available` values are eligible for replacement and
 provider/fallback placeholders are never proposed as real abstracts.
 
-Since v1.6.22, an abstract rejected by the structured normalizer is **retained as
+Since v1.6.21, an abstract rejected by the structured normalizer is **retained as
 provider evidence instead of becoming `no_value`**. The local backfill review
 records the provider source, refusal reason and raw payload. If no safe abstract
 exists, the field is marked `review-required`: direct accept is disabled and
@@ -258,6 +258,13 @@ One-day `created_date` offsets, obvious provider truncations of a fuller
 canonical abstract, contributor-role disagreements, and isolated contributor
 anomalies remain informational evidence rather than automatic corrections. The
 raw audit comparisons are preserved separately from this review interpretation.
+
+Since v1.6.23, an audit provider abstract whose structured markup cannot be
+normalized losslessly is preserved verbatim in `audit-report.json` and
+classified as `provider-review-required`. Such evidence remains visible to
+human review but is never counted as an ordinary provider disagreement and is
+never actionable through `audit --resolve`. Safe/lossless structured abstracts
+continue to be normalized before comparison.
 
 Once an audit is complete, `bibreview audit --resolve` walks through actionable
 findings one by one and records explicit human decisions without changing the
