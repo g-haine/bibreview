@@ -33,6 +33,14 @@ from .pipeline.backfill import BACKFILL_FIELDS
 from .provider_diagnostics import diagnose_providers, format_provider_diagnostics
 from .pipeline.merge import MergeError
 from .hygiene import format_abstract_hygiene_report
+from .hygiene_resolution import (
+    format_hygiene_resolution_candidate,
+    hygiene_resolution_path,
+    load_project_hygiene_resolutions,
+    record_hygiene_resolution,
+    save_project_hygiene_resolutions,
+    unresolved_hygiene_candidates,
+)
 from .project import (
     ProjectStateError,
     apply_project_author_mappings,
@@ -45,7 +53,18 @@ from .project import (
     plan_project_merge,
 )
 from .project_arxiv import apply_project_arxiv, plan_project_arxiv
-from .project_hygiene import project_abstract_hygiene
+from .project_hygiene import (
+    apply_project_hygiene_proposals,
+    format_project_hygiene_review,
+    hygiene_review_path,
+    load_project_hygiene_review,
+    plan_project_hygiene_proposals,
+    project_abstract_hygiene,
+)
+from .project_hygiene_apply import (
+    apply_project_hygiene_apply,
+    plan_project_hygiene_apply,
+)
 from .project_backfill import (
     apply_project_backfill_plan,
     load_project_backfill_review,
@@ -143,13 +162,34 @@ def _parser() -> argparse.ArgumentParser:
     )
     hygiene = commands.add_parser(
         "hygiene",
-        help="Scan canonical abstracts for historical structured-markup contamination",
+        help="Scan or review canonical abstract structured-markup hygiene",
+    )
+    hygiene_actions = hygiene.add_mutually_exclusive_group()
+    hygiene_actions.add_argument(
+        "--propose",
+        action="store_true",
+        help="Persist reviewed historical normalization proposals from the current canon",
+    )
+    hygiene_actions.add_argument(
+        "--review",
+        action="store_true",
+        help="Show persisted historical hygiene proposals without modifying project state",
+    )
+    hygiene_actions.add_argument(
+        "--resolve",
+        action="store_true",
+        help="Interactively resolve persisted historical hygiene proposals",
+    )
+    hygiene_actions.add_argument(
+        "--apply",
+        action="store_true",
+        help="Stage completed historical hygiene decisions for ordinary merge",
     )
     hygiene.add_argument(
         "--json",
         dest="json_output",
         action="store_true",
-        help="Print the complete hygiene inventory as JSON",
+        help="Print complete hygiene inventory/review data as JSON",
     )
     audit = commands.add_parser(
         "audit",
@@ -261,6 +301,129 @@ def _parser() -> argparse.ArgumentParser:
     commands.add_parser("render", help="Render and reconcile configured static-site artifacts")
     commands.add_parser("arxiv", help="Refresh the optional configured arXiv cache")
     return parser
+
+
+def _run_hygiene_resolution(config, args) -> int:
+    """Run resumable human review for historical canonical abstract cleanup."""
+    if args.quiet:
+        raise ProjectStateError(
+            "--quiet cannot be used with interactive hygiene --resolve"
+        )
+    if args.json_output:
+        raise ProjectStateError(
+            "--json cannot be used with interactive hygiene --resolve"
+        )
+
+    review = load_project_hygiene_review(config)
+    state = load_project_hygiene_resolutions(config, review)
+    candidates = unresolved_hygiene_candidates(review, state)
+    path = hygiene_resolution_path(config)
+
+    if not candidates:
+        prefix = "Dry run: " if args.dry_run else ""
+        print(prefix + state.summary())
+        print("No unresolved hygiene proposals.")
+        print(f"Resolutions: {path}")
+        return 0
+
+    _enable_interactive_line_editing()
+
+    for candidate in candidates:
+        print(format_hygiene_resolution_candidate(candidate))
+        review_required = candidate.proposal.review_required
+        prompt = (
+            "Decision [n/f VALUE/s/q]: "
+            if review_required
+            else "Decision [Y/n/f VALUE/s/q]: "
+        )
+        while True:
+            try:
+                raw = input(prompt).strip()
+            except (EOFError, KeyboardInterrupt):
+                print()
+                print(
+                    "Hygiene resolution stopped; previous decisions are preserved."
+                )
+                print(state.summary())
+                print(f"Resolutions: {path}")
+                return 0
+
+            choice = raw.lower()
+            try:
+                if raw == "" or choice in {"y", "yes"}:
+                    if review_required:
+                        print(
+                            "No safe automatic normalized abstract is available; "
+                            "use f VALUE for a reviewed custom value, n to reject, "
+                            "or s to defer."
+                        )
+                        continue
+                    state = record_hygiene_resolution(
+                        state,
+                        candidate,
+                        decision="accepted",
+                    )
+                    break
+
+                if choice in {"n", "no"}:
+                    state = record_hygiene_resolution(
+                        state,
+                        candidate,
+                        decision="rejected",
+                    )
+                    break
+
+                if choice in {"s", "skip"}:
+                    state = record_hygiene_resolution(
+                        state,
+                        candidate,
+                        decision="deferred",
+                    )
+                    break
+
+                if choice in {"q", "quit"}:
+                    print(state.summary())
+                    print(f"Resolutions: {path}")
+                    return 0
+
+                if choice == "f" or choice.startswith("f "):
+                    custom = raw[1:].strip()
+                    if not custom:
+                        try:
+                            custom = input("Custom abstract: ").strip()
+                        except (EOFError, KeyboardInterrupt):
+                            print()
+                            print(
+                                "Hygiene resolution stopped; previous decisions "
+                                "are preserved."
+                            )
+                            print(state.summary())
+                            print(f"Resolutions: {path}")
+                            return 0
+                    state = record_hygiene_resolution(
+                        state,
+                        candidate,
+                        decision="custom",
+                        resolved_value=custom,
+                    )
+                    break
+            except ProjectStateError as error:
+                print(f"Invalid resolution: {error}")
+                continue
+
+            if review_required:
+                print("Please enter n, f VALUE, s, or q.")
+            else:
+                print("Please enter Y, n, f VALUE, s, or q.")
+
+        if not args.dry_run:
+            save_project_hygiene_resolutions(config, state)
+        print()
+
+    prefix = "Dry run: " if args.dry_run else ""
+    print(prefix + state.summary())
+    print(f"Resolutions: {path}")
+    return 0
 
 
 def _run_audit_resolution(config, args) -> int:
@@ -679,6 +842,107 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "hygiene":
+        if args.apply:
+            try:
+                plan = plan_project_hygiene_apply(config)
+                if not args.dry_run:
+                    apply_project_hygiene_apply(plan)
+            except (
+                OSError,
+                StorageError,
+                ProjectStateError,
+                ValueError,
+                TypeError,
+            ) as error:
+                print(f"bibreview hygiene: {error}", file=sys.stderr)
+                return 1
+
+            payload = {
+                "dry_run": bool(args.dry_run),
+                "changed": plan.changed,
+                "changes": [
+                    {
+                        "publication_id": item.publication_id,
+                        "doi": item.doi,
+                        "title": item.title,
+                        "decision": item.decision,
+                        "before": item.before,
+                        "after": item.after,
+                    }
+                    for item in plan.changes
+                ],
+            }
+            if args.json_output:
+                print(json.dumps(payload, ensure_ascii=False, indent=2))
+            elif not args.quiet:
+                prefix = "Dry run: " if args.dry_run else ""
+                print(prefix + plan.summary())
+                if plan.changed:
+                    print(f"Staging: {config.paths.collected}")
+                else:
+                    print("No accepted hygiene changes to stage.")
+            return 0
+
+        if args.resolve:
+            try:
+                return _run_hygiene_resolution(config, args)
+            except (
+                OSError,
+                StorageError,
+                ProjectStateError,
+                ValueError,
+                TypeError,
+            ) as error:
+                print(f"bibreview hygiene: {error}", file=sys.stderr)
+                return 1
+
+        if args.review:
+            try:
+                review = load_project_hygiene_review(config)
+            except (
+                OSError,
+                StorageError,
+                ProjectStateError,
+                ValueError,
+                TypeError,
+            ) as error:
+                print(f"bibreview hygiene: {error}", file=sys.stderr)
+                return 1
+
+            if args.json_output:
+                print(json.dumps(review.data(), ensure_ascii=False, indent=2))
+            elif not args.quiet:
+                print(
+                    format_project_hygiene_review(
+                        review,
+                        verbose=bool(args.verbose),
+                    )
+                )
+            return 0
+
+        if args.propose:
+            try:
+                plan = plan_project_hygiene_proposals(config)
+                if not args.dry_run:
+                    apply_project_hygiene_proposals(plan)
+            except (
+                OSError,
+                StorageError,
+                ProjectStateError,
+                ValueError,
+                TypeError,
+            ) as error:
+                print(f"bibreview hygiene: {error}", file=sys.stderr)
+                return 1
+
+            if args.json_output:
+                print(json.dumps(plan.review.data(), ensure_ascii=False, indent=2))
+            elif not args.quiet:
+                prefix = "Dry run: " if args.dry_run else ""
+                print(prefix + plan.summary())
+                print(f"Review: {hygiene_review_path(config)}")
+            return 0
+
         try:
             report = project_abstract_hygiene(config)
         except (OSError, StorageError, ValueError, TypeError) as error:
