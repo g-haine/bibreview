@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 import unittest
 
 from bibreview.structured_abstract import normalize_structured_abstract
@@ -173,6 +174,34 @@ class StructuredAbstractNormalizationTests(unittest.TestCase):
         self.assertFalse(result.deterministic)
         self.assertEqual(result.reason, "unbalanced-markup")
         self.assertEqual(result.normalized, value)
+
+    def test_phraise_dirac_manifolds_fixture_preserves_mathematics(self) -> None:
+        value = (
+            Path(__file__).parent
+            / "fixtures"
+            / "dirac_manifolds_abstract.txt"
+        ).read_text(encoding="utf-8")
+
+        result = normalize_structured_abstract(value)
+
+        self.assertTrue(result.deterministic)
+        self.assertTrue(result.changed)
+        for expression in (
+            r"\(V\)",
+            r"\(V \oplus {V^{\ast }}\)",
+            r"\(TP \oplus {T^{\ast }}P\)",
+            r"\([B,B]\)",
+            r"\(d\Omega\)",
+        ):
+            self.assertIn(expression, result.normalized)
+        self.assertNotIn("<inline-formula", result.normalized)
+        self.assertNotIn("<mml:", result.normalized)
+        self.assertNotIn("<!--", result.normalized)
+
+        second = normalize_structured_abstract(result.normalized)
+        self.assertTrue(second.deterministic)
+        self.assertFalse(second.changed)
+        self.assertEqual(second.normalized, result.normalized)
 
     def test_normalization_is_idempotent(self) -> None:
         first = normalize_structured_abstract(
