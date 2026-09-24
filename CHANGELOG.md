@@ -2,6 +2,54 @@
 
 All notable BibReview releases are documented here.
 
+## 1.6.24 — 2026-09-24
+
+### Reviewed historical abstract migration
+
+- complete Phase 4 of issue #85 with a read-only migration review derived from
+  the current canonical bibliography;
+- keep ordinary `bibreview hygiene` as the existing inventory command and add
+  explicit `hygiene --review`, `--resolve`, and `--apply` migration actions;
+- derive deterministic proposals through the conservative structured abstract
+  normalizer without persisting a second proposal snapshot;
+- represent normalizer refusals as `review-required` migration proposals with
+  no safe automatic value.
+
+### Human decisions and staleness
+
+- persist only resumable accept / custom / reject / defer decisions in
+  `hygiene-resolutions.json`;
+- fingerprint each migration review from publication identity, exact canonical
+  abstract, normalization result, refusal reason, and detected markup families;
+- reject stale decision state after canonical abstract changes;
+- forbid direct acceptance of review-required proposals while allowing an
+  explicit human custom abstract.
+
+### Staged application
+
+- require a complete decision set and empty collection staging before apply;
+- recheck the exact canonical abstract before staging;
+- stage accepted/custom abstract replacements in `collected.json` only;
+- leave `bibreview merge` as the sole canonical promotion boundary;
+- never mutate canonical bibliography data during scan, review, resolve, or
+  dry-run planning.
+
+### PHRAISE regression target
+
+- add the exact historical PHRAISE *Dirac Manifolds* abstract as a regression
+  fixture;
+- verify preservation of embedded TeX expressions including `V`,
+  `V \oplus {V^{\ast }}`, `TP \oplus {T^{\ast }}P`, `[B,B]`, and
+  `d\Omega`;
+- verify removal of MathML/inline-formula scaffolding and normalization
+  idempotence.
+
+### Validation
+
+- validate read-only review, review-required safeguards, resumable decisions,
+  stale-fingerprint rejection, staging, CLI resolution/application, and the
+  PHRAISE regression fixture with **525 passing tests**, compilation included.
+
 ## 1.6.23 — 2026-09-24
 
 ### Non-destructive audit abstract evidence
