@@ -21,7 +21,7 @@ from .campaign import (
     open_next_batch,
     record_item_result,
 )
-from .citation_format import CitationFormatError, format_crossref_citations
+from .citation_format import format_crossref_citations
 from .config import BibReviewConfig
 from .model import Publication
 from .pipeline.collect import BatchWorkProvider
@@ -734,10 +734,7 @@ def execute_project_references_batch(
         reporter=progress_reporter,
         label="cited-DOI metadata",
     )
-    try:
-        citation_batch = format_crossref_citations(citation_messages)
-    except CitationFormatError:
-        raise
+    citation_batch = format_crossref_citations(citation_messages)
     formatted_citations = dict(citation_batch.citations)
     for doi, detail in citation_batch.errors.items():
         progress_reporter.warning(
