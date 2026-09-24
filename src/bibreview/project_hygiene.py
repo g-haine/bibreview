@@ -9,7 +9,9 @@ from typing import Any
 from .config import BibReviewConfig
 from .hygiene import (
     AbstractHygieneReport,
+    TitleReferenceHygieneReport,
     scan_abstract_hygiene,
+    scan_title_reference_hygiene,
 )
 from .structured_abstract import normalize_structured_abstract
 from .storage import read_bibliography
@@ -84,6 +86,15 @@ class HygieneMigrationReview:
 def project_abstract_hygiene(config: BibReviewConfig) -> AbstractHygieneReport:
     """Scan the configured canonical bibliography without writing project state."""
     return scan_abstract_hygiene(read_bibliography(config.paths.bibliography))
+
+
+def project_title_reference_hygiene(
+    config: BibReviewConfig,
+) -> TitleReferenceHygieneReport:
+    """Scan canonical titles and reference citations without writing project state."""
+    return scan_title_reference_hygiene(
+        read_bibliography(config.paths.bibliography)
+    )
 
 
 def project_hygiene_migration_review(
