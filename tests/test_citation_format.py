@@ -99,7 +99,7 @@ class CrossRefCslConversionTests(unittest.TestCase):
         self.assertEqual(
             result["10.1000/test"],
             "Lovelace A (2024) Control systems. "
-            "Syst Control Lett 10(2):1-9. "
+            "Syst Control Lett 10(2):1–9. "
             "https://doi.org/10.1000/test",
         )
 
