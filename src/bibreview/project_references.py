@@ -21,6 +21,7 @@ from .campaign import (
     open_next_batch,
     record_item_result,
 )
+from .citation_format import CitationFormatError, format_crossref_citation
 from .config import BibReviewConfig
 from .model import Publication
 from .pipeline.collect import BatchWorkProvider
@@ -29,8 +30,10 @@ from .pipeline.references import (
     ReferenceRefreshResult,
     compare_reference_reconstruction,
     reconstruct_provider_references,
+    reconstruction_dois,
     reference_refresh_result_from_data,
     references_fingerprint,
+    with_formatted_doi_citations,
 )
 from .project import ProjectStateError
 from .providers.http import HttpError
@@ -111,6 +114,9 @@ class ProjectReferencesExecution:
     retryable_count: int
     failed_count: int
     classifications: Mapping[str, int]
+    cited_doi_count: int
+    formatted_citation_count: int
+    unavailable_citation_count: int
     campaign: Campaign
     report: ReferenceReport
 
@@ -127,6 +133,9 @@ class ProjectReferencesExecution:
             f"({self.completed_count} completed, "
             f"{self.retryable_count} retryable, {self.failed_count} failed)\n"
             f"  Results    : {class_text}\n"
+            f"  DOI round  : {self.cited_doi_count} unique, "
+            f"{self.formatted_citation_count} formatted, "
+            f"{self.unavailable_citation_count} unavailable\n"
             f"  Campaign   : {progress.completed + progress.retryable + progress.failed} "
             f"/ {progress.total} processed\n"
             f"  Remaining  : {progress.pending} pending\n"
@@ -628,6 +637,7 @@ def _prefetch_work_messages(
     dois: tuple[str, ...],
     *,
     reporter: Reporter,
+    label: str = "reference",
 ) -> tuple[dict[str, Mapping[str, Any]], set[str]]:
     size, works = _batch_capability(provider)
     messages: dict[str, Mapping[str, Any]] = {}
@@ -650,7 +660,7 @@ def _prefetch_work_messages(
         except (HttpError, OSError, ValueError, TypeError) as error:
             failed.update(chunk)
             reporter.warning(
-                f"CrossRef reference batch of {len(chunk)} DOI values: {error}"
+                f"CrossRef {label} batch of {len(chunk)} DOI values: {error}"
             )
     return messages, failed
 
@@ -691,7 +701,48 @@ def execute_project_references_batch(
         batch_provider,
         active_dois,
         reporter=progress_reporter,
+        label="parent-reference",
     )
+
+    reconstructions: dict[str, ReferenceReconstruction] = {}
+    for key in batch.keys:
+        if states.get(key) != "active":
+            continue
+        publication = publications.get(key)
+        if (
+            publication is None
+            or publication.doi is None
+            or publication.doi in failed_dois
+        ):
+            continue
+        message = messages.get(publication.doi)
+        if message is not None:
+            reconstructions[key] = reconstruct_provider_references(message)
+
+    cited_dois = tuple(
+        dict.fromkeys(
+            doi
+            for key in batch.keys
+            for reconstruction in (reconstructions.get(key),)
+            if reconstruction is not None and reconstruction.available
+            for doi in reconstruction_dois(reconstruction)
+        )
+    )
+    citation_messages, citation_failed_dois = _prefetch_work_messages(
+        batch_provider,
+        cited_dois,
+        reporter=progress_reporter,
+        label="cited-DOI metadata",
+    )
+    formatted_citations: dict[str, str] = {}
+    for doi, message in citation_messages.items():
+        try:
+            citation = format_crossref_citation(doi, message)
+        except CitationFormatError as error:
+            progress_reporter.warning(str(error))
+            continue
+        if citation:
+            formatted_citations[doi] = citation
 
     processed = completed = retryable = failed = 0
     classifications: Counter[str] = Counter()
@@ -723,12 +774,26 @@ def execute_project_references_batch(
                     "provider-work-missing",
                 )
             else:
-                reconstruction = reconstruct_provider_references(message)
-                result = compare_reference_reconstruction(
-                    publication,
-                    reconstruction,
-                )
-            state = "completed"
+                reconstruction = reconstructions.get(publication.id)
+                if reconstruction is None:
+                    reconstruction = reconstruct_provider_references(message)
+                referenced_dois = set(reconstruction_dois(reconstruction))
+                if referenced_dois & citation_failed_dois:
+                    result = _unavailable_result(
+                        publication,
+                        "citation-metadata-batch-error",
+                    )
+                    state = "retryable"
+                else:
+                    reconstruction = with_formatted_doi_citations(
+                        reconstruction,
+                        formatted_citations,
+                    )
+                    result = compare_reference_reconstruction(
+                        publication,
+                        reconstruction,
+                    )
+                    state = "completed"
 
         identity = (
             publication.doi or publication.id
@@ -778,6 +843,11 @@ def execute_project_references_batch(
         retryable_count=retryable,
         failed_count=failed,
         classifications=ordered_counts,
+        cited_doi_count=len(cited_dois),
+        formatted_citation_count=len(formatted_citations),
+        unavailable_citation_count=(
+            len(cited_dois) - len(formatted_citations)
+        ),
         campaign=close.campaign,
         report=close.report,
     )
