@@ -47,11 +47,11 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(config.audit.batch_size, 50)
         self.assertEqual(
             config.references.campaign,
-            root / "data/references/campaign.json",
+            root / "audit/references/campaign.json",
         )
         self.assertEqual(
             config.references.report,
-            root / "data/references/report.json",
+            root / "audit/references/report.json",
         )
         self.assertEqual(config.references.batch_size, 50)
         self.assertEqual(config.discovery.query, "fluid-structure interaction")
