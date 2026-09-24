@@ -328,4 +328,47 @@ def unresolved_backfill_candidates(
     )
 
 
-def format_backfill_resolution_candidate(\n    candidate: BackfillResolutionCandidate,\n) -> str:\n    """Format one proposal or review-required evidence for human review."""\n    proposal = candidate.proposal\n    lines = [\n        f"[{candidate.position}/{candidate.total}] {proposal.doi} — {proposal.title}",\n        "",\n        f"Field: {proposal.field}",\n        "Current:",\n        "  (missing)",\n        "",\n    ]\n\n    if proposal.review_required:\n        lines.extend((\n            "Status: REVIEW REQUIRED",\n            "No safe automatic proposal is available.",\n            "",\n        ))\n    else:\n        rendered = fill(\n            proposal.proposed_value,\n            width=100,\n            initial_indent="  ",\n            subsequent_indent="  ",\n        )\n        lines.extend(("Proposed:", rendered, ""))\n\n    if proposal.evidence:\n        lines.append("Retained provider evidence:")\n        for index, evidence in enumerate(proposal.evidence, 1):\n            rendered = fill(\n                evidence.value,\n                width=100,\n                initial_indent="    ",\n                subsequent_indent="    ",\n            )\n            lines.extend((\n                f"  [{index}] {evidence.source} — {evidence.reason}",\n                rendered,\n            ))\n\n    return "\\n".join(lines).rstrip() + "\\n"\n
+def format_backfill_resolution_candidate(
+    candidate: BackfillResolutionCandidate,
+) -> str:
+    """Format one proposal or review-required evidence for human review."""
+    proposal = candidate.proposal
+    lines = [
+        f"[{candidate.position}/{candidate.total}] {proposal.doi} — {proposal.title}",
+        "",
+        f"Field: {proposal.field}",
+        "Current:",
+        "  (missing)",
+        "",
+    ]
+
+    if proposal.review_required:
+        lines.extend((
+            "Status: REVIEW REQUIRED",
+            "No safe automatic proposal is available.",
+            "",
+        ))
+    else:
+        rendered = fill(
+            proposal.proposed_value,
+            width=100,
+            initial_indent="  ",
+            subsequent_indent="  ",
+        )
+        lines.extend(("Proposed:", rendered, ""))
+
+    if proposal.evidence:
+        lines.append("Retained provider evidence:")
+        for index, evidence in enumerate(proposal.evidence, 1):
+            rendered = fill(
+                evidence.value,
+                width=100,
+                initial_indent="    ",
+                subsequent_indent="    ",
+            )
+            lines.extend((
+                f"  [{index}] {evidence.source} — {evidence.reason}",
+                rendered,
+            ))
+
+    return "\n".join(lines).rstrip() + "\n"
