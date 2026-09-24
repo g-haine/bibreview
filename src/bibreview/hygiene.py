@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass
+from hashlib import sha256
 import re
 from typing import Iterable
 
@@ -82,6 +83,38 @@ _ESCAPED_MARKUP_RE = re.compile(
     re.IGNORECASE,
 )
 _LEGACY_MARKER_RE = re.compile(r"\[\[:space:\]\]")
+_SMALL_CAPS_RE = re.compile(
+    r"<\s*/?\s*(?:[A-Za-z][A-Za-z0-9_.-]*:)?(?:scp|small-caps)\b",
+    re.IGNORECASE,
+)
+_HTML_ENTITY_RE = re.compile(
+    r"&(?:[A-Za-z][A-Za-z0-9]+|#\d+|#x[0-9A-Fa-f]+);"
+)
+_TEX_FRAGMENT_RE = re.compile(
+    r"(?:\\\(|\\\[|(?<!\\)\$(?!\s)[^$\n]+(?<!\s)(?<!\\)\$|"
+    r"\\[A-Za-z]+(?:\s*\{[^{}]*\})?)"
+)
+_CONTROL_CHARACTER_RE = re.compile(r"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]")
+
+_TITLE_REFERENCE_FAMILY_ORDER = (
+    "legacy-renderer-marker",
+    "inline-formula",
+    "tex-math",
+    "embedded-graphic",
+    "script-markup",
+    "mathml",
+    "jats",
+    "xml-comment",
+    "escaped-markup",
+    "small-caps-markup",
+    "html-xml-markup",
+    "html-entity",
+    "tex-fragment",
+    "unicode-replacement",
+    "soft-hyphen",
+    "control-character",
+    "unbalanced-structured-tags",
+)
 
 _VOID_HTML_TAGS = frozenset(
     {
