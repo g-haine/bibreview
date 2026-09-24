@@ -16,6 +16,7 @@ from bibreview.project_references import (
     project_references_review,
     references_report_from_data,
 )
+from bibreview.project import ProjectStateError
 from bibreview.providers.http import HttpError
 from bibreview.reporting import Reporter
 from bibreview.storage import read_json, write_bibliography
@@ -107,7 +108,7 @@ class ProjectReferencesTests(unittest.TestCase):
 
     def test_schema_one_report_is_rejected_after_citation_policy_change(self):
         with self.assertRaisesRegex(
-            Exception,
+            ProjectStateError,
             "schema version 1 predates the DOI citation second round",
         ):
             references_report_from_data(
