@@ -234,6 +234,11 @@ def load_project_backfill_resolutions(
             raise ProjectStateError(
                 f"{path}: resolution metadata is inconsistent for {decision.key}"
             )
+        if proposal.review_required and decision.decision == "accepted":
+            raise ProjectStateError(
+                f"{path}: review-required proposal cannot be accepted directly: "
+                f"{decision.key}"
+            )
     return state
 
 
