@@ -52,6 +52,36 @@ class CrossRefAuditSourceTests(unittest.TestCase):
         self.assertEqual(evidence.fields["keywords"], ("Control", "Energy"))
         self.assertEqual(provider.work.call_args.args, ("10.1000/example",))
 
+    def test_retains_unsafe_structured_abstract_verbatim(self):
+        provider = Mock()
+        raw = (
+            'A controller <jats:inline-graphic '
+            'xlink:href="graphic/math-0002.png"/> is proposed.'
+        )
+        provider.work.return_value = {
+            "DOI": "10.1000/example",
+            "abstract": raw,
+        }
+
+        evidence = CrossRefAuditSource(provider).evidence("10.1000/example")
+
+        self.assertEqual(evidence.fields["abstract"], raw)
+
+    def test_normalizes_lossless_structured_abstract(self):
+        provider = Mock()
+        provider.work.return_value = {
+            "DOI": "10.1000/example",
+            "abstract": (
+                '<jats:p>A space <inline-formula>'
+                '<mml:annotation encoding="application/x-tex">V</mml:annotation>'
+                '</inline-formula>.</jats:p>'
+            ),
+        }
+
+        evidence = CrossRefAuditSource(provider).evidence("10.1000/example")
+
+        self.assertEqual(evidence.fields["abstract"], r"A space \(V\).")
+
     def test_uses_article_number_when_crossref_page_is_missing(self):
         provider = Mock()
         provider.work.return_value = {
