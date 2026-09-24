@@ -92,7 +92,7 @@ _SYMBOL_TEX = {
 
 
 @dataclass(frozen=True)
-class StructuredTitleNormalization:
+class StructuredMetadataNormalization:
     """Result of one conservative title/reference normalization attempt."""
 
     normalized: str
@@ -108,9 +108,9 @@ def _local_name(name: str | None) -> str:
     return name.casefold().rsplit(":", 1)[-1]
 
 
-def _refused(value: str, reason: str) -> StructuredTitleNormalization:
+def _refused(value: str, reason: str) -> StructuredMetadataNormalization:
     """Return a non-mutating refusal result."""
-    return StructuredTitleNormalization(
+    return StructuredMetadataNormalization(
         normalized=value,
         deterministic=False,
         changed=False,
@@ -281,7 +281,7 @@ def _normalize(
     *,
     inline_wrappers: frozenset[str],
     block_wrappers: frozenset[str],
-) -> StructuredTitleNormalization:
+) -> StructuredMetadataNormalization:
     """Normalize one short bibliographic text under an explicit wrapper policy."""
     if not isinstance(value, str):
         raise TypeError("structured title/citation value must be a string")
@@ -306,7 +306,7 @@ def _normalize(
         return _refused(original, "unbalanced-markup")
 
     if _TAG_RE.search(value) is None and "<!--" not in value:
-        return StructuredTitleNormalization(
+        return StructuredMetadataNormalization(
             normalized=value,
             deterministic=True,
             changed=value != original,
@@ -389,7 +389,7 @@ def _normalize(
         unique_steps = ("entity-decoding", *unique_steps)
     reason = "+".join(unique_steps) if unique_steps else "normalized"
 
-    return StructuredTitleNormalization(
+    return StructuredMetadataNormalization(
         normalized=normalized,
         deterministic=True,
         changed=normalized != original,
@@ -397,7 +397,7 @@ def _normalize(
     )
 
 
-def normalize_structured_title(value: str) -> StructuredTitleNormalization:
+def normalize_structured_title(value: str) -> StructuredMetadataNormalization:
     """Normalize one publication title without editorial inference."""
     return _normalize(
         value,
@@ -406,7 +406,7 @@ def normalize_structured_title(value: str) -> StructuredTitleNormalization:
     )
 
 
-def normalize_structured_citation(value: str) -> StructuredTitleNormalization:
+def normalize_structured_citation(value: str) -> StructuredMetadataNormalization:
     """Normalize one stored reference citation without parsing citation grammar."""
     return _normalize(
         value,
