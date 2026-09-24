@@ -234,6 +234,15 @@ class AuditConfig:
 
 
 @dataclass(frozen=True)
+class ReferencesConfig:
+    """Persistent state and batching policy for reference refresh."""
+
+    campaign: Path
+    report: Path
+    batch_size: int = 50
+
+
+@dataclass(frozen=True)
 class RelevanceConfig:
     patterns: tuple[str, ...] = ()
     unmatched: str = "manual-review"
@@ -299,6 +308,7 @@ class BibReviewConfig:
     discovery: DiscoveryConfig
     refresh: RefreshConfig
     audit: AuditConfig
+    references: ReferencesConfig
     relevance: RelevanceConfig
     providers: Mapping[str, ProviderConfig]
     site: SiteConfig
@@ -473,6 +483,31 @@ def load_config(path: str | Path = "bibreview.yml") -> BibReviewConfig:
     if audit.campaign == audit.report:
         raise ConfigError("audit.campaign and audit.report must be different paths")
 
+    references_raw = _mapping(raw.get("references"), "references")
+    references = ReferencesConfig(
+        campaign=_path(
+            base,
+            references_raw.get("campaign"),
+            "data/references/campaign.json",
+            "references.campaign",
+        ),
+        report=_path(
+            base,
+            references_raw.get("report"),
+            "data/references/report.json",
+            "references.report",
+        ),
+        batch_size=_integer(
+            references_raw.get("batch_size"),
+            "references.batch_size",
+            50,
+        ),
+    )
+    if references.campaign == references.report:
+        raise ConfigError(
+            "references.campaign and references.report must be different paths"
+        )
+
     relevance_raw = _mapping(raw.get("relevance"), "relevance")
     patterns_raw = relevance_raw.get("patterns", [])
     if not isinstance(patterns_raw, list) or any(not isinstance(v, str) for v in patterns_raw):
@@ -600,6 +635,7 @@ def load_config(path: str | Path = "bibreview.yml") -> BibReviewConfig:
         discovery=discovery,
         refresh=refresh,
         audit=audit,
+        references=references,
         relevance=relevance,
         providers=MappingProxyType(providers),
         site=site,
