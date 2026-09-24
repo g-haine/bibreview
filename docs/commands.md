@@ -209,7 +209,7 @@ them with canonical references, checkpoints every publication result
 immediately, closes the batch, and stops.
 
 The workflow is deliberately read-only with respect to bibliographic project
-state in v1.6.27. It writes only the configured reference campaign/report files.
+state in v1.6.28. It writes only the configured reference campaign/report files.
 It never edits `bibliography.json`, never writes `collected.json`, and has no
 `references --apply` action yet.
 
@@ -272,6 +272,13 @@ sanitization of existing canonical evidence.
 The refresh works from the parent CrossRef `reference` payload. It does **not**
 perform one DOI content-negotiation request per cited reference.
 
+Parent payloads may contain only a cited DOI and no citation text. In v1.6.28,
+BibReview fills that missing text only when the provider DOI exactly equals the
+canonical DOI at the same ordered position. It then runs the canonical citation
+through the current conservative sanitizer. This avoids artificial drift while
+remaining structurally strict. Non-DOI entries, identifier drift, reordered
+references, and new provider references never use this fallback.
+
 Transient provider batch failures remain retryable. Missing parent work records,
 missing reference lists, and non-DOI canonical parents are recorded explicitly
 without discarding current canonical references.
@@ -301,7 +308,7 @@ changed reference indices, refusal reasons where applicable, and the proposed
 reference list. Unchanged entries keep fingerprints/counts but deliberately omit
 a duplicate copy of the full list.
 
-**v1.6.27 is an observation release.** Inspect the PHRAISE campaign/report before
+**v1.6.28 is an observation release.** Inspect the PHRAISE campaign/report before
 designing the resolver and application boundary in a later v1.6.x release.
 
 ## audit
