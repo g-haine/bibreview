@@ -8,6 +8,7 @@ does not persist provider metadata.
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 from importlib import resources
 from io import BytesIO
 from typing import Any
@@ -31,6 +32,14 @@ _STYLE_RESOURCE = (
 
 class CitationFormatError(ValueError):
     """Raised when transient provider metadata cannot be rendered safely."""
+
+
+@dataclass(frozen=True)
+class CitationBatchResult:
+    """Locally rendered DOI citations plus per-DOI formatting failures."""
+
+    citations: Mapping[str, str]
+    errors: Mapping[str, str]
 
 
 _CROSSREF_TO_CSL_TYPE = {
@@ -188,36 +197,69 @@ def _render_one(item: Mapping[str, Any], style_bytes: bytes) -> str:
     return "".join(str(part) for part in entries[0]).strip()
 
 
+def format_crossref_citations(
+    messages: Mapping[str, Mapping[str, Any]],
+) -> CitationBatchResult:
+    """Render one DOI batch with a single local CSL style load."""
+    prepared: dict[str, dict[str, Any]] = {}
+    errors: dict[str, str] = {}
+    for raw_doi, message in messages.items():
+        doi = normalize_doi(raw_doi)
+        if not isinstance(message, Mapping):
+            errors[doi] = "CrossRef citation metadata must be a mapping"
+            continue
+        try:
+            prepared[doi] = crossref_work_to_csl(doi, message)
+        except (TypeError, ValueError, KeyError) as error:
+            errors[doi] = str(error)
+
+    if not prepared:
+        return CitationBatchResult(citations={}, errors=errors)
+
+    try:
+        style = CitationStylesStyle(BytesIO(_style_bytes()), validate=False)
+        source = CiteProcJSON(list(prepared.values()))
+    except Exception as error:
+        raise CitationFormatError(
+            f"CSL citation batch initialization failed: {error}"
+        ) from error
+
+    citations: dict[str, str] = {}
+    for doi in prepared:
+        try:
+            bibliography = CitationStylesBibliography(
+                style,
+                source,
+                formatter.plain,
+            )
+            bibliography.register(Citation([CitationItem(doi)]))
+            entries = bibliography.bibliography()
+            citation = (
+                "".join(str(part) for part in entries[0]).strip()
+                if entries
+                else ""
+            )
+        except Exception as error:
+            errors[doi] = f"CSL citation rendering failed: {error}"
+            continue
+        if citation:
+            citations[doi] = citation
+        else:
+            errors[doi] = "CSL citation rendering returned an empty value"
+
+    return CitationBatchResult(citations=citations, errors=errors)
+
+
 def format_crossref_citation(
     doi: str,
     message: Mapping[str, Any],
 ) -> str:
-    """Render one Springer-style citation from transient CrossRef metadata."""
+    """Render one DOI through the same local batch formatter."""
     normalized = normalize_doi(doi)
-    if not isinstance(message, Mapping):
-        raise CitationFormatError(
-            f"{normalized}: CrossRef citation metadata must be a mapping"
-        )
-    try:
-        citation = _render_one(
-            crossref_work_to_csl(normalized, message),
-            _style_bytes(),
-        )
-    except Exception as error:
-        raise CitationFormatError(
-            f"{normalized}: CSL citation rendering failed: {error}"
-        ) from error
-    return citation
-
-
-def format_crossref_citations(
-    messages: Mapping[str, Mapping[str, Any]],
-) -> dict[str, str]:
-    """Render citations for a provider batch without persisting metadata."""
-    result: dict[str, str] = {}
-    for raw_doi, message in messages.items():
-        doi = normalize_doi(raw_doi)
-        citation = format_crossref_citation(doi, message)
-        if citation:
-            result[doi] = citation
-    return result
+    result = format_crossref_citations({normalized: message})
+    citation = result.citations.get(normalized)
+    if citation:
+        return citation
+    raise CitationFormatError(
+        f"{normalized}: {result.errors.get(normalized, 'citation unavailable')}"
+    )
