@@ -26,6 +26,29 @@ from .storage import atomic_write_batch, json_bytes, read_bibliography, read_jso
 BACKFILL_REVIEW_SCHEMA_VERSION = 1
 
 
+def _backfill_candidate_data(item: BackfillCandidate) -> dict[str, Any]:
+    """Serialize one candidate without perturbing legacy safe fingerprints."""
+    data: dict[str, Any] = {
+        "publication_id": item.publication_id,
+        "doi": item.doi,
+        "title": item.title,
+        "field": item.field,
+        "proposed_value": item.proposed_value,
+    }
+    if item.review_required:
+        data["review_required"] = True
+    if item.evidence:
+        data["evidence"] = [
+            {
+                "source": evidence.source,
+                "value": evidence.value,
+                "reason": evidence.reason,
+            }
+            for evidence in item.evidence
+        ]
+    return data
+
+
 @dataclass(frozen=True)
 class BackfillReview:
     """Versioned local proposal set awaiting explicit human decisions."""
@@ -46,22 +69,7 @@ class BackfillReview:
             "scanned_count": self.scanned_count,
             "eligible_count": self.eligible_count,
             "candidates": [
-                {
-                    "publication_id": item.publication_id,
-                    "doi": item.doi,
-                    "title": item.title,
-                    "field": item.field,
-                    "proposed_value": item.proposed_value,
-                    "review_required": item.review_required,
-                    "evidence": [
-                        {
-                            "source": evidence.source,
-                            "value": evidence.value,
-                            "reason": evidence.reason,
-                        }
-                        for evidence in item.evidence
-                    ],
-                }
+                _backfill_candidate_data(item)
                 for item in self.candidates
             ],
             "unavailable": list(self.unavailable),
