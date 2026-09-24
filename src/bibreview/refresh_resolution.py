@@ -87,6 +87,11 @@ def load_project_refresh_resolutions(
             raise ProjectStateError(
                 f"{path}: resolution metadata is inconsistent for {decision.key}"
             )
+        if proposal.review_required and decision.decision == "accepted":
+            raise ProjectStateError(
+                f"{path}: review-required refresh evidence cannot be accepted "
+                f"directly: {decision.key}"
+            )
     return state
 
 
