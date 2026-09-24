@@ -6,12 +6,13 @@ from pathlib import Path
 import json
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from bibreview.cli import main
 from bibreview.config import load_config
 from bibreview.identity import new_publication_id
 from bibreview.model import Author, Publication
-from bibreview.storage import write_bibliography
+from bibreview.storage import read_bibliography, write_bibliography
 
 
 CONFIG = """\
@@ -103,6 +104,37 @@ class HygieneCliTests(unittest.TestCase):
             payload["findings"][0]["normalization_hint"],
             "embedded-tex-annotation",
         )
+
+    def test_reviewed_hygiene_migration_stages_only_after_resolution(self) -> None:
+        code, stdout, stderr = self.run_cli("hygiene", "--propose")
+        self.assertEqual(code, 0, stderr)
+        self.assertIn("Deterministic proposals  : 1", stdout)
+
+        code, stdout, stderr = self.run_cli("-v", "hygiene", "--review")
+        self.assertEqual(code, 0, stderr)
+        self.assertIn("10.1/markup", stdout)
+        self.assertIn("Current:", stdout)
+        self.assertIn("Proposed:", stdout)
+
+        with patch("builtins.input", return_value=""):
+            code, stdout, stderr = self.run_cli("hygiene", "--resolve")
+        self.assertEqual(code, 0, stderr)
+        self.assertIn("Accepted   : 1", stdout)
+
+        code, stdout, stderr = self.run_cli("hygiene", "--apply")
+        self.assertEqual(code, 0, stderr)
+        self.assertIn("Reviewed changes : 1", stdout)
+
+        staged = read_bibliography(self.config.paths.collected)
+        self.assertEqual(len(staged), 1)
+        self.assertEqual(staged[0].identifiers["doi"], "10.1/markup")
+        self.assertEqual(staged[0].abstract, r"Text \(V\).")
+
+        canonical = read_bibliography(self.config.paths.bibliography)
+        markup = next(
+            item for item in canonical if item.identifiers["doi"] == "10.1/markup"
+        )
+        self.assertIn("<inline-formula", markup.abstract)
 
     def test_missing_canonical_bibliography_fails_without_traceback(self) -> None:
         self.config.paths.bibliography.unlink()
