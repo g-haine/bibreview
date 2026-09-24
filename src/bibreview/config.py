@@ -508,6 +508,26 @@ def load_config(path: str | Path = "bibreview.yml") -> BibReviewConfig:
             "references.campaign and references.report must be different paths"
         )
 
+    references_reserved_paths = {
+        paths.bibliography,
+        paths.collected,
+        paths.author_mappings,
+        paths.known,
+        paths.pending,
+        paths.rejected,
+        paths.review,
+        audit.campaign,
+        audit.report,
+    }
+    for name, path in (
+        ("references.campaign", references.campaign),
+        ("references.report", references.report),
+    ):
+        if path in references_reserved_paths:
+            raise ConfigError(
+                f"{name} must not overlap canonical/project/audit state paths"
+            )
+
     relevance_raw = _mapping(raw.get("relevance"), "relevance")
     patterns_raw = relevance_raw.get("patterns", [])
     if not isinstance(patterns_raw, list) or any(not isinstance(v, str) for v in patterns_raw):
