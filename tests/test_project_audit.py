@@ -672,6 +672,71 @@ class ProjectAuditTests(unittest.TestCase):
             "retryable",
         )
 
+    def test_execution_persists_refused_abstract_payload_verbatim(self):
+        start = plan_project_audit_batch(self.config)
+        apply_project_audit_plan(start)
+        first, second = self.publications[:2]
+        raw = (
+            'A controller <jats:inline-graphic '
+            'xlink:href="graphic/math-0002.png"/> is proposed.'
+        )
+        source = FakeAuditSource({
+            first.doi: ProviderEvidence(
+                provider="fake-provider",
+                identifiers={"doi": first.doi},
+                fields={
+                    "title": first.title,
+                    "abstract": raw,
+                },
+            ),
+            second.doi: ProviderEvidence(
+                provider="fake-provider",
+                identifiers={"doi": second.doi},
+                fields={"title": second.title},
+            ),
+        })
+
+        execution = execute_project_audit_batch(
+            self.config,
+            batch_id=start.batch.id,
+            sources=(source,),
+            reporter=Reporter(-1),
+        )
+
+        self.assertEqual(execution.completed_count, 2)
+        report = audit_report_from_data(
+            read_json(self.config.audit.report, dict)
+        )
+        entry = next(
+            item
+            for item in report.entries
+            if item.publication_id == first.id
+        )
+        comparison = next(
+            item
+            for item in entry.result.comparisons
+            if item.field == "abstract"
+        )
+        self.assertEqual(
+            comparison.classification,
+            "provider-review-required",
+        )
+        self.assertEqual(comparison.provider_value, raw)
+
+        review = project_audit_review(self.config)
+        reviewed = next(
+            item
+            for item in review.items
+            if item.publication_id == first.id
+        )
+        finding = next(
+            item
+            for item in reviewed.findings
+            if item.field == "abstract"
+        )
+        self.assertFalse(finding.actionable)
+        self.assertEqual(finding.provider_values, (("fake-provider", raw),))
+
     def test_execution_batches_capable_sources_once_for_active_dois(self):
         start = plan_project_audit_batch(self.config)
         apply_project_audit_plan(start)
