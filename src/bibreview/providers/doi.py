@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from urllib.parse import quote
 
@@ -47,11 +48,25 @@ class DoiProvider:
             },
             context=f"Citation lookup for DOI {normalized}",
         )
-        if response is None or not response.text:
-            return ""
-        last = response.text.rstrip("\n").split("\n")[-1]
-        value = re.sub(r"^1\.\s*", "", last)
-        return value[:-1] if value else ""
+        return _format_citation_response(response.text if response is not None else "")
+
+
+def _format_citation_response(value: str) -> str:
+    """Normalize one DOI citation response without truncating citation content."""
+    stripped = value.strip()
+    if not stripped:
+        return ""
+
+    try:
+        structured = json.loads(stripped)
+    except (json.JSONDecodeError, TypeError):
+        structured = None
+    if isinstance(structured, (dict, list)):
+        return ""
+
+    last = stripped.splitlines()[-1].strip()
+    citation = re.sub(r"^1\.\s*", "", last)
+    return citation[:-1].rstrip() if citation.endswith(".") else citation
 
 
 def format_bibtex(value: str) -> str:
