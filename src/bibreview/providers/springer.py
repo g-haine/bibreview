@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 
 from ..identity import normalize_doi
-from .base import Enrichment, normalized_keywords, plain_text
+from .base import Enrichment, normalized_keywords
 from .http import HttpTransport
 
 
@@ -42,7 +42,7 @@ class SpringerProvider:
             if isinstance(value, dict) and value.get("confSeriesName")
         ).strip()
         return Enrichment(
-            abstract=plain_text(record.get("abstract")),
+            abstract=str(record.get("abstract") or ""),
             keywords=normalized_keywords(list(terms)),
             event=event,
         )
