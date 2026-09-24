@@ -32,7 +32,10 @@ from .pipeline.authors import author_mapping_plan_data, format_author_mapping_pl
 from .pipeline.backfill import BACKFILL_FIELDS
 from .provider_diagnostics import diagnose_providers, format_provider_diagnostics
 from .pipeline.merge import MergeError
-from .hygiene import format_abstract_hygiene_report
+from .hygiene import (
+    format_abstract_hygiene_report,
+    format_title_reference_hygiene_report,
+)
 from .hygiene_resolution import (
     format_hygiene_resolution_candidate,
     hygiene_resolution_path,
@@ -57,6 +60,7 @@ from .project_hygiene import (
     format_project_hygiene_migration_review,
     project_abstract_hygiene,
     project_hygiene_migration_review,
+    project_title_reference_hygiene,
 )
 from .project_hygiene_apply import (
     apply_project_hygiene_apply,
@@ -159,9 +163,14 @@ def _parser() -> argparse.ArgumentParser:
     )
     hygiene = commands.add_parser(
         "hygiene",
-        help="Scan canonical abstracts for historical structured-markup contamination",
+        help="Scan canonical metadata for historical structured/encoding contamination",
     )
     hygiene_actions = hygiene.add_mutually_exclusive_group()
+    hygiene_actions.add_argument(
+        "--titles",
+        action="store_true",
+        help="Read-only inventory of publication titles and reference citations",
+    )
     hygiene_actions.add_argument(
         "--review",
         action="store_true",
@@ -834,6 +843,24 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "hygiene":
+        if args.titles:
+            try:
+                report = project_title_reference_hygiene(config)
+            except (OSError, StorageError, ValueError, TypeError) as error:
+                print(f"bibreview hygiene: {error}", file=sys.stderr)
+                return 1
+
+            if args.json_output:
+                print(json.dumps(report.data(), ensure_ascii=False, indent=2))
+            elif not args.quiet:
+                print(
+                    format_title_reference_hygiene_report(
+                        report,
+                        verbose=bool(args.verbose),
+                    )
+                )
+            return 0
+
         if args.apply:
             try:
                 plan = plan_project_hygiene_apply(config)
