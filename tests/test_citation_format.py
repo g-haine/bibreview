@@ -71,7 +71,7 @@ class CrossRefCslConversionTests(unittest.TestCase):
         )
 
         self.assertEqual(
-            result["10.1000/book"],
+            result.citations["10.1000/book"],
             "South J, Blass B (2001) The future of modern genomics. "
             "Blackwell, London",
         )
@@ -97,11 +97,29 @@ class CrossRefCslConversionTests(unittest.TestCase):
         )
 
         self.assertEqual(
-            result["10.1000/test"],
+            result.citations["10.1000/test"],
             "Lovelace A (2024) Control systems. "
             "Syst Control Lett 10(2):1–9. "
             "https://doi.org/10.1000/test",
         )
+
+    def test_batch_isolates_invalid_metadata(self) -> None:
+        result = format_crossref_citations(
+            {
+                "10.1000/good": {
+                    "type": "book",
+                    "title": ["Good"],
+                    "author": [{"family": "Author"}],
+                    "issued": {"date-parts": [[2024]]},
+                    "publisher": "Publisher",
+                },
+                "10.1000/bad": "not a mapping",
+            }
+        )
+
+        self.assertIn("10.1000/good", result.citations)
+        self.assertNotIn("10.1000/bad", result.citations)
+        self.assertIn("10.1000/bad", result.errors)
 
     def test_formatting_normalizes_mapping_keys(self) -> None:
         result = format_crossref_citations(
@@ -116,8 +134,8 @@ class CrossRefCslConversionTests(unittest.TestCase):
             }
         )
 
-        self.assertIn("10.1000/test", result)
-        self.assertNotIn("10.1000/TEST", result)
+        self.assertIn("10.1000/test", result.citations)
+        self.assertNotIn("10.1000/TEST", result.citations)
 
 
 if __name__ == "__main__":
