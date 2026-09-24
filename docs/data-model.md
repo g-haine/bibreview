@@ -234,7 +234,7 @@ The campaign uses persistent publication UUIDs as item keys. Each processed
 publication has at most one latest report entry, associated with the batch and
 attempt that produced it.
 
-Reference report schema version 1 stores:
+Reference report schema version 2 stores:
 
 - publication UUID, DOI when present, and title context;
 - classification and explicit reason;
@@ -269,6 +269,11 @@ The report classifications are `unchanged`, `safe-update`,
 `review-required`, and `unavailable`. The persisted `safe-update` label is
 evidence about a sanitizer-only structural comparison; it is **not** canonical
 approval. v1.6.29 has no reference resolver or application step.
+
+Reference report schema v1 is intentionally incompatible with v2 because v1
+predates the DOI citation second round. BibReview refuses to mix those
+semantics; archive both campaign/report files and begin a fresh reference
+campaign.
 
 Neither file is canonical bibliography data and neither is interpreted by
 `merge`.
