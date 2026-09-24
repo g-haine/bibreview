@@ -2,6 +2,27 @@
 
 All notable BibReview releases are documented here.
 
+## 1.6.30 — 2026-09-24
+
+### DOI citation response hardening
+
+- fix issue #106 by removing terminal punctuation only when a DOI citation
+  response actually ends in a period, instead of unconditionally truncating its
+  final character;
+- preserve valid terminal citation content such as the final character of a DOI
+  URL;
+- reject structured JSON object/array provider payloads instead of storing them
+  as citation text;
+- keep this release preventive only: historical canonical citations are not
+  rewritten or migrated automatically.
+
+### Validation
+
+- cover citations ending in a period, DOI URLs without trailing punctuation,
+  empty responses, and structured error payloads;
+- validate the formatter against real PHRAISE-observed DOI examples
+  `10.1016/j.sysconle.2013.05.011` and `10.1002/rnc.7151`.
+
 ## 1.6.29 — 2026-09-24
 
 ### Two-round reference citation reconstruction
