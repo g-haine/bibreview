@@ -309,12 +309,10 @@ class AbstractFallback:
                     candidates.append(cleaned)
 
         candidates = [value for value in candidates if value]
-        return max(
-            candidates,
-            key=len,
-            default=(
-                normalize_provider_abstract(self.unavailable_text).normalized
-                if normalize_provider_abstract(self.unavailable_text).deterministic
-                else ""
-            ),
+        default_result = normalize_provider_abstract(self.unavailable_text)
+        default = (
+            default_result.normalized
+            if default_result.deterministic
+            else ""
         )
+        return max(candidates, key=len, default=default)
