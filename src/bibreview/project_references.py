@@ -891,6 +891,124 @@ def project_references_review(
     )
 
 
+@dataclass(frozen=True)
+class ReferenceReviewDiff:
+    """One comparison-only alignment row for human review."""
+
+    kind: str
+    current_index: int | None
+    provider_index: int | None
+    current: Reference | None
+    proposed: Reference | None
+
+
+def _reference_doi(reference: Reference) -> str | None:
+    return reference.identifiers.get("doi")
+
+
+def _review_reference_alignment(
+    current: tuple[Reference, ...],
+    proposed: tuple[Reference, ...],
+) -> tuple[ReferenceReviewDiff, ...]:
+    """Align references for review without changing provider order.
+
+    Unique DOI identity is used only as comparison evidence. The returned rows
+    follow provider order; canonical-only removals are inserted immediately
+    before the next matched provider row (or at the end). Ambiguous/non-DOI
+    regions are kept positional rather than guessed.
+    """
+    current_dois: dict[str, list[int]] = {}
+    provider_dois: dict[str, list[int]] = {}
+    for index, reference in enumerate(current):
+        doi = _reference_doi(reference)
+        if doi:
+            current_dois.setdefault(doi, []).append(index)
+    for index, reference in enumerate(proposed):
+        doi = _reference_doi(reference)
+        if doi:
+            provider_dois.setdefault(doi, []).append(index)
+
+    anchors = sorted(
+        (
+            provider_positions[0],
+            current_dois[doi][0],
+        )
+        for doi, provider_positions in provider_dois.items()
+        if len(provider_positions) == 1
+        and len(current_dois.get(doi, ())) == 1
+    )
+    monotone: list[tuple[int, int]] = []
+    last_current = -1
+    for provider_index, current_index in anchors:
+        if current_index > last_current:
+            monotone.append((provider_index, current_index))
+            last_current = current_index
+
+    rows: list[ReferenceReviewDiff] = []
+    previous_provider = -1
+    previous_current = -1
+    for provider_anchor, current_anchor in (*monotone, (len(proposed), len(current))):
+        provider_gap = list(range(previous_provider + 1, provider_anchor))
+        current_gap = list(range(previous_current + 1, current_anchor))
+        common = min(len(provider_gap), len(current_gap))
+
+        for offset in range(common):
+            provider_index = provider_gap[offset]
+            current_index = current_gap[offset]
+            left = current[current_index]
+            right = proposed[provider_index]
+            rows.append(
+                ReferenceReviewDiff(
+                    kind="changed" if left != right else "unchanged",
+                    current_index=current_index + 1,
+                    provider_index=provider_index + 1,
+                    current=left,
+                    proposed=right,
+                )
+            )
+        for current_index in current_gap[common:]:
+            rows.append(
+                ReferenceReviewDiff(
+                    kind="removed",
+                    current_index=current_index + 1,
+                    provider_index=None,
+                    current=current[current_index],
+                    proposed=None,
+                )
+            )
+        for provider_index in provider_gap[common:]:
+            rows.append(
+                ReferenceReviewDiff(
+                    kind="inserted",
+                    current_index=None,
+                    provider_index=provider_index + 1,
+                    current=None,
+                    proposed=proposed[provider_index],
+                )
+            )
+
+        if provider_anchor < len(proposed):
+            left = current[current_anchor]
+            right = proposed[provider_anchor]
+            rows.append(
+                ReferenceReviewDiff(
+                    kind=(
+                        "unchanged"
+                        if left == right
+                        else "changed"
+                    ),
+                    current_index=current_anchor + 1,
+                    provider_index=provider_anchor + 1,
+                    current=left,
+                    proposed=right,
+                )
+            )
+        previous_provider = provider_anchor
+        previous_current = current_anchor
+
+    return tuple(rows)
+
+
 def format_project_references_review(
     review: ProjectReferencesReview,
     *,
@@ -932,23 +1050,41 @@ def format_project_references_review(
 
         current = review.current_references.get(item.publication_id, ())
         proposed = item.proposed_references
-        for index in item.changed_indices:
-            left = current[index - 1] if index <= len(current) else None
-            right = proposed[index - 1] if index <= len(proposed) else None
-            left_doi = (
-                left.identifiers.get("doi")
-                if left is not None
-                else None
+        structural = (
+            len(current) != len(proposed)
+            or item.reason.startswith("reference-identifiers-changed:")
+        )
+        if structural:
+            differences = tuple(
+                row
+                for row in _review_reference_alignment(current, proposed)
+                if row.kind != "unchanged"
             )
-            right_doi = (
-                right.identifiers.get("doi")
-                if right is not None
-                else None
+        else:
+            differences = tuple(
+                ReferenceReviewDiff(
+                    kind="changed",
+                    current_index=index,
+                    provider_index=index,
+                    current=current[index - 1] if index <= len(current) else None,
+                    proposed=proposed[index - 1] if index <= len(proposed) else None,
+                )
+                for index in item.changed_indices
             )
+
+        for row in differences:
+            left = row.current
+            right = row.proposed
+            left_doi = _reference_doi(left) if left is not None else None
+            right_doi = _reference_doi(right) if right is not None else None
+            current_position = row.current_index or "-"
+            provider_position = row.provider_index or "-"
             lines.extend(
                 (
                     "",
-                    f"  Reference {index}",
+                    f"  Reference diff — {row.kind}",
+                    f"    Current pos : {current_position}",
+                    f"    Provider pos: {provider_position}",
                     f"    Current DOI : {left_doi or '(none)'}",
                     f"    Proposed DOI: {right_doi or '(none)'}",
                     "    Current     : "
