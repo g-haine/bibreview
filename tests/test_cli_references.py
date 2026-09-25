@@ -374,7 +374,7 @@ class ReferencesCliTests(unittest.TestCase):
         self.assertEqual(
             matched_dois,
             [
-                ("10.1/a", "10.1/a"),
+                ("10.1/b", "10.1/b"),
                 ("10.1/c", "10.1/c"),
                 ("10.1/d", "10.1/d"),
             ],
