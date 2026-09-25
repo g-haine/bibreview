@@ -201,6 +201,58 @@ class ReferencesCliTests(unittest.TestCase):
             stdout,
         )
 
+    def test_double_verbose_review_shows_reference_doi_identifiers(self):
+        self.publication = Publication(
+            id=self.publication.id,
+            identifiers={"doi": "10.1000/parent"},
+            title="Parent",
+            authors=(Author(literal="Example Author"),),
+            references=(
+                Reference(
+                    identifiers={"doi": "10.1000/ref"},
+                    citation="Old citation",
+                ),
+            ),
+        )
+        write_bibliography(
+            self.config.paths.bibliography,
+            (self.publication,),
+        )
+        provider = FakeBatchProvider(
+            {
+                "10.1000/parent": {
+                    "reference": [
+                        {
+                            "DOI": "10.1000/ref",
+                            "unstructured": "New citation",
+                        }
+                    ]
+                },
+                "10.1000/ref": {
+                    "title": ["Reference title"],
+                    "author": [{"family": "Example"}],
+                    "published": {"date-parts": [[2020]]},
+                    "type": "journal-article",
+                },
+            }
+        )
+        with patch(
+            "bibreview.cli.build_reference_services",
+            return_value=SimpleNamespace(batch_provider=provider),
+        ):
+            code, _, stderr = self.run_cli("references")
+        self.assertEqual(code, 0, stderr)
+
+        code, stdout, stderr = self.run_cli(
+            "-vv",
+            "references",
+            "--review",
+        )
+
+        self.assertEqual(code, 0, stderr)
+        self.assertIn("Current DOI : 10.1000/ref", stdout)
+        self.assertIn("Proposed DOI: 10.1000/ref", stdout)
+
     def test_single_verbose_review_omits_reference_diff(self):
         provider = FakeBatchProvider(
             {
