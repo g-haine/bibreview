@@ -935,8 +935,16 @@ def format_project_references_review(
         for index in item.changed_indices:
             left = current[index - 1] if index <= len(current) else None
             right = proposed[index - 1] if index <= len(proposed) else None
-            left_doi = left.doi if left is not None else None
-            right_doi = right.doi if right is not None else None
+            left_doi = (
+                left.identifiers.get("doi")
+                if left is not None
+                else None
+            )
+            right_doi = (
+                right.identifiers.get("doi")
+                if right is not None
+                else None
+            )
             lines.extend(
                 (
                     "",
