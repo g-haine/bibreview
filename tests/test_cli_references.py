@@ -420,6 +420,176 @@ class ReferencesCliTests(unittest.TestCase):
         self.assertIn("Current DOI : 10.1/b", stdout)
         self.assertIn("Provider pos: -", stdout)
 
+    def test_review_explains_provider_only_expansion_without_reclassifying(self):
+        current = (
+            Reference(identifiers={"doi": "10.1/a"}, citation="A"),
+            Reference(identifiers={"doi": "10.1/b"}, citation="B"),
+        )
+        proposed = (
+            Reference(identifiers={"doi": "10.1/new"}, citation="New"),
+            Reference(identifiers={"doi": "10.1/a"}, citation="A refreshed"),
+            Reference(identifiers={"doi": "10.1/b"}, citation="B refreshed"),
+        )
+        item = SimpleNamespace(
+            proposed_references=proposed,
+            reason="reference-count-changed",
+            changed_indices=(1, 2, 3),
+        )
+
+        explanation = project_references._review_reference_explanation(item, current)
+
+        self.assertEqual(explanation, "explained-provider-expansion")
+
+    def test_review_keeps_non_doi_structural_pair_ambiguous(self):
+        current = (
+            Reference(identifiers={"doi": "10.1/a"}, citation="A"),
+            Reference(identifiers={}, citation="Legacy"),
+        )
+        proposed = (
+            Reference(identifiers={"doi": "10.1/a"}, citation="A refreshed"),
+            Reference(identifiers={}, citation="Different"),
+            Reference(identifiers={"doi": "10.1/new"}, citation="New"),
+        )
+        item = SimpleNamespace(
+            proposed_references=proposed,
+            reason="reference-count-changed",
+            changed_indices=(1, 2, 3),
+        )
+
+        explanation = project_references._review_reference_explanation(item, current)
+
+        self.assertEqual(explanation, "ambiguous-structural-drift")
+
+    def test_review_explains_unicode_doi_dash_normalization(self):
+        current = (
+            Reference(identifiers={"doi": "10.1007/s10444-004-7629-9"}, citation="Old"),
+        )
+        proposed = (
+            Reference(identifiers={"doi": "10.1007/s10444‐004‐7629‐9"}, citation="New"),
+        )
+        item = SimpleNamespace(
+            proposed_references=proposed,
+            reason="reference-identifiers-changed:1",
+            changed_indices=(1,),
+        )
+
+        explanation = project_references._review_reference_explanation(item, current)
+
+        self.assertEqual(explanation, "identifier-typography-normalization")
+
+    def test_review_same_doi_citation_drift_does_not_claim_format_equivalence(self):
+        current = (
+            Reference(identifiers={"doi": "10.1/a"}, citation="Historical citation"),
+        )
+        proposed = (
+            Reference(identifiers={"doi": "10.1/a"}, citation="Potentially substantive drift"),
+        )
+        item = SimpleNamespace(
+            proposed_references=proposed,
+            reason="reference-citation-drift:1",
+            changed_indices=(1,),
+        )
+
+        explanation = project_references._review_reference_explanation(item, current)
+
+        self.assertEqual(explanation, "same-doi-citation-drift")
+
+    def test_review_explains_punctuation_only_non_doi_citation_drift(self):
+        current = (
+            Reference(identifiers={}, citation="Khalil HK. Nonlinear Systems (2002)"),
+        )
+        proposed = (
+            Reference(identifiers={}, citation="Khalil HK, Nonlinear Systems (2002)"),
+        )
+        item = SimpleNamespace(
+            proposed_references=proposed,
+            reason="reference-citation-drift:1",
+            changed_indices=(1,),
+        )
+
+        explanation = project_references._review_reference_explanation(item, current)
+
+        self.assertEqual(explanation, "citation-formatting-drift")
+
+    def test_review_explains_duplicated_citation_wrapper_artifact(self):
+        current = (
+            Reference(
+                identifiers={},
+                citation=(
+                    "A. Astolfi. Astolfi, A., Karagiannis, D., Ortega, R.: "
+                    "Nonlinear and Adaptive Control with Applications. "
+                    "Springer, Berlin (2007) (2007)"
+                ),
+            ),
+        )
+        proposed = (
+            Reference(
+                identifiers={},
+                citation=(
+                    "Astolfi, A., Karagiannis, D., Ortega, R.: "
+                    "Nonlinear and Adaptive Control with Applications. "
+                    "Springer, Berlin (2007)"
+                ),
+            ),
+        )
+        item = SimpleNamespace(
+            proposed_references=proposed,
+            reason="reference-citation-drift:1",
+            changed_indices=(1,),
+        )
+
+        explanation = project_references._review_reference_explanation(item, current)
+
+        self.assertEqual(explanation, "citation-wrapper-artifact")
+
+    def test_review_explains_strict_non_doi_metadata_enrichment(self):
+        current = (
+            Reference(
+                identifiers={},
+                citation=(
+                    "Modeling and control of complex physical systems; "
+                    "the port-Hamiltonian approach (2009)"
+                ),
+            ),
+        )
+        proposed = (
+            Reference(
+                identifiers={},
+                citation=(
+                    "Duindam V, Macchelli A, Stramigioli S, Bruyninckx H "
+                    "(eds) (2009) Modeling and control of complex physical "
+                    "systems; the port-Hamiltonian approach. Springer, "
+                    "Berlin/Heidelberg"
+                ),
+            ),
+        )
+        item = SimpleNamespace(
+            proposed_references=proposed,
+            reason="reference-citation-drift:1",
+            changed_indices=(1,),
+        )
+
+        explanation = project_references._review_reference_explanation(item, current)
+
+        self.assertEqual(explanation, "citation-metadata-enrichment")
+
+    def test_review_keeps_non_doi_token_replacement_ambiguous(self):
+        current = (
+            Reference(identifiers={}, citation="Smith A. Example Book (2001)"),
+        )
+        proposed = (
+            Reference(identifiers={}, citation="Jones B, Different Book (2002)"),
+        )
+        item = SimpleNamespace(
+            proposed_references=proposed,
+            reason="reference-citation-drift:1",
+            changed_indices=(1,),
+        )
+
+        explanation = project_references._review_reference_explanation(item, current)
+
+        self.assertEqual(explanation, "ambiguous-citation-drift")
+
     def test_single_verbose_review_omits_reference_diff(self):
         provider = FakeBatchProvider(
             {
