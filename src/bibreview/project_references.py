@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter
+import re
 from dataclasses import dataclass, replace
 from pathlib import Path
 from types import MappingProxyType
@@ -1066,6 +1067,63 @@ def _comparison_doi(doi: str | None) -> str | None:
     return doi.translate(_DOI_DASH_TRANSLATION).casefold() if doi else None
 
 
+_CITATION_TOKEN_RE = re.compile(r"\\w+", re.UNICODE)
+_TRAILING_YEAR_RE = re.compile(r"\\s+\\(\\d{4}\\)$")
+
+
+def _comparison_citation_tokens(citation: str) -> tuple[str, ...]:
+    """Return lexical citation evidence while ignoring punctuation and spacing."""
+    return tuple(_CITATION_TOKEN_RE.findall(citation.casefold()))
+
+
+def _citation_formatting_equivalent(current: str, proposed: str) -> bool:
+    """Recognize citation drift limited to punctuation, spacing, or case."""
+    return _comparison_citation_tokens(current) == _comparison_citation_tokens(proposed)
+
+
+def _citation_wrapper_artifact(current: str, proposed: str) -> bool:
+    """Recognize a duplicated author/year wrapper around an intact citation."""
+    position = current.find(proposed)
+    if position <= 0:
+        return False
+    prefix = current[:position].strip()
+    suffix = current[position + len(proposed):]
+    return (
+        len(prefix) <= 80
+        and prefix.endswith(".")
+        and bool(_comparison_citation_tokens(prefix))
+        and (not suffix or _TRAILING_YEAR_RE.fullmatch(suffix) is not None)
+    )
+
+
+def _citation_metadata_enrichment(current: str, proposed: str) -> bool:
+    """Recognize strict lexical enrichment without dropping canonical tokens."""
+    current_tokens = Counter(_comparison_citation_tokens(current))
+    proposed_tokens = Counter(_comparison_citation_tokens(proposed))
+    return (
+        bool(current_tokens)
+        and current_tokens != proposed_tokens
+        and current_tokens <= proposed_tokens
+    )
+
+
+def _citation_drift_evidence(current: Reference, proposed: Reference) -> str | None:
+    """Classify deterministic identity/text evidence for one changed citation."""
+    current_doi = _comparison_doi(_reference_doi(current))
+    proposed_doi = _comparison_doi(_reference_doi(proposed))
+    if current_doi is not None and current_doi == proposed_doi:
+        return "same-doi"
+    if current_doi is not None or proposed_doi is not None:
+        return None
+    if _citation_formatting_equivalent(current.citation, proposed.citation):
+        return "formatting"
+    if _citation_wrapper_artifact(current.citation, proposed.citation):
+        return "wrapper-artifact"
+    if _citation_metadata_enrichment(current.citation, proposed.citation):
+        return "metadata-enrichment"
+    return None
+
+
 def _review_reference_explanation(
     item: ReferenceRefreshResult,
     current: tuple[Reference, ...],
@@ -1117,15 +1175,34 @@ def _review_reference_explanation(
             for index in item.changed_indices
             if index <= len(current) and index <= len(proposed)
         ]
-        if changed and all(
-            _comparison_doi(_reference_doi(current[index - 1]))
-            == _comparison_doi(_reference_doi(proposed[index - 1]))
-            and _reference_doi(current[index - 1]) is not None
+        evidence = [
+            _citation_drift_evidence(current[index - 1], proposed[index - 1])
             for index in changed
-        ):
+        ]
+        if changed and all(kind == "same-doi" for kind in evidence):
             # This is identity evidence only. It deliberately does not claim
             # that the citation text differs by formatting alone.
             return "same-doi-citation-drift"
+        if changed and all(kind in {"same-doi", "formatting"} for kind in evidence):
+            return "citation-formatting-drift"
+        if (
+            changed
+            and "wrapper-artifact" in evidence
+            and all(
+                kind in {"same-doi", "formatting", "wrapper-artifact"}
+                for kind in evidence
+            )
+        ):
+            return "citation-wrapper-artifact"
+        if (
+            changed
+            and "metadata-enrichment" in evidence
+            and all(
+                kind in {"same-doi", "formatting", "metadata-enrichment"}
+                for kind in evidence
+            )
+        ):
+            return "citation-metadata-enrichment"
         return "ambiguous-citation-drift"
 
     return "unclassified-review-drift"
