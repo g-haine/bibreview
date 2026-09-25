@@ -311,6 +311,74 @@ class ReferencesCliTests(unittest.TestCase):
             ["10.1/new", "10.1/a", "10.1/b"],
         )
 
+    def test_double_verbose_structural_review_keeps_later_doi_anchors_after_insertion(self):
+        current = (
+            Reference(identifiers={"doi": "10.1/a"}, citation="A"),
+            Reference(identifiers={"doi": "10.1/b"}, citation="B"),
+            Reference(citation="Legacy"),
+        )
+        proposed = (
+            Reference(identifiers={"doi": "10.1/a"}, citation="A refreshed"),
+            Reference(identifiers={"doi": "10.1/b"}, citation="B refreshed"),
+            Reference(citation="Inserted"),
+            Reference(citation="Legacy"),
+        )
+        rows = project_references._review_reference_alignment(current, proposed)
+
+        self.assertEqual(
+            [
+                (
+                    row.kind,
+                    row.current_index,
+                    row.provider_index,
+                    row.current.citation if row.current is not None else None,
+                    row.proposed.citation if row.proposed is not None else None,
+                )
+                for row in rows
+            ],
+            [
+                ("changed", 1, 1, "A", "A refreshed"),
+                ("changed", 2, 2, "B", "B refreshed"),
+                ("changed", 3, 3, "Legacy", "Inserted"),
+                ("inserted", None, 4, None, "Legacy"),
+            ],
+        )
+
+    def test_review_alignment_uses_longest_order_preserving_doi_anchors(self):
+        current = (
+            Reference(identifiers={"doi": "10.1/a"}, citation="A"),
+            Reference(identifiers={"doi": "10.1/b"}, citation="B"),
+            Reference(identifiers={"doi": "10.1/c"}, citation="C"),
+            Reference(identifiers={"doi": "10.1/d"}, citation="D"),
+        )
+        proposed = (
+            Reference(identifiers={"doi": "10.1/b"}, citation="B refreshed"),
+            Reference(identifiers={"doi": "10.1/a"}, citation="A moved"),
+            Reference(identifiers={"doi": "10.1/c"}, citation="C refreshed"),
+            Reference(identifiers={"doi": "10.1/d"}, citation="D refreshed"),
+        )
+        rows = project_references._review_reference_alignment(current, proposed)
+
+        matched_dois = [
+            (
+                row.current.identifiers.get("doi"),
+                row.proposed.identifiers.get("doi"),
+            )
+            for row in rows
+            if row.current is not None
+            and row.proposed is not None
+            and row.current.identifiers.get("doi")
+            == row.proposed.identifiers.get("doi")
+        ]
+        self.assertEqual(
+            matched_dois,
+            [
+                ("10.1/a", "10.1/a"),
+                ("10.1/c", "10.1/c"),
+                ("10.1/d", "10.1/d"),
+            ],
+        )
+
     def test_double_verbose_structural_review_marks_removed_doi(self):
         self.publication = Publication(
             id=self.publication.id,
