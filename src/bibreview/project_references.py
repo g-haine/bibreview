@@ -1138,8 +1138,8 @@ def _review_reference_explanation(
         removed = [row for row in rows if row.kind == "removed"]
         changed = [row for row in rows if row.kind == "changed"]
         identities_stable = all(
-            _comparison_doi(_reference_doi(row.current))
-            == _comparison_doi(_reference_doi(row.proposed))
+            (current_doi := _comparison_doi(_reference_doi(row.current))) is not None
+            and current_doi == _comparison_doi(_reference_doi(row.proposed))
             for row in changed
             if row.current is not None and row.proposed is not None
         )
