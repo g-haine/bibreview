@@ -474,6 +474,102 @@ class ReferencesCliTests(unittest.TestCase):
 
         self.assertEqual(explanation, "same-doi-citation-drift")
 
+    def test_review_explains_punctuation_only_non_doi_citation_drift(self):
+        current = (
+            Reference(identifiers={}, citation="Khalil HK. Nonlinear Systems (2002)"),
+        )
+        proposed = (
+            Reference(identifiers={}, citation="Khalil HK, Nonlinear Systems (2002)"),
+        )
+        item = SimpleNamespace(
+            proposed_references=proposed,
+            reason="reference-citation-drift:1",
+            changed_indices=(1,),
+        )
+
+        explanation = project_references._review_reference_explanation(item, current)
+
+        self.assertEqual(explanation, "citation-formatting-drift")
+
+    def test_review_explains_duplicated_citation_wrapper_artifact(self):
+        current = (
+            Reference(
+                identifiers={},
+                citation=(
+                    "A. Astolfi. Astolfi, A., Karagiannis, D., Ortega, R.: "
+                    "Nonlinear and Adaptive Control with Applications. "
+                    "Springer, Berlin (2007) (2007)"
+                ),
+            ),
+        )
+        proposed = (
+            Reference(
+                identifiers={},
+                citation=(
+                    "Astolfi, A., Karagiannis, D., Ortega, R.: "
+                    "Nonlinear and Adaptive Control with Applications. "
+                    "Springer, Berlin (2007)"
+                ),
+            ),
+        )
+        item = SimpleNamespace(
+            proposed_references=proposed,
+            reason="reference-citation-drift:1",
+            changed_indices=(1,),
+        )
+
+        explanation = project_references._review_reference_explanation(item, current)
+
+        self.assertEqual(explanation, "citation-wrapper-artifact")
+
+    def test_review_explains_strict_non_doi_metadata_enrichment(self):
+        current = (
+            Reference(
+                identifiers={},
+                citation=(
+                    "Modeling and control of complex physical systems; "
+                    "the port-Hamiltonian approach (2009)"
+                ),
+            ),
+        )
+        proposed = (
+            Reference(
+                identifiers={},
+                citation=(
+                    "Duindam V, Macchelli A, Stramigioli S, Bruyninckx H "
+                    "(eds) (2009) Modeling and control of complex physical "
+                    "systems; the port-Hamiltonian approach. Springer, "
+                    "Berlin/Heidelberg"
+                ),
+            ),
+        )
+        item = SimpleNamespace(
+            proposed_references=proposed,
+            reason="reference-citation-drift:1",
+            changed_indices=(1,),
+        )
+
+        explanation = project_references._review_reference_explanation(item, current)
+
+        self.assertEqual(explanation, "citation-metadata-enrichment")
+
+    def test_review_keeps_non_doi_token_replacement_ambiguous(self):
+        current = (
+            Reference(identifiers={}, citation="Smith A. Example Book (2001)"),
+        )
+        proposed = (
+            Reference(identifiers={}, citation="Jones B, Different Book (2002)"),
+        )
+        item = SimpleNamespace(
+            proposed_references=proposed,
+            reason="reference-citation-drift:1",
+            changed_indices=(1,),
+        )
+
+        explanation = project_references._review_reference_explanation(item, current)
+
+        self.assertEqual(explanation, "ambiguous-citation-drift")
+
     def test_single_verbose_review_omits_reference_diff(self):
         provider = FakeBatchProvider(
             {
