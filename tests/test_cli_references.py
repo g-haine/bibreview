@@ -440,6 +440,26 @@ class ReferencesCliTests(unittest.TestCase):
 
         self.assertEqual(explanation, "explained-provider-expansion")
 
+    def test_review_keeps_non_doi_structural_pair_ambiguous(self):
+        current = (
+            Reference(identifiers={"doi": "10.1/a"}, citation="A"),
+            Reference(identifiers={}, citation="Legacy"),
+        )
+        proposed = (
+            Reference(identifiers={"doi": "10.1/a"}, citation="A refreshed"),
+            Reference(identifiers={}, citation="Different"),
+            Reference(identifiers={"doi": "10.1/new"}, citation="New"),
+        )
+        item = SimpleNamespace(
+            proposed_references=proposed,
+            reason="reference-count-changed",
+            changed_indices=(1, 2, 3),
+        )
+
+        explanation = project_references._review_reference_explanation(item, current)
+
+        self.assertEqual(explanation, "ambiguous-structural-drift")
+
     def test_review_explains_unicode_doi_dash_normalization(self):
         current = (
             Reference(identifiers={"doi": "10.1007/s10444-004-7629-9"}, citation="Old"),
