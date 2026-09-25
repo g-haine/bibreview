@@ -1191,7 +1191,7 @@ def main(argv: list[str] | None = None) -> int:
                 print(
                     format_project_references_review(
                         review,
-                        verbose=bool(args.verbose),
+                        verbose=args.verbose,
                     )
                 )
             return 0
