@@ -1068,7 +1068,7 @@ def _comparison_doi(doi: str | None) -> str | None:
 
 
 _CITATION_TOKEN_RE = re.compile(r"\w+", re.UNICODE)
-_TRAILING_YEAR_RE = re.compile(r"\\s+\\(\\d{4}\\)$")
+_TRAILING_YEAR_RE = re.compile(r"\s+\(\d{4}\)$")
 
 
 def _comparison_citation_tokens(citation: str) -> tuple[str, ...]:
