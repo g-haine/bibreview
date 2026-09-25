@@ -13,6 +13,7 @@ from bibreview.cli import main
 from bibreview.config import load_config
 from bibreview.identity import new_publication_id
 from bibreview.model import Author, Publication, Reference
+from bibreview import project_references
 from bibreview.storage import write_bibliography
 
 
