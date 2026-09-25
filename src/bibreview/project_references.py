@@ -912,10 +912,13 @@ def _review_reference_alignment(
 ) -> tuple[ReferenceReviewDiff, ...]:
     """Align references for review without changing provider order.
 
-    Unique DOI identity is used only as comparison evidence. The returned rows
-    follow provider order; canonical-only removals are inserted immediately
-    before the next matched provider row (or at the end). Ambiguous/non-DOI
-    regions are kept positional rather than guessed.
+    Unique DOI identity is used only as comparison evidence. A longest
+    increasing subsequence of unique shared DOI matches provides stable
+    anchors even when an earlier provider insertion would otherwise make a
+    greedy match discard later correspondences. The returned rows follow
+    provider order; canonical-only removals are inserted immediately before
+    the next matched provider row (or at the end). Ambiguous/non-DOI regions
+    are kept positional rather than guessed.
     """
     current_dois: dict[str, list[int]] = {}
     provider_dois: dict[str, list[int]] = {}
@@ -937,12 +940,33 @@ def _review_reference_alignment(
         if len(provider_positions) == 1
         and len(current_dois.get(doi, ())) == 1
     )
+
+    # Keep the largest order-preserving set of DOI anchors. A greedy pass is
+    # insufficient: one moved/out-of-order DOI can otherwise hide many valid
+    # later matches and recreate the positional cascade the review alignment
+    # is intended to avoid.
+    lengths = [1] * len(anchors)
+    previous: list[int | None] = [None] * len(anchors)
+    best = -1
+    for index, (_, current_index) in enumerate(anchors):
+        for candidate in range(index):
+            if (
+                anchors[candidate][1] < current_index
+                and lengths[candidate] + 1 > lengths[index]
+            ):
+                lengths[index] = lengths[candidate] + 1
+                previous[index] = candidate
+        if best < 0 or lengths[index] > lengths[best]:
+            best = index
+
     monotone: list[tuple[int, int]] = []
-    last_current = -1
-    for provider_index, current_index in anchors:
-        if current_index > last_current:
-            monotone.append((provider_index, current_index))
-            last_current = current_index
+    while best >= 0:
+        monotone.append(anchors[best])
+        predecessor = previous[best]
+        if predecessor is None:
+            break
+        best = predecessor
+    monotone.reverse()
 
     rows: list[ReferenceReviewDiff] = []
     previous_provider = -1
