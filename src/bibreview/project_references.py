@@ -1067,7 +1067,7 @@ def _comparison_doi(doi: str | None) -> str | None:
     return doi.translate(_DOI_DASH_TRANSLATION).casefold() if doi else None
 
 
-_CITATION_TOKEN_RE = re.compile(r"\\w+", re.UNICODE)
+_CITATION_TOKEN_RE = re.compile(r"\w+", re.UNICODE)
 _TRAILING_YEAR_RE = re.compile(r"\\s+\\(\\d{4}\\)$")
 
 
