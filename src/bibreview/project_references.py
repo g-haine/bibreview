@@ -1125,6 +1125,27 @@ def _citation_drift_evidence(current: Reference, proposed: Reference) -> str | N
     return None
 
 
+def _structural_pair_identity_stable(
+    current: Reference,
+    proposed: Reference,
+) -> bool:
+    """Return whether one aligned structural pair has deterministic identity evidence.
+
+    DOI identity remains the strongest evidence. For two DOI-less references,
+    only lossless lexical formatting equivalence or the exact duplicated-wrapper
+    artifact is accepted. Metadata enrichment is deliberately excluded here:
+    it can explain citation drift, but it is not strong enough to prove identity
+    inside a structurally shifted list.
+    """
+    current_doi = _comparison_doi(_reference_doi(current))
+    proposed_doi = _comparison_doi(_reference_doi(proposed))
+    if current_doi is not None or proposed_doi is not None:
+        return current_doi is not None and current_doi == proposed_doi
+
+    evidence = _citation_drift_evidence(current, proposed)
+    return evidence in {"formatting", "wrapper-artifact"}
+
+
 def _review_reference_explanation(
     item: ReferenceRefreshResult,
     current: tuple[Reference, ...],
@@ -1139,8 +1160,7 @@ def _review_reference_explanation(
         removed = [row for row in rows if row.kind == "removed"]
         changed = [row for row in rows if row.kind == "changed"]
         identities_stable = all(
-            (current_doi := _comparison_doi(_reference_doi(row.current))) is not None
-            and current_doi == _comparison_doi(_reference_doi(row.proposed))
+            _structural_pair_identity_stable(row.current, row.proposed)
             for row in changed
             if row.current is not None and row.proposed is not None
         )
@@ -1248,6 +1268,24 @@ def _safe_citation_replacement(current: str, proposed: str) -> bool:
     return _citation_wrapper_artifact(current, proposed)
 
 
+def _safe_reference_identity_equivalent(
+    left: Reference,
+    right: Reference,
+) -> bool:
+    """Return whether two references are safely equivalent for duplicate avoidance."""
+    left_doi = _comparison_doi(_reference_doi(left))
+    right_doi = _comparison_doi(_reference_doi(right))
+    if left_doi is not None or right_doi is not None:
+        return left_doi is not None and left_doi == right_doi
+    if left == right:
+        return True
+    return (
+        _citation_formatting_equivalent(left.citation, right.citation)
+        or _citation_wrapper_artifact(left.citation, right.citation)
+        or _citation_wrapper_artifact(right.citation, left.citation)
+    )
+
+
 def _safe_reference_pair_projection(
     current: Reference,
     proposed: Reference,
@@ -1347,9 +1385,15 @@ def safe_reference_projection(
                     continue
                 if not reference.identifiers and not reference.citation.strip():
                     continue
-                if any(reference == existing for existing in current):
+                if any(
+                    _safe_reference_identity_equivalent(reference, existing)
+                    for existing in current
+                ):
                     continue
-                if any(reference == existing for existing in inserted_values):
+                if any(
+                    _safe_reference_identity_equivalent(reference, existing)
+                    for existing in inserted_values
+                ):
                     continue
 
                 doi = _comparison_doi(_reference_doi(reference))
