@@ -208,10 +208,11 @@ citation strings through the conservative title/citation normalizer, compares
 them with canonical references, checkpoints every publication result
 immediately, closes the batch, and stops.
 
-The workflow is deliberately read-only with respect to bibliographic project
-state in v1.6.29. It writes only the configured reference campaign/report files.
-It never edits `bibliography.json`, never writes `collected.json`, and has no
-`references --apply` action yet.
+The networked refresh phase is deliberately read-only with respect to
+bibliographic project state. It writes only the configured reference
+campaign/report files. Canonical staging is a separate explicit offline action;
+the refresh command itself never edits `bibliography.json` or
+`collected.json`.
 
 Choose the number of **parent publications** processed by the next unopened
 campaign batch with:
@@ -326,6 +327,53 @@ changed reference indices, refusal reasons where applicable, and the proposed
 reference list. Unchanged entries keep fingerprints/counts but deliberately omit
 a duplicate copy of the full list.
 
+### Deterministic safe application
+
+After reviewing the persisted evidence, stage only transformations that
+BibReview can prove safe without a bibliographic identity decision:
+
+~~~bash
+bibreview --config bibreview.yml --dry-run references --apply-safe
+bibreview --config bibreview.yml references --apply-safe
+~~~
+
+`references --apply-safe` is fully offline. It rechecks every actionable
+publication against the exact canonical reference fingerprint stored in the
+refresh report and refuses stale evidence or a non-empty `collected.json`.
+
+Safety is deliberately finer-grained than the publication-level explanation.
+BibReview may stage the proven-safe parts of a publication while preserving all
+other canonical reference fields verbatim. The initial safe operations are:
+
+- the original strict `safe-update` proposal, where count, order and
+  identifiers are unchanged and every citation change is deterministic T2
+  normalization;
+- DOI typography normalization only when current and provider DOI values compare
+  as the same identifier after dash/case normalization;
+- citation sanitizer, punctuation/spacing, or duplicated-wrapper cleanup only
+  when the replacement is deterministically demonstrated; punctuation-only
+  comparison preserves lexical case;
+- provider-only insertions from an `explained-provider-expansion`, while
+  keeping every existing canonical reference object in place. Refused,
+  empty, duplicate, or identity-colliding insertions are skipped.
+
+The command deliberately does **not** auto-apply substantive same-DOI citation
+rewrites, DOI-less metadata enrichment, provider-added identifiers, or ambiguous
+structural drift. Those remain evidence for a later explicit review policy.
+
+Safe application writes complete revised publications only to normal
+`collected.json` staging. It never edits `bibliography.json` directly.
+Inspect the staged diff, then use the ordinary canonical boundary:
+
+~~~bash
+bibreview --config bibreview.yml --dry-run merge
+bibreview --config bibreview.yml merge
+~~~
+
+The explicit `--apply-safe` invocation and subsequent merge are the human
+approval boundary for this deterministic policy; BibReview does not silently
+promote provider evidence during refresh.
+
 v1.6.29 uses reference report **schema v2**. A v1.6.28 schema-v1
 campaign/report cannot be resumed under the new two-round semantics. Archive
 both files together, then start a fresh campaign. For the default layout:
@@ -335,9 +383,10 @@ mv audit/references audit/references-v1.6.28
 bibreview references --batch-size 100
 ~~~
 
-**v1.6.29 is an observation release.** Inspect the fresh PHRAISE
-campaign/report before designing the resolver and application boundary in a
-later v1.6.x release.
+Reference report schema v2 remains the evidence basis for the reviewed
+application workflow. Provider reconstruction and safe application stay
+separate so improved comparison/application policy never rewrites persisted
+provider evidence.
 
 ## audit
 
