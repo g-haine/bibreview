@@ -103,13 +103,13 @@ class ReferenceResolutionState:
         counts = reference_resolution_counts(self)
         return (
             "Reference resolution\n"
-            f"  Keep canonical      : {counts['keep-canonical']}\n"
-            f"  Use provider        : {counts['use-provider']}\n"
-            f"  Custom              : {counts['custom']}\n"
-            f"  Deferred            : {counts['deferred']}\n"
-            f"  Deterministic policy: {counts['deterministic-policy']}\n"
-            f"  Reconciled history  : {counts['reconciled-current']}\n"
-            f"  Unresolved          : {unresolved}"
+            f"  Keep canonical : {counts['keep-canonical']}\n"
+            f"  Use provider   : {counts['use-provider']}\n"
+            f"  Custom         : {counts['custom']}\n"
+            f"  Deferred       : {counts['deferred']}\n"
+            f"  Deterministic  : {counts['deterministic-policy']}\n"
+            f"  Reconciled     : {counts['reconciled-current']}\n"
+            f"  Unresolved     : {unresolved}"
         )
 
 
