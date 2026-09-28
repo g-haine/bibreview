@@ -986,6 +986,40 @@ def _deterministic_non_doi_gap_anchors(
     return tuple(anchors)
 
 
+def _deterministic_duplicate_doi_anchors(
+    current: tuple[Reference, ...],
+    proposed: tuple[Reference, ...],
+    current_dois: Mapping[str, list[int]],
+    provider_dois: Mapping[str, list[int]],
+) -> tuple[tuple[int, int], ...]:
+    """Return ordinal anchors for semantically indistinguishable DOI duplicates.
+
+    Duplicate DOI identity is normally excluded from primary anchoring because
+    its occurrence-to-occurrence pairing is ambiguous. That ambiguity
+    disappears when both sides contain the same multiplicity and every
+    occurrence is exactly identical within its own side: any bijection then
+    yields the same semantic comparison. Pairing the occurrences ordinally is
+    therefore comparison-only and does not authorize canonical replacement.
+    """
+    anchors: list[tuple[int, int]] = []
+    for doi, provider_positions in provider_dois.items():
+        current_positions = current_dois.get(doi, [])
+        if (
+            len(provider_positions) <= 1
+            or len(provider_positions) != len(current_positions)
+        ):
+            continue
+        current_group = tuple(current[index] for index in current_positions)
+        provider_group = tuple(proposed[index] for index in provider_positions)
+        if (
+            any(reference != current_group[0] for reference in current_group[1:])
+            or any(reference != provider_group[0] for reference in provider_group[1:])
+        ):
+            continue
+        anchors.extend(zip(provider_positions, current_positions, strict=True))
+    return tuple(anchors)
+
+
 def _review_reference_alignment(
     current: tuple[Reference, ...],
     proposed: tuple[Reference, ...],
@@ -1000,7 +1034,10 @@ def _review_reference_alignment(
     secondary anchors when deterministic citation evidence identifies them
     uniquely in both directions and all such anchors preserve order. This
     prevents provider-only insertions from creating a positional cascade while
-    keeping duplicate or competing identities explicitly ambiguous.
+    keeping competing identities explicitly ambiguous. Repeated DOI identity may
+    also anchor comparison when both sides contain the same multiplicity and all
+    occurrences are exact duplicates within each side; in that special case the
+    occurrence pairing is semantically invariant.
     """
     current_dois: dict[str, list[int]] = {}
     provider_dois: dict[str, list[int]] = {}
@@ -1013,7 +1050,7 @@ def _review_reference_alignment(
         if doi:
             provider_dois.setdefault(doi, []).append(index)
 
-    primary = sorted(
+    primary = [
         (
             provider_positions[0],
             current_dois[doi][0],
@@ -1021,7 +1058,16 @@ def _review_reference_alignment(
         for doi, provider_positions in provider_dois.items()
         if len(provider_positions) == 1
         and len(current_dois.get(doi, ())) == 1
+    ]
+    primary.extend(
+        _deterministic_duplicate_doi_anchors(
+            current,
+            proposed,
+            current_dois,
+            provider_dois,
+        )
     )
+    primary.sort()
 
     # Keep the largest order-preserving set of DOI anchors. A greedy pass is
     # insufficient: one moved/out-of-order DOI can otherwise hide many valid
