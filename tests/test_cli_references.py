@@ -340,8 +340,8 @@ class ReferencesCliTests(unittest.TestCase):
             [
                 ("changed", 1, 1, "A", "A refreshed"),
                 ("changed", 2, 2, "B", "B refreshed"),
-                ("changed", 3, 3, "Legacy", "Inserted"),
-                ("inserted", None, 4, None, "Legacy"),
+                ("inserted", None, 3, None, "Inserted"),
+                ("unchanged", 3, 4, "Legacy", "Legacy"),
             ],
         )
 
@@ -460,7 +460,7 @@ class ReferencesCliTests(unittest.TestCase):
 
         self.assertEqual(explanation, "explained-provider-expansion")
 
-    def test_review_keeps_metadata_enrichment_structural_pair_ambiguous(self):
+    def test_review_accepts_unique_metadata_enrichment_as_structural_anchor(self):
         current = (
             Reference(identifiers={"doi": "10.1/a"}, citation="A"),
             Reference(identifiers={}, citation="Example Book (2009)"),
@@ -472,6 +472,52 @@ class ReferencesCliTests(unittest.TestCase):
                 citation="Smith A (2009) Example Book. Publisher",
             ),
             Reference(identifiers={"doi": "10.1/new"}, citation="New"),
+        )
+        item = SimpleNamespace(
+            proposed_references=proposed,
+            reason="reference-count-changed",
+            changed_indices=(1, 2, 3),
+        )
+
+        explanation = project_references._review_reference_explanation(item, current)
+
+        self.assertEqual(explanation, "explained-provider-expansion")
+
+    def test_review_keeps_non_unique_metadata_enrichment_ambiguous(self):
+        current = (
+            Reference(identifiers={"doi": "10.1/a"}, citation="A"),
+            Reference(identifiers={}, citation="Example Book (2009)"),
+        )
+        proposed = (
+            Reference(identifiers={"doi": "10.1/a"}, citation="A refreshed"),
+            Reference(
+                identifiers={},
+                citation="Smith A (2009) Example Book. Publisher",
+            ),
+            Reference(
+                identifiers={},
+                citation="Jones B (2009) Example Book. Other Publisher",
+            ),
+        )
+        item = SimpleNamespace(
+            proposed_references=proposed,
+            reason="reference-count-changed",
+            changed_indices=(1, 2, 3),
+        )
+
+        explanation = project_references._review_reference_explanation(item, current)
+
+        self.assertEqual(explanation, "ambiguous-structural-drift")
+
+    def test_review_keeps_duplicate_doi_structural_alignment_ambiguous(self):
+        current = (
+            Reference(identifiers={"doi": "10.1/dup"}, citation="Duplicate A"),
+            Reference(identifiers={"doi": "10.1/dup"}, citation="Duplicate B"),
+        )
+        proposed = (
+            Reference(citation="Inserted"),
+            Reference(identifiers={"doi": "10.1/dup"}, citation="Duplicate A"),
+            Reference(identifiers={"doi": "10.1/dup"}, citation="Duplicate B"),
         )
         item = SimpleNamespace(
             proposed_references=proposed,
@@ -697,6 +743,36 @@ class ReferencesCliTests(unittest.TestCase):
                 current[0],
                 current[1],
                 proposed[2],
+            ),
+        )
+
+    def test_safe_projection_inserts_before_exact_doi_less_anchor(self):
+        current = (
+            Reference(identifiers={"doi": "10.1/a"}, citation="Canonical A"),
+            Reference(citation="Legacy reference"),
+        )
+        proposed = (
+            Reference(identifiers={"doi": "10.1/a"}, citation="Provider A"),
+            Reference(citation="New provider reference"),
+            Reference(citation="Legacy reference"),
+        )
+        item = SimpleNamespace(
+            classification="review-required",
+            proposed_references=proposed,
+            reason="reference-count-changed",
+            changed_indices=(1, 2, 3),
+            provider_refusals=(),
+        )
+
+        projection = project_references.safe_reference_projection(item, current)
+
+        self.assertEqual(projection.inserted_references, 1)
+        self.assertEqual(
+            projection.references,
+            (
+                current[0],
+                proposed[1],
+                current[1],
             ),
         )
 
