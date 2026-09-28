@@ -65,8 +65,8 @@ publication.
 Only one staging batch is allowed at a time. This is intentional: inspect and
 resolve the current batch before starting another collection or reviewed
 application. Refresh/reference scanning and review never write staging, while
-`refresh --apply`, `audit --apply`, `backfill --apply`, and
-`references --apply-safe` all refuse to overwrite non-empty staging.
+`refresh --apply`, `audit --apply`, `backfill --apply`, `references --apply-safe`,
+and reviewed `references --apply` all refuse to overwrite non-empty staging.
 
 Reference safe application stores complete revised publication objects in this
 ordinary staging file, but only after rechecking the exact persisted canonical
@@ -223,6 +223,29 @@ shared mechanics.
 The optional per-item `detail` field is persisted verbatim and therefore must
 contain only already-sanitized diagnostic text. Credentials, authorization
 headers and raw provider responses must never be stored in campaign state.
+
+### Reference resolution ledger
+
+Reviewed reference decisions are stored beside the reference campaign/report in
+`resolutions.json`. The ledger is cumulative across batches and deliberately
+does not use one global report fingerprint.
+
+Each decision records:
+
+- publication UUID and display metadata;
+- exact source/current reference fingerprint;
+- exact provider/proposed reference fingerprint;
+- decision: `keep-canonical`, `use-provider`, `custom`, or `deferred`;
+- exact resolved fingerprint for terminal decisions;
+- the reviewed structured reference list only for `custom` decisions.
+
+The decision key includes the publication UUID plus both evidence fingerprints.
+A later provider pass for the same publication therefore creates a new evidence
+version instead of silently reusing an older decision.
+
+At application time, canonical references must match either the stored source
+fingerprint or the stored resolved fingerprint. Any third fingerprint is treated
+as stale evidence and refused.
 
 ### Reference refresh campaign and report
 

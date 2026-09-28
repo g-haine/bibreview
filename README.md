@@ -173,6 +173,9 @@ bibreview references --review
 bibreview -v references --review
 bibreview --dry-run references --apply-safe
 bibreview references --apply-safe
+bibreview references --resolve
+bibreview --dry-run references --apply
+bibreview references --apply
 ~~~
 
 The campaign is resumable and checkpointed publication-by-publication.
@@ -190,6 +193,13 @@ provider-added identifiers, and ambiguous structural drift remain unapplied.
 The command refuses stale report fingerprints or occupied staging and writes
 only `collected.json`; canonical promotion still requires an explicit
 `bibreview merge`.
+
+Genuinely ambiguous publications use a separate explicit human workflow.
+`references --resolve` persists `keep-canonical`, `use-provider`, custom
+JSON reference-list, or deferred decisions against exact source/provider
+fingerprints. `references --apply` stages only completed human decisions and
+recognizes a previously merged resolved fingerprint as already complete; any
+third canonical fingerprint is rejected as stale.
 
 ### Canonical abstract hygiene inventory
 

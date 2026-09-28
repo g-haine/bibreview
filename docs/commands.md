@@ -388,6 +388,62 @@ The explicit `--apply-safe` invocation and subsequent merge are the human
 approval boundary for this deterministic policy; BibReview does not silently
 promote provider evidence during refresh.
 
+### Explicit human reference resolution
+
+Cases that remain genuinely ambiguous after deterministic policy are resolved
+offline and publication-by-publication:
+
+~~~bash
+bibreview --config bibreview.yml references --resolve
+~~~
+
+The resolver persists decisions in `resolutions.json` beside the configured
+reference campaign/report. Resolution state is cumulative: it is keyed by the
+publication UUID plus the exact source and provider reference fingerprints, so
+later campaign batches may extend the report without invalidating earlier
+decisions.
+
+The interactive choices are:
+
+- `k` — keep the complete current canonical reference list;
+- `p` — use the complete persisted provider proposal;
+- `c FILE` — use an explicitly reviewed JSON reference list from `FILE`;
+- `s` — defer the publication;
+- `q` — stop while preserving previous decisions.
+
+A custom file may be either a JSON list of reference objects or
+`{"references": [...]}`. Each reference has the ordinary BibReview
+`identifiers` / `citation` shape.
+
+The resolver never changes canonical metadata. Once every current human case is
+terminally resolved, preview and stage reviewed decisions with:
+
+~~~bash
+bibreview --config bibreview.yml --dry-run references --apply
+bibreview --config bibreview.yml references --apply
+bibreview --config bibreview.yml --dry-run merge
+bibreview --config bibreview.yml merge
+~~~
+
+Application is fully offline and preserves the ordinary staging boundary.
+`keep-canonical` is a terminal decision that requires no staging.
+`use-provider` and `custom` stage complete revised Publication objects in
+`collected.json`.
+
+Every terminal decision stores a `resolved_fingerprint`. During later runs,
+BibReview distinguishes three states:
+
+- canonical fingerprint equals the source fingerprint: the decision is known
+  but has not yet been promoted;
+- canonical fingerprint equals the resolved fingerprint: the decision has
+  already been merged;
+- canonical fingerprint matches neither: the decision is stale and application
+  is refused.
+
+This per-publication evidence contract is deliberately independent of a global
+report fingerprint because the reference report grows as new campaign batches
+are appended.
+
 v1.6.29 uses reference report **schema v2**. A v1.6.28 schema-v1
 campaign/report cannot be resumed under the new two-round semantics. Archive
 both files together, then start a fresh campaign. For the default layout:

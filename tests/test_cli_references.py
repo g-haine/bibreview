@@ -3,6 +3,7 @@ from __future__ import annotations
 from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
 import json
+from dataclasses import replace
 from pathlib import Path
 import tempfile
 from types import SimpleNamespace
@@ -1403,6 +1404,205 @@ class ReferencesCliTests(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("merge the existing batch", stderr)
 
+
+    def _run_ambiguous_reference_refresh(self):
+        self.publication = Publication(
+            id=self.publication.id,
+            identifiers=self.publication.identifiers,
+            title=self.publication.title,
+            authors=self.publication.authors,
+            references=(
+                Reference(citation="Legacy citation"),
+                Reference(
+                    identifiers={"doi": "10.1/a"},
+                    citation="Canonical A",
+                ),
+            ),
+        )
+        write_bibliography(self.config.paths.bibliography, (self.publication,))
+        provider = FakeBatchProvider(
+            {
+                "10.1000/parent": {
+                    "reference": [
+                        {"unstructured": "Different citation"},
+                        {"DOI": "10.1/new", "unstructured": "New reference"},
+                        {"DOI": "10.1/a", "unstructured": "Provider A"},
+                    ]
+                },
+                "10.1/new": {},
+                "10.1/a": {},
+            }
+        )
+        with patch(
+            "bibreview.cli.build_reference_services",
+            return_value=SimpleNamespace(batch_provider=provider),
+        ):
+            code, _, stderr = self.run_cli("references")
+        self.assertEqual(code, 0, stderr)
+
+    def test_reference_resolve_keep_canonical_is_persisted_and_resumable(self):
+        self._run_ambiguous_reference_refresh()
+        resolutions = self.config.references.report.with_name("resolutions.json")
+
+        with patch("builtins.input", side_effect=["k"]):
+            code, stdout, stderr = self.run_cli("references", "--resolve")
+
+        self.assertEqual(code, 0, stderr)
+        self.assertIn("keep the current canonical reference list", stdout)
+        self.assertIn("Keep canonical : 1", stdout)
+        self.assertTrue(resolutions.exists())
+        payload = json.loads(resolutions.read_text(encoding="utf-8"))
+        self.assertEqual(payload["decisions"][0]["decision"], "keep-canonical")
+
+        with patch("builtins.input") as prompt:
+            code, stdout, stderr = self.run_cli("references", "--resolve")
+
+        self.assertEqual(code, 0, stderr)
+        prompt.assert_not_called()
+        self.assertIn("No unresolved human reference decisions.", stdout)
+        self.assertFalse(self.config.paths.collected.exists())
+
+        code, stdout, stderr = self.run_cli(
+            "--dry-run",
+            "references",
+            "--apply",
+            "--json",
+        )
+        self.assertEqual(code, 0, stderr)
+        result = json.loads(stdout)
+        self.assertEqual(result["publications_to_stage"], 0)
+        self.assertEqual(result["already_completed"], 1)
+
+    def test_reference_resolve_use_provider_stages_only_after_apply(self):
+        self._run_ambiguous_reference_refresh()
+
+        with patch("builtins.input", side_effect=["p"]):
+            code, _, stderr = self.run_cli("references", "--resolve")
+        self.assertEqual(code, 0, stderr)
+        self.assertFalse(self.config.paths.collected.exists())
+
+        code, stdout, stderr = self.run_cli(
+            "--dry-run",
+            "references",
+            "--apply",
+            "--json",
+        )
+        self.assertEqual(code, 0, stderr)
+        payload = json.loads(stdout)
+        self.assertEqual(payload["publications_to_stage"], 1)
+        self.assertFalse(self.config.paths.collected.exists())
+
+        code, stdout, stderr = self.run_cli(
+            "references",
+            "--apply",
+            "--json",
+        )
+        self.assertEqual(code, 0, stderr)
+        payload = json.loads(stdout)
+        self.assertEqual(payload["publications_to_stage"], 1)
+        staged = read_bibliography(self.config.paths.collected)
+        self.assertEqual(
+            [reference.citation for reference in staged[0].references],
+            ["Different citation", "New reference", "Provider A"],
+        )
+        canonical = read_bibliography(self.config.paths.bibliography)
+        self.assertEqual(canonical[0].references, self.publication.references)
+
+    def test_reference_resolve_custom_json_stages_exact_reviewed_list(self):
+        self._run_ambiguous_reference_refresh()
+        custom_path = self.root / "reviewed-references.json"
+        custom_path.write_text(
+            json.dumps(
+                [
+                    {
+                        "identifiers": {"doi": "10.9/custom"},
+                        "citation": "Reviewed custom reference",
+                    }
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+        with patch("builtins.input", side_effect=[f"c {custom_path}"]):
+            code, _, stderr = self.run_cli("references", "--resolve")
+        self.assertEqual(code, 0, stderr)
+
+        code, _, stderr = self.run_cli("references", "--apply")
+        self.assertEqual(code, 0, stderr)
+        staged = read_bibliography(self.config.paths.collected)
+        self.assertEqual(
+            staged[0].references,
+            (
+                Reference(
+                    identifiers={"doi": "10.9/custom"},
+                    citation="Reviewed custom reference",
+                ),
+            ),
+        )
+
+    def test_reference_resolve_deferred_blocks_reviewed_apply(self):
+        self._run_ambiguous_reference_refresh()
+
+        with patch("builtins.input", side_effect=["s"]):
+            code, stdout, stderr = self.run_cli("references", "--resolve")
+        self.assertEqual(code, 0, stderr)
+        self.assertIn("Deferred       : 1", stdout)
+        self.assertIn("Unresolved     : 1", stdout)
+
+        code, _, stderr = self.run_cli("references", "--apply")
+        self.assertEqual(code, 1)
+        self.assertIn("reference decisions must be complete", stderr)
+        self.assertFalse(self.config.paths.collected.exists())
+
+    def test_reference_resolve_dry_run_does_not_persist_decision(self):
+        self._run_ambiguous_reference_refresh()
+        resolutions = self.config.references.report.with_name("resolutions.json")
+
+        with patch("builtins.input", side_effect=["k"]):
+            code, stdout, stderr = self.run_cli(
+                "--dry-run",
+                "references",
+                "--resolve",
+            )
+
+        self.assertEqual(code, 0, stderr)
+        self.assertIn("Dry run: Reference resolution", stdout)
+        self.assertFalse(resolutions.exists())
+
+    def test_reference_resolve_refuses_json_output(self):
+        self._run_ambiguous_reference_refresh()
+
+        code, _, stderr = self.run_cli(
+            "references",
+            "--resolve",
+            "--json",
+        )
+
+        self.assertEqual(code, 1)
+        self.assertIn("--json cannot be used", stderr)
+
+    def test_reference_apply_refuses_stale_canonical_after_resolution(self):
+        self._run_ambiguous_reference_refresh()
+
+        with patch("builtins.input", side_effect=["p"]):
+            code, _, stderr = self.run_cli("references", "--resolve")
+        self.assertEqual(code, 0, stderr)
+
+        write_bibliography(
+            self.config.paths.bibliography,
+            (
+                replace(
+                    self.publication,
+                    references=(Reference(citation="Independent manual edit"),),
+                ),
+            ),
+        )
+
+        code, _, stderr = self.run_cli("references", "--apply")
+
+        self.assertEqual(code, 1)
+        self.assertIn("stale reference resolution", stderr)
+        self.assertFalse(self.config.paths.collected.exists())
 
     def test_review_json_contains_persisted_proposal(self):
         provider = FakeBatchProvider(
