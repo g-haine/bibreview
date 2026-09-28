@@ -723,6 +723,102 @@ class ReferencesCliTests(unittest.TestCase):
         self.assertFalse(projection.changed)
         self.assertEqual(projection.references, current)
 
+    def test_safe_review_residual_distinguishes_automatic_and_human_cases(self):
+        formatting_current = (
+            Reference(citation="Khalil HK. Nonlinear Systems (2002)"),
+        )
+        formatting_proposed = (
+            Reference(citation="Khalil HK, Nonlinear Systems (2002)"),
+        )
+        formatting_item = SimpleNamespace(
+            classification="review-required",
+            proposed_references=formatting_proposed,
+            reason="reference-citation-drift:1",
+            changed_indices=(1,),
+            provider_refusals=(),
+        )
+        self.assertFalse(
+            project_references.safe_reference_requires_human_review(
+                formatting_item,
+                formatting_current,
+            )
+        )
+
+        substantive_current = (
+            Reference(
+                identifiers={"doi": "10.1/a"},
+                citation="Historical citation",
+            ),
+        )
+        substantive_proposed = (
+            Reference(
+                identifiers={"doi": "10.1/a"},
+                citation="Substantively different provider citation",
+            ),
+        )
+        substantive_item = SimpleNamespace(
+            classification="review-required",
+            proposed_references=substantive_proposed,
+            reason="reference-citation-drift:1",
+            changed_indices=(1,),
+            provider_refusals=(),
+        )
+        self.assertTrue(
+            project_references.safe_reference_requires_human_review(
+                substantive_item,
+                substantive_current,
+            )
+        )
+
+    def test_safe_review_residual_marks_partial_expansion_with_substantive_drift(self):
+        current = (
+            Reference(identifiers={"doi": "10.1/a"}, citation="Canonical A"),
+        )
+        proposed = (
+            Reference(identifiers={"doi": "10.1/new"}, citation="New reference"),
+            Reference(identifiers={"doi": "10.1/a"}, citation="Provider A differs"),
+        )
+        item = SimpleNamespace(
+            classification="review-required",
+            proposed_references=proposed,
+            reason="reference-count-changed",
+            changed_indices=(1, 2),
+            provider_refusals=(),
+        )
+
+        projection = project_references.safe_reference_projection(item, current)
+
+        self.assertEqual(projection.inserted_references, 1)
+        self.assertTrue(
+            project_references.safe_reference_requires_human_review(item, current)
+        )
+
+    def test_safe_review_residual_accepts_pure_safe_expansion(self):
+        current = (
+            Reference(
+                identifiers={"doi": "10.1/a"},
+                citation="Canonical A",
+            ),
+        )
+        proposed = (
+            Reference(identifiers={"doi": "10.1/new"}, citation="New reference"),
+            Reference(
+                identifiers={"doi": "10.1/a"},
+                citation="Canonical A",
+            ),
+        )
+        item = SimpleNamespace(
+            classification="review-required",
+            proposed_references=proposed,
+            reason="reference-count-changed",
+            changed_indices=(1, 2),
+            provider_refusals=(),
+        )
+
+        self.assertFalse(
+            project_references.safe_reference_requires_human_review(item, current)
+        )
+
     def test_safe_projection_skips_refused_provider_insertion(self):
         current = (
             Reference(identifiers={"doi": "10.1/a"}, citation="Canonical A"),
@@ -925,6 +1021,11 @@ class ReferencesCliTests(unittest.TestCase):
         self.assertTrue(payload["dry_run"])
         self.assertEqual(payload["publications_to_stage"], 1)
         self.assertEqual(payload["citation_updates"], 1)
+        self.assertEqual(payload["review_required_publications"], 0)
+        self.assertEqual(payload["human_reviews_remaining"], 0)
+        self.assertEqual(payload["auto_resolved_reviews"], 0)
+        self.assertEqual(payload["partially_staged_human_reviews"], 0)
+        self.assertEqual(payload["unstaged_human_reviews"], 0)
         self.assertFalse(self.config.paths.collected.exists())
 
         code, stdout, stderr = self.run_cli(
