@@ -1413,17 +1413,11 @@ def safe_reference_projection(
                 projected.append(row.current)
                 continue
 
-            revised, citation_count, identifier_count = _safe_reference_pair_projection(
-                row.current,
-                row.proposed,
-                allow_provider_citation=(
-                    row.provider_index is not None
-                    and row.provider_index not in refused_positions
-                ),
-            )
-            projected.append(revised)
-            citation_updates += citation_count
-            identifier_updates += identifier_count
+            # Structural expansion never rewrites an existing canonical
+            # reference. The aligned provider row is identity evidence only;
+            # safe application adds proven provider-only insertions and leaves
+            # all pre-existing reference objects byte-for-byte semantic peers.
+            projected.append(row.current)
 
         references = tuple(projected)
         if not (
