@@ -920,10 +920,70 @@ class ReferenceReviewDiff:
     provider_index: int | None
     current: Reference | None
     proposed: Reference | None
+    identity_evidence: str | None = None
 
 
 def _reference_doi(reference: Reference) -> str | None:
     return reference.identifiers.get("doi")
+
+
+def _deterministic_non_doi_gap_anchors(
+    current: tuple[Reference, ...],
+    proposed: tuple[Reference, ...],
+    current_gap: list[int],
+    provider_gap: list[int],
+) -> tuple[tuple[int, int, str], ...]:
+    """Return mutually unique, order-preserving DOI-less anchors for one gap.
+
+    Candidate identity comes only from already deterministic citation evidence.
+    A pair becomes an anchor when the current reference has exactly one provider
+    candidate and that provider reference has exactly one current candidate.
+    Metadata enrichment is accepted here only under that reciprocal uniqueness
+    constraint; it is never used as a free positional identity rule.
+    """
+    current_candidates: dict[int, list[tuple[int, str]]] = {
+        index: [] for index in current_gap
+    }
+    provider_candidates: dict[int, list[tuple[int, str]]] = {
+        index: [] for index in provider_gap
+    }
+
+    for current_index in current_gap:
+        left = current[current_index]
+        if _reference_doi(left) is not None:
+            continue
+        for provider_index in provider_gap:
+            right = proposed[provider_index]
+            if _reference_doi(right) is not None:
+                continue
+            evidence = _citation_drift_evidence(left, right)
+            if evidence not in {
+                "formatting",
+                "wrapper-artifact",
+                "metadata-enrichment",
+            }:
+                continue
+            current_candidates[current_index].append((provider_index, evidence))
+            provider_candidates[provider_index].append((current_index, evidence))
+
+    anchors: list[tuple[int, int, str]] = []
+    for current_index in current_gap:
+        candidates = current_candidates[current_index]
+        if len(candidates) != 1:
+            continue
+        provider_index, evidence = candidates[0]
+        reverse = provider_candidates[provider_index]
+        if len(reverse) != 1 or reverse[0][0] != current_index:
+            continue
+        anchors.append((provider_index, current_index, evidence))
+
+    anchors.sort()
+    if any(
+        left[1] >= right[1]
+        for left, right in zip(anchors, anchors[1:])
+    ):
+        return ()
+    return tuple(anchors)
 
 
 def _review_reference_alignment(
@@ -932,13 +992,15 @@ def _review_reference_alignment(
 ) -> tuple[ReferenceReviewDiff, ...]:
     """Align references for review without changing provider order.
 
-    Unique DOI identity is used only as comparison evidence. A longest
-    increasing subsequence of unique shared DOI matches provides stable
-    anchors even when an earlier provider insertion would otherwise make a
-    greedy match discard later correspondences. The returned rows follow
-    provider order; canonical-only removals are inserted immediately before
-    the next matched provider row (or at the end). Ambiguous/non-DOI regions
-    are kept positional rather than guessed.
+    Unique DOI identity remains the primary comparison evidence. A longest
+    increasing subsequence of unique shared DOI matches provides stable anchors
+    even when a moved DOI would otherwise hide later correspondences.
+
+    Inside each DOI-bounded gap, DOI-less references may additionally become
+    secondary anchors when deterministic citation evidence identifies them
+    uniquely in both directions and all such anchors preserve order. This
+    prevents provider-only insertions from creating a positional cascade while
+    keeping duplicate or competing identities explicitly ambiguous.
     """
     current_dois: dict[str, list[int]] = {}
     provider_dois: dict[str, list[int]] = {}
@@ -951,7 +1013,7 @@ def _review_reference_alignment(
         if doi:
             provider_dois.setdefault(doi, []).append(index)
 
-    anchors = sorted(
+    primary = sorted(
         (
             provider_positions[0],
             current_dois[doi][0],
@@ -965,13 +1027,13 @@ def _review_reference_alignment(
     # insufficient: one moved/out-of-order DOI can otherwise hide many valid
     # later matches and recreate the positional cascade the review alignment
     # is intended to avoid.
-    lengths = [1] * len(anchors)
-    previous: list[int | None] = [None] * len(anchors)
+    lengths = [1] * len(primary)
+    previous: list[int | None] = [None] * len(primary)
     best = -1
-    for index, (_, current_index) in enumerate(anchors):
+    for index, (_, current_index) in enumerate(primary):
         for candidate in range(index):
             if (
-                anchors[candidate][1] < current_index
+                primary[candidate][1] < current_index
                 and lengths[candidate] + 1 > lengths[index]
             ):
                 lengths[index] = lengths[candidate] + 1
@@ -981,17 +1043,39 @@ def _review_reference_alignment(
 
     monotone: list[tuple[int, int]] = []
     while best >= 0:
-        monotone.append(anchors[best])
+        monotone.append(primary[best])
         predecessor = previous[best]
         if predecessor is None:
             break
         best = predecessor
     monotone.reverse()
 
-    rows: list[ReferenceReviewDiff] = []
+    anchors: list[tuple[int, int, str]] = []
     previous_provider = -1
     previous_current = -1
     for provider_anchor, current_anchor in (*monotone, (len(proposed), len(current))):
+        provider_gap = list(range(previous_provider + 1, provider_anchor))
+        current_gap = list(range(previous_current + 1, current_anchor))
+        anchors.extend(
+            _deterministic_non_doi_gap_anchors(
+                current,
+                proposed,
+                current_gap,
+                provider_gap,
+            )
+        )
+        if provider_anchor < len(proposed):
+            anchors.append((provider_anchor, current_anchor, "same-doi"))
+        previous_provider = provider_anchor
+        previous_current = current_anchor
+
+    rows: list[ReferenceReviewDiff] = []
+    previous_provider = -1
+    previous_current = -1
+    for provider_anchor, current_anchor, evidence in (
+        *anchors,
+        (len(proposed), len(current), ""),
+    ):
         provider_gap = list(range(previous_provider + 1, provider_anchor))
         current_gap = list(range(previous_current + 1, current_anchor))
         common = min(len(provider_gap), len(current_gap))
@@ -1036,15 +1120,12 @@ def _review_reference_alignment(
             right = proposed[provider_anchor]
             rows.append(
                 ReferenceReviewDiff(
-                    kind=(
-                        "unchanged"
-                        if left == right
-                        else "changed"
-                    ),
+                    kind="unchanged" if left == right else "changed",
                     current_index=current_anchor + 1,
                     provider_index=provider_anchor + 1,
                     current=left,
                     proposed=right,
+                    identity_evidence=evidence,
                 )
             )
         previous_provider = provider_anchor
@@ -1125,22 +1206,30 @@ def _citation_drift_evidence(current: Reference, proposed: Reference) -> str | N
     return None
 
 
-def _structural_pair_identity_stable(
-    current: Reference,
-    proposed: Reference,
-) -> bool:
-    """Return whether one aligned structural pair has deterministic identity evidence.
+def _structural_row_identity_stable(row: ReferenceReviewDiff) -> bool:
+    """Return whether one aligned structural row has deterministic identity evidence.
 
-    DOI identity remains the strongest evidence. For two DOI-less references,
-    only lossless lexical formatting equivalence or the exact duplicated-wrapper
-    artifact is accepted. Metadata enrichment is deliberately excluded here:
-    it can explain citation drift, but it is not strong enough to prove identity
-    inside a structurally shifted list.
+    Metadata enrichment is accepted only when the alignment itself marked the
+    pair as a mutually unique DOI-less anchor. Positional rows still require
+    stronger formatting/wrapper evidence, so enrichment never becomes a fuzzy
+    identity shortcut.
     """
+    current = row.current
+    proposed = row.proposed
+    if current is None or proposed is None:
+        return False
+
     current_doi = _comparison_doi(_reference_doi(current))
     proposed_doi = _comparison_doi(_reference_doi(proposed))
     if current_doi is not None or proposed_doi is not None:
         return current_doi is not None and current_doi == proposed_doi
+
+    if row.identity_evidence in {
+        "formatting",
+        "wrapper-artifact",
+        "metadata-enrichment",
+    }:
+        return True
 
     evidence = _citation_drift_evidence(current, proposed)
     return evidence in {"formatting", "wrapper-artifact"}
@@ -1160,9 +1249,8 @@ def _review_reference_explanation(
         removed = [row for row in rows if row.kind == "removed"]
         changed = [row for row in rows if row.kind == "changed"]
         identities_stable = all(
-            _structural_pair_identity_stable(row.current, row.proposed)
+            _structural_row_identity_stable(row)
             for row in changed
-            if row.current is not None and row.proposed is not None
         )
         if inserted and not removed and identities_stable:
             return "explained-provider-expansion"
