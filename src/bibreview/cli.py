@@ -98,6 +98,10 @@ from .project_references_resolution_apply import (
     apply_project_references_resolution_apply,
     plan_project_references_resolution_apply,
 )
+from .project_references_reconcile import (
+    apply_project_references_reconcile_applied,
+    plan_project_references_reconcile_applied,
+)
 from .references_resolution import (
     current_reference_resolution_summary,
     format_reference_resolution_candidate,
@@ -295,6 +299,14 @@ def _parser() -> argparse.ArgumentParser:
         "--apply",
         action="store_true",
         help="Stage completed explicit reference decisions for ordinary merge",
+    )
+    references_actions.add_argument(
+        "--reconcile-applied",
+        action="store_true",
+        help=(
+            "Adopt current canonical fingerprints for previously reviewed "
+            "reference changes merged before ledger support"
+        ),
     )
     references.add_argument(
         "--json",
@@ -1047,6 +1059,48 @@ def main(argv: list[str] | None = None) -> int:
                 )
             return 0
 
+        if args.reconcile_applied:
+            try:
+                if args.batch_size is not None:
+                    raise ProjectStateError(
+                        "--batch-size cannot be used with references --reconcile-applied"
+                    )
+                plan = plan_project_references_reconcile_applied(config)
+                if not args.dry_run:
+                    apply_project_references_reconcile_applied(plan)
+            except (
+                OSError,
+                StorageError,
+                ProjectStateError,
+                ValueError,
+                TypeError,
+            ) as error:
+                print(f"bibreview references: {error}", file=sys.stderr)
+                return 1
+
+            if args.json_output:
+                print(
+                    json.dumps(
+                        {
+                            "dry_run": bool(args.dry_run),
+                            **plan.data(),
+                        },
+                        ensure_ascii=False,
+                        indent=2,
+                    )
+                )
+            elif not args.quiet:
+                prefix = "Dry run: " if args.dry_run else ""
+                print(prefix + plan.summary())
+                if plan.changed:
+                    print(
+                        "Resolution ledger: "
+                        f"{config.references.report.with_name('resolutions.json')}"
+                    )
+                else:
+                    print("No historical applied reference state to reconcile.")
+            return 0
+
         if args.apply:
             try:
                 plan = plan_project_hygiene_apply(config)
@@ -1400,10 +1454,15 @@ def main(argv: list[str] | None = None) -> int:
             elif not args.quiet:
                 prefix = "Dry run: " if args.dry_run else ""
                 print(prefix + plan.summary())
-                if plan.changed:
+                if plan.staging_changed:
                     print(f"Staging: {config.paths.collected}")
-                else:
+                elif not plan.changed:
                     print("No deterministic safe reference changes to stage.")
+                if plan.ledger_changed:
+                    print(
+                        "Resolution ledger: "
+                        f"{config.references.report.with_name('resolutions.json')}"
+                    )
             return 0
 
         if args.review:
