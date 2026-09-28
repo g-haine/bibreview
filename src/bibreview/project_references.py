@@ -1487,66 +1487,54 @@ def safe_reference_requires_human_review(
     item: ReferenceRefreshResult,
     current: tuple[Reference, ...],
 ) -> bool:
-    """Return whether safe projection leaves a bibliographic decision unresolved.
+    """Return whether deterministic reference policy still needs human judgment.
 
-    This is deliberately distinct from whether apply-safe writes a staged
-    change. A publication may receive deterministic safe edits while still
-    containing provider drift that BibReview refuses to decide automatically.
-    Conversely, harmless formatting evidence inside a structural expansion can
-    require no human decision even when the existing canonical reference is
-    intentionally preserved during that expansion.
+    Residual human review is a policy question, not a literal provider-diff
+    question. Deterministically explained drift can be resolved either by
+    applying a proven-safe atomic change or by explicitly preserving canonical
+    evidence when BibReview's policy does not authorize provider replacement.
+
+    Human review is therefore reserved for genuinely ambiguous/unclassified
+    drift, plus provider-only structural insertions that cannot themselves be
+    handled safely.
     """
     if item.classification == "safe-update":
         return False
     if item.classification != "review-required":
         return False
 
-    proposed = item.proposed_references
-    refused_positions = {index for index, _ in item.provider_refusals}
-
-    if len(current) == len(proposed):
-        for index, (left, right) in enumerate(zip(current, proposed, strict=True), 1):
-            revised, _, _ = _safe_reference_pair_projection(
-                left,
-                right,
-                allow_provider_citation=index not in refused_positions,
-            )
-            if revised != right:
-                return True
-        return False
-
-    if _review_reference_explanation(item, current) != "explained-provider-expansion":
+    explanation = _review_reference_explanation(item, current)
+    if explanation in {
+        "ambiguous-structural-drift",
+        "ambiguous-identifier-drift",
+        "ambiguous-citation-drift",
+        "unclassified-review-drift",
+    }:
         return True
 
+    if explanation != "explained-provider-expansion":
+        # Every other named explanation is deterministic. Safe atomic changes
+        # are staged when authorized; all remaining provider differences are
+        # resolved by the explicit conservative policy of preserving canon.
+        return False
+
+    proposed = item.proposed_references
+    refused_positions = {index for index, _ in item.provider_refusals}
     accepted_insertions: list[Reference] = []
     for row in _review_reference_alignment(current, proposed):
         if row.kind == "removed":
             return True
-        if row.kind == "inserted":
-            if row.proposed is None:
-                return True
-            if _structural_insert_requires_human_review(
-                row.proposed,
-                provider_index=row.provider_index,
-                refused_positions=refused_positions,
-                current=current,
-                accepted_insertions=accepted_insertions,
-            ):
-                return True
+        if row.kind != "inserted":
             continue
-        if row.kind != "changed":
-            continue
-        if row.current is None or row.proposed is None:
+        if row.proposed is None:
             return True
-        revised, _, _ = _safe_reference_pair_projection(
-            row.current,
+        if _structural_insert_requires_human_review(
             row.proposed,
-            allow_provider_citation=(
-                row.provider_index is not None
-                and row.provider_index not in refused_positions
-            ),
-        )
-        if revised != row.proposed:
+            provider_index=row.provider_index,
+            refused_positions=refused_positions,
+            current=current,
+            accepted_insertions=accepted_insertions,
+        ):
             return True
 
     return False
