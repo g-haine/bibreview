@@ -1,4 +1,4 @@
-"""Persistent human decisions for reference-refresh review cases."""
+"""Persistent reference outcomes for deterministic and human review workflows."""
 
 from __future__ import annotations
 
