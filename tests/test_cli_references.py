@@ -483,6 +483,58 @@ class ReferencesCliTests(unittest.TestCase):
 
         self.assertEqual(explanation, "explained-provider-expansion")
 
+    def test_review_accepts_compact_letter_digit_metadata_anchor(self):
+        current = (
+            Reference(identifiers={"doi": "10.1/a"}, citation="A"),
+            Reference(
+                citation="van der Schaft AJ, L2-Gain and Passivity Techniques (1996)"
+            ),
+        )
+        proposed = (
+            Reference(identifiers={"doi": "10.1/a"}, citation="A refreshed"),
+            Reference(citation="New provider reference"),
+            Reference(
+                citation=(
+                    "van der Schaft AJ, L 2-Gain and Passivity Techniques. "
+                    "Springer, Berlin, 1996"
+                )
+            ),
+        )
+        item = SimpleNamespace(
+            proposed_references=proposed,
+            reason="reference-count-changed",
+            changed_indices=(1, 2, 3),
+        )
+
+        explanation = project_references._review_reference_explanation(item, current)
+
+        self.assertEqual(explanation, "explained-provider-expansion")
+
+    def test_review_accepts_year_suffix_metadata_anchor(self):
+        current = (
+            Reference(identifiers={"doi": "10.1/a"}, citation="A"),
+            Reference(citation="L Ljung, Modeling of dynamic systems (1994)"),
+        )
+        proposed = (
+            Reference(identifiers={"doi": "10.1/a"}, citation="A refreshed"),
+            Reference(citation="New provider reference"),
+            Reference(
+                citation=(
+                    "Ljung L, Glad T (1994b) Modeling of dynamic systems. "
+                    "Prentice Hall"
+                )
+            ),
+        )
+        item = SimpleNamespace(
+            proposed_references=proposed,
+            reason="reference-count-changed",
+            changed_indices=(1, 2, 3),
+        )
+
+        explanation = project_references._review_reference_explanation(item, current)
+
+        self.assertEqual(explanation, "explained-provider-expansion")
+
     def test_review_keeps_non_unique_metadata_enrichment_ambiguous(self):
         current = (
             Reference(identifiers={"doi": "10.1/a"}, citation="A"),
