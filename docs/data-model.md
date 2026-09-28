@@ -226,17 +226,19 @@ headers and raw provider responses must never be stored in campaign state.
 
 ### Reference resolution ledger
 
-Reviewed reference decisions are stored beside the reference campaign/report in
+Reference outcomes are stored beside the reference campaign/report in
 `resolutions.json`. The ledger is cumulative across batches and deliberately
 does not use one global report fingerprint.
 
-Each decision records:
+Each record contains:
 
 - publication UUID and display metadata;
 - exact source/current reference fingerprint;
 - exact provider/proposed reference fingerprint;
-- decision: `keep-canonical`, `use-provider`, `custom`, or `deferred`;
-- exact resolved fingerprint for terminal decisions;
+- an outcome kind: human `keep-canonical`, `use-provider`, `custom`,
+  `deferred`, deterministic `deterministic-policy`, or historical
+  `reconciled-current`;
+- exact resolved fingerprint for every terminal outcome;
 - the reviewed structured reference list only for `custom` decisions.
 
 The decision key includes the publication UUID plus both evidence fingerprints.
@@ -245,7 +247,11 @@ version instead of silently reusing an older decision.
 
 At application time, canonical references must match either the stored source
 fingerprint or the stored resolved fingerprint. Any third fingerprint is treated
-as stale evidence and refused.
+as stale evidence and refused. `references --apply-safe` records deterministic
+outcomes at the same atomic boundary as staging, so a later merge is recognized
+as completed. Projects whose reference maintenance predates this ledger can use
+the explicit `references --reconcile-applied` migration to adopt already-reviewed
+current canonical fingerprints without rewriting canonical data.
 
 ### Reference refresh campaign and report
 
