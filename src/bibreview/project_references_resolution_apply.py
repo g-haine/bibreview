@@ -12,6 +12,7 @@ from .pipeline.references import references_fingerprint
 from .project import ProjectStateError
 from .project_references import project_references_review
 from .references_resolution import (
+    is_human_reference_decision,
     load_project_reference_resolutions,
     matching_reference_resolution,
     unresolved_reference_candidates,
@@ -111,7 +112,11 @@ def plan_project_references_resolution_apply(
 
     for item in review.items:
         decision = matching_reference_resolution(state, item)
-        if decision is None or decision.decision == "deferred":
+        if (
+            decision is None
+            or decision.decision == "deferred"
+            or not is_human_reference_decision(decision)
+        ):
             continue
         publication = originals.get(item.publication_id)
         if publication is None:

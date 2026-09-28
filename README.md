@@ -176,6 +176,7 @@ bibreview references --apply-safe
 bibreview references --resolve
 bibreview --dry-run references --apply
 bibreview references --apply
+bibreview --dry-run references --reconcile-applied
 ~~~
 
 The campaign is resumable and checkpointed publication-by-publication.
@@ -194,12 +195,19 @@ The command refuses stale report fingerprints or occupied staging and writes
 only `collected.json`; canonical promotion still requires an explicit
 `bibreview merge`.
 
-Genuinely ambiguous publications use a separate explicit human workflow.
-`references --resolve` persists `keep-canonical`, `use-provider`, custom
-JSON reference-list, or deferred decisions against exact source/provider
-fingerprints. `references --apply` stages only completed human decisions and
-recognizes a previously merged resolved fingerprint as already complete; any
-third canonical fingerprint is rejected as stale.
+Every deterministic `references --apply-safe` outcome is now recorded in the
+same cumulative reference ledger with its exact resolved fingerprint. A later
+pass therefore recognizes already-merged maintenance instead of treating the
+older report fingerprint as stale. Genuinely ambiguous publications use the
+separate explicit human workflow: `references --resolve` persists
+`keep-canonical`, `use-provider`, custom JSON reference-list, or deferred
+decisions, and `references --apply` stages only completed human decisions.
+
+Projects that merged an older reviewed reference batch before ledger support can
+bootstrap that history explicitly with `references --reconcile-applied`; the
+command adopts current canonical fingerprints into the ledger but never changes
+the canonical bibliography itself. Any later canonical fingerprint that matches
+neither source nor resolved state is rejected as stale.
 
 ### Canonical abstract hygiene inventory
 

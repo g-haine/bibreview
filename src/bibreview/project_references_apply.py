@@ -15,6 +15,12 @@ from .project_references import (
     safe_reference_projection,
     safe_reference_requires_human_review,
 )
+from .references_resolution import (
+    load_project_reference_resolutions,
+    matching_reference_resolution,
+    record_reference_policy_resolution,
+    reference_resolution_path,
+)
 from .storage import (
     atomic_write_batch,
     bibliography_document_data,
@@ -60,6 +66,8 @@ class ProjectReferencesSafeApplyPlan:
     review_required_publications: int
     human_review_publication_ids: tuple[str, ...]
     partially_staged_human_review_ids: tuple[str, ...]
+    policy_resolution_publication_ids: tuple[str, ...]
+    already_completed_publication_ids: tuple[str, ...]
 
     @property
     def changed(self) -> bool:
@@ -80,6 +88,22 @@ class ProjectReferencesSafeApplyPlan:
     @property
     def unstaged_human_reviews(self) -> int:
         return self.human_reviews_remaining - self.partially_staged_human_reviews
+
+    @property
+    def staging_changed(self) -> bool:
+        return bool(self.affected_publication_ids)
+
+    @property
+    def ledger_changed(self) -> bool:
+        return bool(self.policy_resolution_publication_ids)
+
+    @property
+    def policy_resolutions_recorded(self) -> int:
+        return len(self.policy_resolution_publication_ids)
+
+    @property
+    def already_completed(self) -> int:
+        return len(self.already_completed_publication_ids)
 
     @property
     def inserted_references(self) -> int:
@@ -103,6 +127,8 @@ class ProjectReferencesSafeApplyPlan:
             f"  Human reviews remain : {self.human_reviews_remaining}\n"
             f"    Partially staged    : {self.partially_staged_human_reviews}\n"
             f"    Not staged          : {self.unstaged_human_reviews}\n"
+            f"  Policy resolutions   : {self.policy_resolutions_recorded}\n"
+            f"  Already completed    : {self.already_completed}\n"
             f"  References inserted  : {self.inserted_references}\n"
             f"  Citation updates     : {self.citation_updates}\n"
             f"  Identifier updates   : {self.identifier_updates}"
@@ -118,6 +144,14 @@ class ProjectReferencesSafeApplyPlan:
             "partially_staged_human_reviews": self.partially_staged_human_reviews,
             "unstaged_human_reviews": self.unstaged_human_reviews,
             "human_review_publication_ids": list(self.human_review_publication_ids),
+            "policy_resolutions_recorded": self.policy_resolutions_recorded,
+            "policy_resolution_publication_ids": list(
+                self.policy_resolution_publication_ids
+            ),
+            "already_completed": self.already_completed,
+            "already_completed_publication_ids": list(
+                self.already_completed_publication_ids
+            ),
             "references_inserted": self.inserted_references,
             "citation_updates": self.citation_updates,
             "identifier_updates": self.identifier_updates,
@@ -144,12 +178,16 @@ def plan_project_references_safe_apply(
         )
 
     review = project_references_review(config)
+    resolution_state = load_project_reference_resolutions(config)
+    initial_resolution_state = resolution_state
     canonical = read_bibliography(config.paths.bibliography)
     originals = {publication.id: publication for publication in canonical}
     changes: list[ReferenceSafeApplyChange] = []
     changed_ids: list[str] = []
     human_review_ids: list[str] = []
     partially_staged_human_review_ids: list[str] = []
+    policy_resolution_ids: list[str] = []
+    already_completed_ids: list[str] = []
     staged_publications = []
 
     for item in review.items:
@@ -161,21 +199,65 @@ def plan_project_references_safe_apply(
             raise ProjectStateError(
                 f"{item.publication_id}: canonical publication is missing"
             )
-        if references_fingerprint(publication.references) != item.current_fingerprint:
-            raise ProjectStateError(
-                f"{item.publication_id}: stale reference review; canonical references "
-                "no longer match the persisted refresh evidence"
-            )
 
-        projection = safe_reference_projection(item, publication.references)
-        requires_human_review = safe_reference_requires_human_review(
+        current_fingerprint = references_fingerprint(publication.references)
+        persisted_resolution = matching_reference_resolution(
+            resolution_state,
             item,
-            publication.references,
         )
-        if item.classification == "review-required" and requires_human_review:
-            human_review_ids.append(publication.id)
-            if projection.changed:
-                partially_staged_human_review_ids.append(publication.id)
+        if persisted_resolution is not None:
+            if current_fingerprint == persisted_resolution.resolved_fingerprint:
+                already_completed_ids.append(publication.id)
+                continue
+            if current_fingerprint != persisted_resolution.source_fingerprint:
+                raise ProjectStateError(
+                    f"{item.publication_id}: stale reference resolution; canonical "
+                    "references match neither source nor resolved fingerprint"
+                )
+            if persisted_resolution.decision == "deferred":
+                if item.classification == "review-required":
+                    human_review_ids.append(publication.id)
+                continue
+            if persisted_resolution.decision != "deterministic-policy":
+                # Explicit human decisions are staged only by references --apply.
+                continue
+
+            projection = safe_reference_projection(item, publication.references)
+            if (
+                references_fingerprint(projection.references)
+                != persisted_resolution.resolved_fingerprint
+            ):
+                raise ProjectStateError(
+                    f"{item.publication_id}: deterministic reference policy no "
+                    "longer reproduces the persisted resolved fingerprint"
+                )
+        else:
+            if current_fingerprint != item.current_fingerprint:
+                raise ProjectStateError(
+                    f"{item.publication_id}: stale reference review; canonical "
+                    "references no longer match persisted evidence and no "
+                    "resolution ledger entry exists; use "
+                    "'references --reconcile-applied' only for a previously "
+                    "reviewed historical application"
+                )
+
+            requires_human_review = safe_reference_requires_human_review(
+                item,
+                publication.references,
+            )
+            if item.classification == "review-required" and requires_human_review:
+                # Keep genuinely ambiguous publications untouched until the
+                # explicit references --resolve / --apply workflow decides them.
+                human_review_ids.append(publication.id)
+                continue
+
+            projection = safe_reference_projection(item, publication.references)
+            resolution_state = record_reference_policy_resolution(
+                resolution_state,
+                item,
+                projection.references,
+            )
+            policy_resolution_ids.append(publication.id)
 
         if not projection.changed:
             continue
@@ -207,6 +289,10 @@ def plan_project_references_safe_apply(
         outputs[config.paths.collected] = json_bytes(
             bibliography_document_data(tuple(staged_publications))
         )
+    if resolution_state != initial_resolution_state:
+        outputs[reference_resolution_path(config)] = json_bytes(
+            resolution_state.data()
+        )
 
     return ProjectReferencesSafeApplyPlan(
         audited_publications=review.audited_publications,
@@ -216,6 +302,8 @@ def plan_project_references_safe_apply(
         review_required_publications=review.review_required,
         human_review_publication_ids=tuple(human_review_ids),
         partially_staged_human_review_ids=tuple(partially_staged_human_review_ids),
+        policy_resolution_publication_ids=tuple(policy_resolution_ids),
+        already_completed_publication_ids=tuple(already_completed_ids),
     )
 
 

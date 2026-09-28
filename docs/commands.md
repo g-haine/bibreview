@@ -341,9 +341,12 @@ bibreview --config bibreview.yml references --apply-safe
 publication against the exact canonical reference fingerprint stored in the
 refresh report and refuses stale evidence or a non-empty `collected.json`.
 
-Safety is deliberately finer-grained than the publication-level explanation.
-BibReview may stage the proven-safe parts of a publication while preserving all
-other canonical reference fields verbatim. The initial safe operations are:
+Safety is deliberately finer-grained than the publication-level explanation,
+but the staging boundary remains publication-level. BibReview computes atomic
+safe operations, then stages them only when the publication no longer requires
+human judgment. A genuinely ambiguous publication is left completely untouched
+until the explicit `references --resolve` workflow decides it. The safe
+operations are:
 
 - the original strict `safe-update` proposal, where count, order and
   identifiers are unchanged and every citation change is deterministic T2
@@ -367,16 +370,19 @@ remain genuine human-review cases.
 
 The dry-run/application summary distinguishes the original review-required
 population from the residual human workload after deterministic policy. A case
-is auto-resolved either because BibReview stages every authorized safe change
-or because an explicit conservative rule keeps the existing canonical evidence.
-The remaining count therefore means that BibReview still lacks enough
-deterministic evidence or policy to decide the case. Partially staged residual
-cases remain visible when one safe operation can be automated but another
-ambiguity still needs a human decision. JSON output also lists the remaining
-publication IDs.
+is auto-resolved either because BibReview can stage every authorized safe
+change or because an explicit conservative rule keeps the existing canonical
+evidence. The remaining count therefore means that BibReview still lacks enough
+deterministic evidence or policy to decide the publication. Such publications
+are not partially staged.
 
 Safe application writes complete revised publications only to normal
-`collected.json` staging. It never edits `bibliography.json` directly.
+`collected.json` staging. At the same time it records a
+`deterministic-policy` entry in the cumulative reference resolution ledger,
+including the source, provider and exact resolved fingerprints. After ordinary
+`merge`, a later safe-application pass recognizes the resolved fingerprint as
+already completed rather than treating the old report evidence as stale. It
+never edits `bibliography.json` directly.
 Inspect the staged diff, then use the ordinary canonical boundary:
 
 ~~~bash
@@ -387,6 +393,39 @@ bibreview --config bibreview.yml merge
 The explicit `--apply-safe` invocation and subsequent merge are the human
 approval boundary for this deterministic policy; BibReview does not silently
 promote provider evidence during refresh.
+
+### Historical applied-state reconciliation
+
+Projects that merged deterministic reference maintenance before the persistent
+reference ledger existed need one explicit bootstrap step. Preview it first:
+
+~~~bash
+bibreview --config bibreview.yml --dry-run references --reconcile-applied
+bibreview --config bibreview.yml --dry-run references --reconcile-applied --json
+~~~
+
+Then, only when the reported stale entries are known to correspond to a
+previously reviewed and merged reference batch:
+
+~~~bash
+bibreview --config bibreview.yml references --reconcile-applied
+~~~
+
+For an actionable report entry with no existing ledger decision:
+
+- canonical fingerprint still equals the report's source fingerprint: no
+  reconciliation is needed; a later `--apply-safe` can record the deterministic
+  outcome normally;
+- canonical fingerprint differs from the source fingerprint: the explicit
+  command records the current canonical fingerprint as
+  `reconciled-current`;
+- an existing decision is validated and never overwritten.
+
+This command is intentionally **not** an inference mechanism. Invoking the
+mutating form is the maintainer assertion that the changed canonical state is
+the already-reviewed result of historical reference maintenance. It writes only
+the resolution ledger, refuses occupied `collected.json`, and never changes
+canonical bibliography data.
 
 ### Explicit human reference resolution
 

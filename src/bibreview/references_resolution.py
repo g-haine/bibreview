@@ -1,4 +1,4 @@
-"""Persistent human decisions for reference-refresh review cases."""
+"""Persistent reference outcomes for deterministic and human review workflows."""
 
 from __future__ import annotations
 
@@ -27,10 +27,20 @@ from .storage import read_json, write_json
 
 
 REFERENCE_RESOLUTION_SCHEMA_VERSION = 1
-_REFERENCE_DECISIONS = frozenset(
+_HUMAN_DECISIONS = frozenset(
     {"keep-canonical", "use-provider", "custom", "deferred"}
 )
-_TERMINAL_DECISIONS = frozenset({"keep-canonical", "use-provider", "custom"})
+_SYSTEM_DECISIONS = frozenset({"deterministic-policy", "reconciled-current"})
+_REFERENCE_DECISIONS = _HUMAN_DECISIONS | _SYSTEM_DECISIONS
+_TERMINAL_DECISIONS = frozenset(
+    {
+        "keep-canonical",
+        "use-provider",
+        "custom",
+        "deterministic-policy",
+        "reconciled-current",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -97,6 +107,8 @@ class ReferenceResolutionState:
             f"  Use provider   : {counts['use-provider']}\n"
             f"  Custom         : {counts['custom']}\n"
             f"  Deferred       : {counts['deferred']}\n"
+            f"  Deterministic  : {counts['deterministic-policy']}\n"
+            f"  Reconciled     : {counts['reconciled-current']}\n"
             f"  Unresolved     : {unresolved}"
         )
 
@@ -217,6 +229,22 @@ def reference_resolution_state_from_data(value: Any) -> ReferenceResolutionState
             raise ProjectStateError(
                 f"reference resolution decision {index} must not define custom references"
             )
+        if (
+            decision == "keep-canonical"
+            and resolved_fingerprint != raw["source_fingerprint"]
+        ):
+            raise ProjectStateError(
+                f"reference resolution decision {index} keep-canonical "
+                "fingerprint mismatch"
+            )
+        if (
+            decision == "use-provider"
+            and resolved_fingerprint != raw["proposed_fingerprint"]
+        ):
+            raise ProjectStateError(
+                f"reference resolution decision {index} use-provider "
+                "fingerprint mismatch"
+            )
 
         expected_key = (
             f"{raw['publication_id']}:"
@@ -283,8 +311,8 @@ def record_reference_resolution(
     custom_references: tuple[Reference, ...] = (),
 ) -> ReferenceResolutionState:
     """Record or replace one human decision for exact persisted evidence."""
-    if decision not in _REFERENCE_DECISIONS:
-        raise ProjectStateError(f"unsupported reference decision: {decision}")
+    if decision not in _HUMAN_DECISIONS:
+        raise ProjectStateError(f"unsupported human reference decision: {decision}")
     item = candidate.proposal
     if decision == "keep-canonical":
         resolved = item.current_fingerprint
@@ -319,6 +347,70 @@ def record_reference_resolution(
     else:
         decisions.append(stored)
     return replace(state, decisions=tuple(decisions))
+
+
+def record_reference_policy_resolution(
+    state: ReferenceResolutionState,
+    item: ReferenceRefreshResult,
+    resolved_references: tuple[Reference, ...],
+) -> ReferenceResolutionState:
+    """Record one deterministic safe-policy outcome for exact evidence."""
+    resolved_fingerprint = references_fingerprint(resolved_references)
+    stored = ReferenceResolutionDecision(
+        key=reference_resolution_key(item),
+        publication_id=item.publication_id,
+        doi=item.doi or item.publication_id,
+        title=item.title,
+        decision="deterministic-policy",
+        source_fingerprint=item.current_fingerprint,
+        proposed_fingerprint=item.proposed_fingerprint,
+        resolved_fingerprint=resolved_fingerprint,
+    )
+    decisions = list(state.decisions)
+    for index, existing in enumerate(decisions):
+        if existing.key == stored.key:
+            if existing != stored:
+                raise ProjectStateError(
+                    f"{item.publication_id}: reference evidence already has a "
+                    "different persisted resolution"
+                )
+            return state
+    decisions.append(stored)
+    return replace(state, decisions=tuple(decisions))
+
+
+def record_reconciled_current_resolution(
+    state: ReferenceResolutionState,
+    item: ReferenceRefreshResult,
+    current_references: tuple[Reference, ...],
+) -> ReferenceResolutionState:
+    """Adopt current canonical state for one explicitly reconciled old result."""
+    stored = ReferenceResolutionDecision(
+        key=reference_resolution_key(item),
+        publication_id=item.publication_id,
+        doi=item.doi or item.publication_id,
+        title=item.title,
+        decision="reconciled-current",
+        source_fingerprint=item.current_fingerprint,
+        proposed_fingerprint=item.proposed_fingerprint,
+        resolved_fingerprint=references_fingerprint(current_references),
+    )
+    decisions = list(state.decisions)
+    for index, existing in enumerate(decisions):
+        if existing.key == stored.key:
+            if existing != stored:
+                raise ProjectStateError(
+                    f"{item.publication_id}: reference evidence already has a "
+                    "different persisted resolution"
+                )
+            return state
+    decisions.append(stored)
+    return replace(state, decisions=tuple(decisions))
+
+
+def is_human_reference_decision(decision: ReferenceResolutionDecision) -> bool:
+    """Return whether one persisted record came from explicit human resolution."""
+    return decision.decision in _HUMAN_DECISIONS
 
 
 def reference_resolution_counts(
@@ -477,7 +569,10 @@ __all__ = [
     "format_reference_resolution_candidate",
     "load_custom_reference_file",
     "load_project_reference_resolutions",
+    "is_human_reference_decision",
     "matching_reference_resolution",
+    "record_reconciled_current_resolution",
+    "record_reference_policy_resolution",
     "record_reference_resolution",
     "reference_resolution_candidates",
     "reference_resolution_counts",

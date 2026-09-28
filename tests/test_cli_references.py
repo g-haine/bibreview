@@ -1267,6 +1267,8 @@ class ReferencesCliTests(unittest.TestCase):
         self.assertEqual(payload["auto_resolved_reviews"], 0)
         self.assertEqual(payload["partially_staged_human_reviews"], 0)
         self.assertEqual(payload["unstaged_human_reviews"], 0)
+        self.assertEqual(payload["policy_resolutions_recorded"], 1)
+        self.assertEqual(payload["already_completed"], 0)
         self.assertFalse(self.config.paths.collected.exists())
 
         code, stdout, stderr = self.run_cli(
@@ -1602,6 +1604,191 @@ class ReferencesCliTests(unittest.TestCase):
 
         self.assertEqual(code, 1)
         self.assertIn("stale reference resolution", stderr)
+        self.assertFalse(self.config.paths.collected.exists())
+
+    def test_apply_safe_persists_policy_resolution_and_replays_after_merge(self):
+        provider = FakeBatchProvider(
+            {
+                "10.1000/parent": {
+                    "reference": [
+                        {"unstructured": "Systems &amp; Control Letters"}
+                    ]
+                }
+            }
+        )
+        with patch(
+            "bibreview.cli.build_reference_services",
+            return_value=SimpleNamespace(batch_provider=provider),
+        ):
+            code, _, stderr = self.run_cli("references")
+        self.assertEqual(code, 0, stderr)
+
+        code, stdout, stderr = self.run_cli(
+            "references",
+            "--apply-safe",
+            "--json",
+        )
+        self.assertEqual(code, 0, stderr)
+        payload = json.loads(stdout)
+        self.assertEqual(payload["policy_resolutions_recorded"], 1)
+        self.assertEqual(payload["already_completed"], 0)
+
+        resolutions = self.config.references.report.with_name("resolutions.json")
+        self.assertTrue(resolutions.exists())
+        ledger = json.loads(resolutions.read_text(encoding="utf-8"))
+        self.assertEqual(
+            ledger["decisions"][0]["decision"],
+            "deterministic-policy",
+        )
+
+        code, _, stderr = self.run_cli("merge")
+        self.assertEqual(code, 0, stderr)
+        self.assertEqual(read_bibliography(self.config.paths.collected), ())
+
+        code, stdout, stderr = self.run_cli(
+            "--dry-run",
+            "references",
+            "--apply-safe",
+            "--json",
+        )
+        self.assertEqual(code, 0, stderr)
+        replay = json.loads(stdout)
+        self.assertEqual(replay["publications_to_stage"], 0)
+        self.assertEqual(replay["policy_resolutions_recorded"], 0)
+        self.assertEqual(replay["already_completed"], 1)
+
+    def test_reconcile_applied_adopts_explicit_historical_canonical_state(self):
+        provider = FakeBatchProvider(
+            {
+                "10.1000/parent": {
+                    "reference": [
+                        {"unstructured": "Systems &amp; Control Letters"}
+                    ]
+                }
+            }
+        )
+        with patch(
+            "bibreview.cli.build_reference_services",
+            return_value=SimpleNamespace(batch_provider=provider),
+        ):
+            code, _, stderr = self.run_cli("references")
+        self.assertEqual(code, 0, stderr)
+
+        historical = replace(
+            self.publication,
+            references=(Reference(citation="Systems & Control Letters"),),
+        )
+        write_bibliography(self.config.paths.bibliography, (historical,))
+        resolutions = self.config.references.report.with_name("resolutions.json")
+
+        code, stdout, stderr = self.run_cli(
+            "--dry-run",
+            "references",
+            "--reconcile-applied",
+            "--json",
+        )
+        self.assertEqual(code, 0, stderr)
+        preview = json.loads(stdout)
+        self.assertEqual(preview["adopt_current_canonical"], 1)
+        self.assertFalse(resolutions.exists())
+
+        code, stdout, stderr = self.run_cli(
+            "references",
+            "--reconcile-applied",
+            "--json",
+        )
+        self.assertEqual(code, 0, stderr)
+        applied = json.loads(stdout)
+        self.assertEqual(applied["adopt_current_canonical"], 1)
+        ledger = json.loads(resolutions.read_text(encoding="utf-8"))
+        self.assertEqual(
+            ledger["decisions"][0]["decision"],
+            "reconciled-current",
+        )
+
+        code, stdout, stderr = self.run_cli(
+            "--dry-run",
+            "references",
+            "--apply-safe",
+            "--json",
+        )
+        self.assertEqual(code, 0, stderr)
+        replay = json.loads(stdout)
+        self.assertEqual(replay["publications_to_stage"], 0)
+        self.assertEqual(replay["already_completed"], 1)
+
+    def test_reconciled_history_still_refuses_later_independent_edit(self):
+        provider = FakeBatchProvider(
+            {
+                "10.1000/parent": {
+                    "reference": [
+                        {"unstructured": "Systems &amp; Control Letters"}
+                    ]
+                }
+            }
+        )
+        with patch(
+            "bibreview.cli.build_reference_services",
+            return_value=SimpleNamespace(batch_provider=provider),
+        ):
+            code, _, stderr = self.run_cli("references")
+        self.assertEqual(code, 0, stderr)
+
+        historical = replace(
+            self.publication,
+            references=(Reference(citation="Systems & Control Letters"),),
+        )
+        write_bibliography(self.config.paths.bibliography, (historical,))
+        code, _, stderr = self.run_cli("references", "--reconcile-applied")
+        self.assertEqual(code, 0, stderr)
+
+        independent = replace(
+            self.publication,
+            references=(Reference(citation="Independent later edit"),),
+        )
+        write_bibliography(self.config.paths.bibliography, (independent,))
+
+        code, _, stderr = self.run_cli("references", "--apply-safe")
+        self.assertEqual(code, 1)
+        self.assertIn("stale reference resolution", stderr)
+
+    def test_reconcile_applied_refuses_nonempty_staging(self):
+        provider = FakeBatchProvider(
+            {
+                "10.1000/parent": {
+                    "reference": [
+                        {"unstructured": "Systems &amp; Control Letters"}
+                    ]
+                }
+            }
+        )
+        with patch(
+            "bibreview.cli.build_reference_services",
+            return_value=SimpleNamespace(batch_provider=provider),
+        ):
+            code, _, stderr = self.run_cli("references")
+        self.assertEqual(code, 0, stderr)
+
+        write_bibliography(self.config.paths.collected, (self.publication,))
+        code, _, stderr = self.run_cli("references", "--reconcile-applied")
+        self.assertEqual(code, 1)
+        self.assertIn("merge or clear staging", stderr)
+
+    def test_apply_safe_leaves_genuine_human_case_completely_unstaged(self):
+        self._run_ambiguous_reference_refresh()
+
+        code, stdout, stderr = self.run_cli(
+            "--dry-run",
+            "references",
+            "--apply-safe",
+            "--json",
+        )
+        self.assertEqual(code, 0, stderr)
+        payload = json.loads(stdout)
+        self.assertEqual(payload["human_reviews_remaining"], 1)
+        self.assertEqual(payload["partially_staged_human_reviews"], 0)
+        self.assertEqual(payload["publications_to_stage"], 0)
+        self.assertEqual(payload["policy_resolutions_recorded"], 0)
         self.assertFalse(self.config.paths.collected.exists())
 
     def test_review_json_contains_persisted_proposal(self):
