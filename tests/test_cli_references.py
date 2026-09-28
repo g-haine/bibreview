@@ -846,6 +846,61 @@ class ReferencesCliTests(unittest.TestCase):
             "Systems &amp; Control Letters",
         )
 
+    def test_apply_safe_expansion_inserts_only_new_provider_reference(self):
+        self.publication = Publication(
+            id=self.publication.id,
+            identifiers=self.publication.identifiers,
+            title=self.publication.title,
+            authors=self.publication.authors,
+            references=(
+                Reference(
+                    identifiers={"doi": "10.1/a"},
+                    citation="Canonical A",
+                ),
+                Reference(
+                    identifiers={"doi": "10.1/b"},
+                    citation="Canonical B",
+                ),
+            ),
+        )
+        write_bibliography(
+            self.config.paths.bibliography,
+            (self.publication,),
+        )
+        provider = FakeBatchProvider(
+            {
+                "10.1000/parent": {
+                    "reference": [
+                        {"DOI": "10.1/new", "unstructured": "New reference"},
+                        {"DOI": "10.1/a", "unstructured": "Provider A"},
+                        {"DOI": "10.1/b", "unstructured": "Provider B"},
+                    ]
+                }
+            }
+        )
+        with patch(
+            "bibreview.cli.build_reference_services",
+            return_value=SimpleNamespace(batch_provider=provider),
+        ):
+            code, _, stderr = self.run_cli("references")
+        self.assertEqual(code, 0, stderr)
+
+        code, stdout, stderr = self.run_cli(
+            "references",
+            "--apply-safe",
+            "--json",
+        )
+
+        self.assertEqual(code, 0, stderr)
+        payload = json.loads(stdout)
+        self.assertEqual(payload["publications_to_stage"], 1)
+        self.assertEqual(payload["references_inserted"], 1)
+        staged = read_bibliography(self.config.paths.collected)
+        self.assertEqual(
+            [reference.citation for reference in staged[0].references],
+            ["New reference", "Canonical A", "Canonical B"],
+        )
+
     def test_apply_safe_refuses_stale_canonical_references(self):
         provider = FakeBatchProvider(
             {
