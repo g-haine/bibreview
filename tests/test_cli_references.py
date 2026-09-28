@@ -763,14 +763,14 @@ class ReferencesCliTests(unittest.TestCase):
             changed_indices=(1,),
             provider_refusals=(),
         )
-        self.assertTrue(
+        self.assertFalse(
             project_references.safe_reference_requires_human_review(
                 substantive_item,
                 substantive_current,
             )
         )
 
-    def test_safe_review_residual_marks_partial_expansion_with_substantive_drift(self):
+    def test_safe_review_residual_resolves_expansion_with_canonical_citation_policy(self):
         current = (
             Reference(identifiers={"doi": "10.1/a"}, citation="Canonical A"),
         )
@@ -789,7 +789,7 @@ class ReferencesCliTests(unittest.TestCase):
         projection = project_references.safe_reference_projection(item, current)
 
         self.assertEqual(projection.inserted_references, 1)
-        self.assertTrue(
+        self.assertFalse(
             project_references.safe_reference_requires_human_review(item, current)
         )
 
@@ -816,6 +816,85 @@ class ReferencesCliTests(unittest.TestCase):
         )
 
         self.assertFalse(
+            project_references.safe_reference_requires_human_review(item, current)
+        )
+
+    def test_safe_review_residual_keeps_ambiguous_structure_human(self):
+        current = (
+            Reference(citation="Legacy citation"),
+            Reference(identifiers={"doi": "10.1/a"}, citation="Canonical A"),
+        )
+        proposed = (
+            Reference(citation="Different citation"),
+            Reference(identifiers={"doi": "10.1/new"}, citation="New reference"),
+            Reference(identifiers={"doi": "10.1/a"}, citation="Provider A"),
+        )
+        item = SimpleNamespace(
+            classification="review-required",
+            proposed_references=proposed,
+            reason="reference-count-changed",
+            changed_indices=(1, 2, 3),
+            provider_refusals=(),
+        )
+
+        self.assertTrue(
+            project_references.safe_reference_requires_human_review(item, current)
+        )
+
+    def test_safe_review_residual_resolves_provider_added_identifier_by_preserving_canon(self):
+        current = (Reference(citation="Example citation"),)
+        proposed = (
+            Reference(
+                identifiers={"doi": "10.1/new"},
+                citation="Example citation",
+            ),
+        )
+        item = SimpleNamespace(
+            classification="review-required",
+            proposed_references=proposed,
+            reason="reference-identifiers-changed:1",
+            changed_indices=(1,),
+            provider_refusals=(),
+        )
+
+        self.assertFalse(
+            project_references.safe_reference_requires_human_review(item, current)
+        )
+
+    def test_safe_review_residual_resolves_metadata_enrichment_by_preserving_canon(self):
+        current = (Reference(citation="Example Book (2009)"),)
+        proposed = (
+            Reference(citation="Smith A (2009) Example Book. Publisher"),
+        )
+        item = SimpleNamespace(
+            classification="review-required",
+            proposed_references=proposed,
+            reason="reference-citation-drift:1",
+            changed_indices=(1,),
+            provider_refusals=(),
+        )
+
+        self.assertFalse(
+            project_references.safe_reference_requires_human_review(item, current)
+        )
+
+    def test_safe_review_residual_keeps_refused_insertion_human(self):
+        current = (
+            Reference(identifiers={"doi": "10.1/a"}, citation="Canonical A"),
+        )
+        proposed = (
+            Reference(citation="<script>unsafe</script>"),
+            Reference(identifiers={"doi": "10.1/a"}, citation="Provider A"),
+        )
+        item = SimpleNamespace(
+            classification="review-required",
+            proposed_references=proposed,
+            reason="reference-count-changed",
+            changed_indices=(1, 2),
+            provider_refusals=((1, "script-markup"),),
+        )
+
+        self.assertTrue(
             project_references.safe_reference_requires_human_review(item, current)
         )
 
