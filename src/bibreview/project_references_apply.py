@@ -13,6 +13,7 @@ from .project import ProjectStateError
 from .project_references import (
     project_references_review,
     safe_reference_projection,
+    safe_reference_requires_human_review,
 )
 from .storage import (
     atomic_write_batch,
@@ -56,10 +57,29 @@ class ProjectReferencesSafeApplyPlan:
     changes: tuple[ReferenceSafeApplyChange, ...]
     outputs: Mapping[Path, bytes]
     affected_publication_ids: tuple[str, ...]
+    review_required_publications: int
+    human_review_publication_ids: tuple[str, ...]
+    partially_staged_human_review_ids: tuple[str, ...]
 
     @property
     def changed(self) -> bool:
         return bool(self.outputs)
+
+    @property
+    def human_reviews_remaining(self) -> int:
+        return len(self.human_review_publication_ids)
+
+    @property
+    def auto_resolved_reviews(self) -> int:
+        return self.review_required_publications - self.human_reviews_remaining
+
+    @property
+    def partially_staged_human_reviews(self) -> int:
+        return len(self.partially_staged_human_review_ids)
+
+    @property
+    def unstaged_human_reviews(self) -> int:
+        return self.human_reviews_remaining - self.partially_staged_human_reviews
 
     @property
     def inserted_references(self) -> int:
@@ -78,6 +98,11 @@ class ProjectReferencesSafeApplyPlan:
             "Reference safe application\n"
             f"  Audited publications : {self.audited_publications}\n"
             f"  Publications to stage: {len(self.affected_publication_ids)}\n"
+            f"  Review-required input: {self.review_required_publications}\n"
+            f"  Auto-resolved reviews: {self.auto_resolved_reviews}\n"
+            f"  Human reviews remain : {self.human_reviews_remaining}\n"
+            f"    Partially staged    : {self.partially_staged_human_reviews}\n"
+            f"    Not staged          : {self.unstaged_human_reviews}\n"
             f"  References inserted  : {self.inserted_references}\n"
             f"  Citation updates     : {self.citation_updates}\n"
             f"  Identifier updates   : {self.identifier_updates}"
@@ -87,6 +112,12 @@ class ProjectReferencesSafeApplyPlan:
         return {
             "audited_publications": self.audited_publications,
             "publications_to_stage": len(self.affected_publication_ids),
+            "review_required_publications": self.review_required_publications,
+            "auto_resolved_reviews": self.auto_resolved_reviews,
+            "human_reviews_remaining": self.human_reviews_remaining,
+            "partially_staged_human_reviews": self.partially_staged_human_reviews,
+            "unstaged_human_reviews": self.unstaged_human_reviews,
+            "human_review_publication_ids": list(self.human_review_publication_ids),
             "references_inserted": self.inserted_references,
             "citation_updates": self.citation_updates,
             "identifier_updates": self.identifier_updates,
@@ -117,6 +148,8 @@ def plan_project_references_safe_apply(
     originals = {publication.id: publication for publication in canonical}
     changes: list[ReferenceSafeApplyChange] = []
     changed_ids: list[str] = []
+    human_review_ids: list[str] = []
+    partially_staged_human_review_ids: list[str] = []
     staged_publications = []
 
     for item in review.items:
@@ -135,6 +168,15 @@ def plan_project_references_safe_apply(
             )
 
         projection = safe_reference_projection(item, publication.references)
+        requires_human_review = safe_reference_requires_human_review(
+            item,
+            publication.references,
+        )
+        if item.classification == "review-required" and requires_human_review:
+            human_review_ids.append(publication.id)
+            if projection.changed:
+                partially_staged_human_review_ids.append(publication.id)
+
         if not projection.changed:
             continue
         if projection.references == publication.references:
@@ -171,6 +213,9 @@ def plan_project_references_safe_apply(
         changes=tuple(changes),
         outputs=MappingProxyType(outputs),
         affected_publication_ids=tuple(changed_ids),
+        review_required_publications=review.review_required,
+        human_review_publication_ids=tuple(human_review_ids),
+        partially_staged_human_review_ids=tuple(partially_staged_human_review_ids),
     )
 
 
