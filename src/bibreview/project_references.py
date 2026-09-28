@@ -39,6 +39,7 @@ from .pipeline.references import (
 from .project import ProjectStateError
 from .providers.http import HttpError
 from .reporting import Reporter
+from .structured_title import normalize_structured_citation
 from .storage import (
     atomic_write_batch,
     json_bytes,
@@ -1124,6 +1125,27 @@ def _citation_drift_evidence(current: Reference, proposed: Reference) -> str | N
     return None
 
 
+def _structural_pair_identity_stable(
+    current: Reference,
+    proposed: Reference,
+) -> bool:
+    """Return whether one aligned structural pair has deterministic identity evidence.
+
+    DOI identity remains the strongest evidence. For two DOI-less references,
+    only lossless lexical formatting equivalence or the exact duplicated-wrapper
+    artifact is accepted. Metadata enrichment is deliberately excluded here:
+    it can explain citation drift, but it is not strong enough to prove identity
+    inside a structurally shifted list.
+    """
+    current_doi = _comparison_doi(_reference_doi(current))
+    proposed_doi = _comparison_doi(_reference_doi(proposed))
+    if current_doi is not None or proposed_doi is not None:
+        return current_doi is not None and current_doi == proposed_doi
+
+    evidence = _citation_drift_evidence(current, proposed)
+    return evidence in {"formatting", "wrapper-artifact"}
+
+
 def _review_reference_explanation(
     item: ReferenceRefreshResult,
     current: tuple[Reference, ...],
@@ -1138,8 +1160,7 @@ def _review_reference_explanation(
         removed = [row for row in rows if row.kind == "removed"]
         changed = [row for row in rows if row.kind == "changed"]
         identities_stable = all(
-            (current_doi := _comparison_doi(_reference_doi(row.current))) is not None
-            and current_doi == _comparison_doi(_reference_doi(row.proposed))
+            _structural_pair_identity_stable(row.current, row.proposed)
             for row in changed
             if row.current is not None and row.proposed is not None
         )
@@ -1207,6 +1228,232 @@ def _review_reference_explanation(
 
     return "unclassified-review-drift"
 
+
+
+@dataclass(frozen=True)
+class ReferenceSafeProjection:
+    """Deterministic reference changes that may be staged without bibliography judgment."""
+
+    references: tuple[Reference, ...]
+    inserted_references: int = 0
+    citation_updates: int = 0
+    identifier_updates: int = 0
+
+    @property
+    def changed(self) -> bool:
+        return bool(
+            self.inserted_references
+            or self.citation_updates
+            or self.identifier_updates
+        )
+
+
+def _safe_citation_tokens(citation: str) -> tuple[str, ...]:
+    """Return case-preserving lexical tokens for conservative safe comparison."""
+    return tuple(_CITATION_TOKEN_RE.findall(citation))
+
+
+def _safe_citation_replacement(current: str, proposed: str) -> bool:
+    """Return whether provider citation text is a deterministic safe replacement."""
+    if current == proposed:
+        return False
+
+    normalized = normalize_structured_citation(current)
+    if normalized.deterministic and normalized.normalized == proposed:
+        return True
+
+    if _safe_citation_tokens(current) == _safe_citation_tokens(proposed):
+        return True
+
+    return _citation_wrapper_artifact(current, proposed)
+
+
+def _safe_reference_identity_equivalent(
+    left: Reference,
+    right: Reference,
+) -> bool:
+    """Return whether two references are safely equivalent for duplicate avoidance."""
+    left_doi = _comparison_doi(_reference_doi(left))
+    right_doi = _comparison_doi(_reference_doi(right))
+    if left_doi is not None or right_doi is not None:
+        return left_doi is not None and left_doi == right_doi
+    if left == right:
+        return True
+    return (
+        _citation_formatting_equivalent(left.citation, right.citation)
+        or _citation_wrapper_artifact(left.citation, right.citation)
+        or _citation_wrapper_artifact(right.citation, left.citation)
+    )
+
+
+def _safe_reference_pair_projection(
+    current: Reference,
+    proposed: Reference,
+    *,
+    allow_provider_citation: bool,
+) -> tuple[Reference, int, int]:
+    """Apply only safe field-level changes to one already aligned reference."""
+    projected = current
+    identifier_updates = 0
+    citation_updates = 0
+
+    current_doi = _reference_doi(current)
+    proposed_doi = _reference_doi(proposed)
+    comparable_current_doi = _comparison_doi(current_doi)
+    comparable_proposed_doi = _comparison_doi(proposed_doi)
+    if (
+        current_doi is not None
+        and proposed_doi is not None
+        and current_doi != proposed_doi
+        and comparable_current_doi is not None
+        and comparable_current_doi == comparable_proposed_doi
+    ):
+        identifiers = dict(current.identifiers)
+        identifiers["doi"] = comparable_current_doi
+        normalized = replace(current, identifiers=identifiers)
+        if normalized.identifiers != current.identifiers:
+            projected = normalized
+            identifier_updates = 1
+
+    if (
+        allow_provider_citation
+        and current.citation != proposed.citation
+        and _safe_citation_replacement(current.citation, proposed.citation)
+    ):
+        projected = replace(projected, citation=proposed.citation)
+        citation_updates = 1
+
+    return projected, citation_updates, identifier_updates
+
+
+def safe_reference_projection(
+    item: ReferenceRefreshResult,
+    current: tuple[Reference, ...],
+) -> ReferenceSafeProjection:
+    """Project only deterministic, non-destructive reference changes.
+
+    This function deliberately operates below the publication-level explanation
+    categories. A publication may contain both safe and review-required drift;
+    only the proven-safe atomic changes are projected.
+
+    Structural provider expansion is special: it is eligible only when the
+    existing review explanation proves provider-only insertion with stable,
+    explicit DOI identity for every aligned changed pair. Existing canonical
+    reference objects are preserved verbatim and only unambiguous provider
+    insertions are added.
+    """
+    if item.classification == "safe-update":
+        return ReferenceSafeProjection(
+            references=item.proposed_references,
+            citation_updates=len(item.changed_indices),
+        )
+
+    if item.classification != "review-required":
+        return ReferenceSafeProjection(references=current)
+
+    proposed = item.proposed_references
+    refused_positions = {index for index, _ in item.provider_refusals}
+
+    if len(current) != len(proposed):
+        if _review_reference_explanation(item, current) != "explained-provider-expansion":
+            return ReferenceSafeProjection(references=current)
+
+        rows = _review_reference_alignment(current, proposed)
+        if any(row.kind == "removed" for row in rows):
+            return ReferenceSafeProjection(references=current)
+
+        current_dois = {
+            doi
+            for reference in current
+            for doi in (_comparison_doi(_reference_doi(reference)),)
+            if doi is not None
+        }
+        inserted_dois: set[str] = set()
+        inserted_values: list[Reference] = []
+        projected: list[Reference] = []
+        inserted_references = 0
+        citation_updates = 0
+        identifier_updates = 0
+
+        for row in rows:
+            if row.kind == "inserted":
+                reference = row.proposed
+                position = row.provider_index
+                if reference is None or position is None:
+                    continue
+                if position in refused_positions:
+                    continue
+                if not reference.identifiers and not reference.citation.strip():
+                    continue
+                if any(
+                    _safe_reference_identity_equivalent(reference, existing)
+                    for existing in current
+                ):
+                    continue
+                if any(
+                    _safe_reference_identity_equivalent(reference, existing)
+                    for existing in inserted_values
+                ):
+                    continue
+
+                doi = _comparison_doi(_reference_doi(reference))
+                if doi is not None:
+                    if doi in current_dois or doi in inserted_dois:
+                        continue
+                    inserted_dois.add(doi)
+
+                projected.append(reference)
+                inserted_values.append(reference)
+                inserted_references += 1
+                continue
+
+            if row.current is None:
+                return ReferenceSafeProjection(references=current)
+            if row.proposed is None:
+                projected.append(row.current)
+                continue
+
+            # Structural expansion never rewrites an existing canonical
+            # reference. The aligned provider row is identity evidence only;
+            # safe application adds proven provider-only insertions and leaves
+            # all pre-existing reference objects byte-for-byte semantic peers.
+            projected.append(row.current)
+
+        references = tuple(projected)
+        if not (
+            inserted_references
+            or citation_updates
+            or identifier_updates
+        ):
+            references = current
+        return ReferenceSafeProjection(
+            references=references,
+            inserted_references=inserted_references,
+            citation_updates=citation_updates,
+            identifier_updates=identifier_updates,
+        )
+
+    projected = list(current)
+    citation_updates = 0
+    identifier_updates = 0
+    for index, (left, right) in enumerate(zip(current, proposed, strict=True), 1):
+        revised, citation_count, identifier_count = _safe_reference_pair_projection(
+            left,
+            right,
+            allow_provider_citation=index not in refused_positions,
+        )
+        projected[index - 1] = revised
+        citation_updates += citation_count
+        identifier_updates += identifier_count
+
+    references = tuple(projected)
+    if not citation_updates and not identifier_updates:
+        references = current
+    return ReferenceSafeProjection(
+        references=references,
+        citation_updates=citation_updates,
+        identifier_updates=identifier_updates,
+    )
 
 def format_project_references_review(
     review: ProjectReferencesReview,

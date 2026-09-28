@@ -59,14 +59,19 @@ publication.
 ## Collected staging
 
 **collected.json** uses the same document envelope and is temporary staging for
-**collect**, reviewed **refresh --apply**, explicit **audit --apply**, and reviewed
-**backfill --apply** promotion.
+**collect**, reviewed **refresh --apply**, explicit **audit --apply**, reviewed
+**backfill --apply**, and deterministic **references --apply-safe** promotion.
 
 Only one staging batch is allowed at a time. This is intentional: inspect and
 resolve the current batch before starting another collection or reviewed
-application. Refresh scanning/review itself never writes staging, while
-`refresh --apply`, `audit --apply`, and `backfill --apply` all refuse to
-overwrite non-empty staging.
+application. Refresh/reference scanning and review never write staging, while
+`refresh --apply`, `audit --apply`, `backfill --apply`, and
+`references --apply-safe` all refuse to overwrite non-empty staging.
+
+Reference safe application stores complete revised publication objects in this
+ordinary staging file, but only after rechecking the exact persisted canonical
+reference fingerprint. Existing canonical references remain unchanged until the
+maintainer explicitly runs `bibreview merge`.
 
 ## Backfill review evidence
 

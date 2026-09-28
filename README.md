@@ -171,14 +171,25 @@ bibreview --dry-run references
 bibreview references
 bibreview references --review
 bibreview -v references --review
+bibreview --dry-run references --apply-safe
+bibreview references --apply-safe
 ~~~
 
 The campaign is resumable and checkpointed publication-by-publication.
-`safe-update` is intentionally narrow: reference count, order, and identifiers
-must remain identical, and every citation change must be exactly explained by
-the deterministic T2 sanitizer. Any provider change beyond that is
-`review-required`. There is deliberately **no `references --apply` in
-v1.6.30**; PHRAISE validation of the two-round report comes first.
+`safe-update` remains intentionally narrow at refresh-classification time:
+reference count, order, and identifiers must remain identical, and every
+citation change must be exactly explained by the deterministic T2 sanitizer.
+
+The offline `references --apply-safe` step goes further without weakening the
+canonical boundary. It stages only atomic changes for which BibReview has
+deterministic evidence: strict safe updates, conservative DOI-typography and
+citation-format cleanup, and non-destructive provider-only insertions whose
+alignment is established. Existing canonical references are preserved during
+expansion, while substantive same-DOI citation changes, metadata enrichment,
+provider-added identifiers, and ambiguous structural drift remain unapplied.
+The command refuses stale report fingerprints or occupied staging and writes
+only `collected.json`; canonical promotion still requires an explicit
+`bibreview merge`.
 
 ### Canonical abstract hygiene inventory
 
