@@ -1643,7 +1643,7 @@ class ReferencesCliTests(unittest.TestCase):
 
         code, _, stderr = self.run_cli("merge")
         self.assertEqual(code, 0, stderr)
-        self.assertFalse(self.config.paths.collected.exists())
+        self.assertEqual(read_bibliography(self.config.paths.collected), ())
 
         code, stdout, stderr = self.run_cli(
             "--dry-run",
