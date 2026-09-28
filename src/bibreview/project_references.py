@@ -1150,12 +1150,28 @@ def _comparison_doi(doi: str | None) -> str | None:
 
 
 _CITATION_TOKEN_RE = re.compile(r"\w+", re.UNICODE)
+_COMPARISON_TOKEN_PART_RE = re.compile(r"[^\W\d_]+|\d+|_", re.UNICODE)
+_YEAR_SUFFIX_TOKEN_RE = re.compile(r"^(\d{4})[a-z]$")
 _TRAILING_YEAR_RE = re.compile(r"\s+\(\d{4}\)$")
 
 
 def _comparison_citation_tokens(citation: str) -> tuple[str, ...]:
-    """Return lexical citation evidence while ignoring punctuation and spacing."""
-    return tuple(_CITATION_TOKEN_RE.findall(citation.casefold()))
+    """Return conservative lexical evidence for citation comparison.
+
+    Comparison-only normalization ignores punctuation/case, splits compact
+    letter-digit typography such as L2 into L/2, and removes a single
+    bibliographic year-disambiguation suffix (1994b -> 1994). Canonical and
+    provider citation text itself is never rewritten by this helper.
+    """
+    normalized: list[str] = []
+    for token in _CITATION_TOKEN_RE.findall(citation.casefold()):
+        year = _YEAR_SUFFIX_TOKEN_RE.fullmatch(token)
+        if year is not None:
+            normalized.append(year.group(1))
+            continue
+        parts = _COMPARISON_TOKEN_PART_RE.findall(token)
+        normalized.extend(parts or (token,))
+    return tuple(normalized)
 
 
 def _citation_formatting_equivalent(current: str, proposed: str) -> bool:
