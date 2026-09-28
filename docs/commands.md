@@ -361,6 +361,14 @@ The command deliberately does **not** auto-apply substantive same-DOI citation
 rewrites, DOI-less metadata enrichment, provider-added identifiers, or ambiguous
 structural drift. Those remain evidence for a later explicit review policy.
 
+The dry-run/application summary distinguishes the original review-required
+population from the residual human workload after safe projection. It reports
+how many review cases are fully covered by deterministic policy, how many still
+need a human decision, and how many of those residual cases are only partially
+staged because another part of the same publication was safe. JSON output also
+lists the remaining publication IDs so staged changes never make unresolved
+review work disappear from view.
+
 Safe application writes complete revised publications only to normal
 `collected.json` staging. It never edits `bibliography.json` directly.
 Inspect the staged diff, then use the ordinary canonical boundary:
