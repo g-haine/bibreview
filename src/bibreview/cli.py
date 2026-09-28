@@ -94,6 +94,20 @@ from .project_references_apply import (
     apply_project_references_safe_apply,
     plan_project_references_safe_apply,
 )
+from .project_references_resolution_apply import (
+    apply_project_references_resolution_apply,
+    plan_project_references_resolution_apply,
+)
+from .references_resolution import (
+    current_reference_resolution_summary,
+    format_reference_resolution_candidate,
+    load_custom_reference_file,
+    load_project_reference_resolutions,
+    record_reference_resolution,
+    reference_resolution_path,
+    save_project_reference_resolutions,
+    unresolved_reference_candidates,
+)
 from .project_audit_apply import (
     apply_project_audit_apply,
     format_project_audit_apply_plan,
@@ -271,6 +285,16 @@ def _parser() -> argparse.ArgumentParser:
         "--apply-safe",
         action="store_true",
         help="Stage only deterministic safe reference changes for ordinary merge",
+    )
+    references_actions.add_argument(
+        "--resolve",
+        action="store_true",
+        help="Interactively resolve genuinely ambiguous reference-refresh cases",
+    )
+    references_actions.add_argument(
+        "--apply",
+        action="store_true",
+        help="Stage completed explicit reference decisions for ordinary merge",
     )
     references.add_argument(
         "--json",
@@ -829,6 +853,124 @@ def _run_refresh_resolution(config, args) -> int:
     return 0
 
 
+def _run_reference_resolution(config, args) -> int:
+    """Run resumable human resolution for genuinely ambiguous references."""
+    if args.quiet:
+        raise ProjectStateError(
+            "--quiet cannot be used with interactive references --resolve"
+        )
+    if args.json_output:
+        raise ProjectStateError(
+            "--json cannot be used with interactive references --resolve"
+        )
+    if args.batch_size is not None:
+        raise ProjectStateError(
+            "--batch-size cannot be used with references --resolve"
+        )
+
+    review = project_references_review(config)
+    state = load_project_reference_resolutions(config)
+    candidates = unresolved_reference_candidates(review, state)
+    path = reference_resolution_path(config)
+
+    if not candidates:
+        prefix = "Dry run: " if args.dry_run else ""
+        print(prefix + current_reference_resolution_summary(review, state))
+        print("No unresolved human reference decisions.")
+        print(f"Resolutions: {path}")
+        return 0
+
+    _enable_interactive_line_editing()
+
+    for candidate in candidates:
+        print(format_reference_resolution_candidate(candidate))
+        print()
+        print("  k       keep the current canonical reference list")
+        print("  p       use the complete provider reference list")
+        print("  c FILE  use an explicitly reviewed JSON reference list")
+        print("  s       defer this publication")
+        print("  q       stop and keep previous decisions")
+        while True:
+            try:
+                raw = input("Decision [k/p/c FILE/s/q]: ").strip()
+            except (EOFError, KeyboardInterrupt):
+                print()
+                print(
+                    "Reference resolution stopped; previous decisions are preserved."
+                )
+                print(current_reference_resolution_summary(review, state))
+                print(f"Resolutions: {path}")
+                return 0
+
+            choice = raw.lower()
+            try:
+                if choice in {"k", "keep", "keep-canonical"}:
+                    state = record_reference_resolution(
+                        state,
+                        candidate,
+                        decision="keep-canonical",
+                    )
+                    break
+                if choice in {"p", "provider", "use-provider"}:
+                    state = record_reference_resolution(
+                        state,
+                        candidate,
+                        decision="use-provider",
+                    )
+                    break
+                if choice in {"s", "skip", "defer", "deferred"}:
+                    state = record_reference_resolution(
+                        state,
+                        candidate,
+                        decision="deferred",
+                    )
+                    break
+                if choice in {"q", "quit"}:
+                    print(current_reference_resolution_summary(review, state))
+                    print(f"Resolutions: {path}")
+                    return 0
+                if choice == "c" or choice.startswith("c "):
+                    source = raw[1:].strip()
+                    if not source:
+                        try:
+                            source = input("Custom reference JSON file: ").strip()
+                        except (EOFError, KeyboardInterrupt):
+                            print()
+                            print(
+                                "Reference resolution stopped; previous decisions "
+                                "are preserved."
+                            )
+                            print(current_reference_resolution_summary(review, state))
+                            print(f"Resolutions: {path}")
+                            return 0
+                    if not source:
+                        raise ProjectStateError(
+                            "custom reference resolution requires a JSON file"
+                        )
+                    custom = load_custom_reference_file(source)
+                    state = record_reference_resolution(
+                        state,
+                        candidate,
+                        decision="custom",
+                        custom_references=custom,
+                    )
+                    break
+            except ProjectStateError as error:
+                print(f"Invalid resolution: {error}")
+                continue
+
+            print("Please enter k, p, c FILE, s, or q.")
+
+        if not args.dry_run:
+            save_project_reference_resolutions(config, state)
+        print()
+
+    prefix = "Dry run: " if args.dry_run else ""
+    print(prefix + current_reference_resolution_summary(review, state))
+    print(f"Resolutions: {path}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
@@ -1176,6 +1318,59 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "references":
         reporter = Reporter(-1 if args.quiet else args.verbose)
+
+        if args.resolve:
+            try:
+                return _run_reference_resolution(config, args)
+            except (
+                OSError,
+                StorageError,
+                ProjectStateError,
+                ValueError,
+                TypeError,
+            ) as error:
+                print(f"bibreview references: {error}", file=sys.stderr)
+                return 1
+
+        if args.apply:
+            try:
+                if args.batch_size is not None:
+                    raise ProjectStateError(
+                        "--batch-size cannot be used with references --apply"
+                    )
+                plan = plan_project_references_resolution_apply(config)
+                if not args.dry_run:
+                    apply_project_references_resolution_apply(plan)
+            except (
+                OSError,
+                StorageError,
+                ProjectStateError,
+                ValueError,
+                TypeError,
+            ) as error:
+                print(f"bibreview references: {error}", file=sys.stderr)
+                return 1
+
+            if args.json_output:
+                print(
+                    json.dumps(
+                        {
+                            "dry_run": bool(args.dry_run),
+                            "staging": str(config.paths.collected),
+                            **plan.data(),
+                        },
+                        ensure_ascii=False,
+                        indent=2,
+                    )
+                )
+            elif not args.quiet:
+                prefix = "Dry run: " if args.dry_run else ""
+                print(prefix + plan.summary())
+                if plan.changed:
+                    print(f"Staging: {config.paths.collected}")
+                else:
+                    print("No reviewed reference changes to stage.")
+            return 0
 
         if args.apply_safe:
             try:
