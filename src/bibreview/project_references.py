@@ -1455,6 +1455,102 @@ def safe_reference_projection(
         identifier_updates=identifier_updates,
     )
 
+
+def _structural_insert_requires_human_review(
+    reference: Reference,
+    *,
+    provider_index: int | None,
+    refused_positions: set[int],
+    current: tuple[Reference, ...],
+    accepted_insertions: list[Reference],
+) -> bool:
+    """Return whether one provider-only insertion still needs human judgment."""
+    if provider_index is None or provider_index in refused_positions:
+        return True
+    if not reference.identifiers and not reference.citation.strip():
+        return True
+    if any(
+        _safe_reference_identity_equivalent(reference, existing)
+        for existing in current
+    ):
+        return False
+    if any(
+        _safe_reference_identity_equivalent(reference, existing)
+        for existing in accepted_insertions
+    ):
+        return False
+    accepted_insertions.append(reference)
+    return False
+
+
+def safe_reference_requires_human_review(
+    item: ReferenceRefreshResult,
+    current: tuple[Reference, ...],
+) -> bool:
+    """Return whether safe projection leaves a bibliographic decision unresolved.
+
+    This is deliberately distinct from whether apply-safe writes a staged
+    change. A publication may receive deterministic safe edits while still
+    containing provider drift that BibReview refuses to decide automatically.
+    Conversely, harmless formatting evidence inside a structural expansion can
+    require no human decision even when the existing canonical reference is
+    intentionally preserved during that expansion.
+    """
+    if item.classification == "safe-update":
+        return False
+    if item.classification != "review-required":
+        return False
+
+    proposed = item.proposed_references
+    refused_positions = {index for index, _ in item.provider_refusals}
+
+    if len(current) == len(proposed):
+        for index, (left, right) in enumerate(zip(current, proposed, strict=True), 1):
+            revised, _, _ = _safe_reference_pair_projection(
+                left,
+                right,
+                allow_provider_citation=index not in refused_positions,
+            )
+            if revised != right:
+                return True
+        return False
+
+    if _review_reference_explanation(item, current) != "explained-provider-expansion":
+        return True
+
+    accepted_insertions: list[Reference] = []
+    for row in _review_reference_alignment(current, proposed):
+        if row.kind == "removed":
+            return True
+        if row.kind == "inserted":
+            if row.proposed is None:
+                return True
+            if _structural_insert_requires_human_review(
+                row.proposed,
+                provider_index=row.provider_index,
+                refused_positions=refused_positions,
+                current=current,
+                accepted_insertions=accepted_insertions,
+            ):
+                return True
+            continue
+        if row.kind != "changed":
+            continue
+        if row.current is None or row.proposed is None:
+            return True
+        revised, _, _ = _safe_reference_pair_projection(
+            row.current,
+            row.proposed,
+            allow_provider_citation=(
+                row.provider_index is not None
+                and row.provider_index not in refused_positions
+            ),
+        )
+        if revised != row.proposed:
+            return True
+
+    return False
+
 def format_project_references_review(
     review: ProjectReferencesReview,
     *,
