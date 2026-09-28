@@ -267,6 +267,11 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Show the persisted reference-refresh review without provider requests",
     )
+    references_actions.add_argument(
+        "--apply-safe",
+        action="store_true",
+        help="Stage only deterministic safe reference changes for ordinary merge",
+    )
     references.add_argument(
         "--json",
         dest="json_output",
