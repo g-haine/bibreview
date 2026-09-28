@@ -90,6 +90,10 @@ from .project_references import (
     plan_project_references_batch,
     project_references_review,
 )
+from .project_references_apply import (
+    apply_project_references_safe_apply,
+    plan_project_references_safe_apply,
+)
 from .project_audit_apply import (
     apply_project_audit_apply,
     format_project_audit_apply_plan,
@@ -1167,6 +1171,40 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "references":
         reporter = Reporter(-1 if args.quiet else args.verbose)
+
+        if args.apply_safe:
+            try:
+                if args.batch_size is not None:
+                    raise ProjectStateError(
+                        "--batch-size cannot be used with references --apply-safe"
+                    )
+                plan = plan_project_references_safe_apply(config)
+                if not args.dry_run:
+                    apply_project_references_safe_apply(plan)
+            except (
+                OSError,
+                StorageError,
+                ProjectStateError,
+                ValueError,
+                TypeError,
+            ) as error:
+                print(f"bibreview references: {error}", file=sys.stderr)
+                return 1
+
+            if args.json_output:
+                payload = {
+                    "dry_run": args.dry_run,
+                    **plan.data(),
+                }
+                print(json.dumps(payload, ensure_ascii=False, indent=2))
+            elif not args.quiet:
+                prefix = "Dry run: " if args.dry_run else ""
+                print(prefix + plan.summary())
+                if plan.changed:
+                    print(f"Staging: {config.paths.collected}")
+                else:
+                    print("No deterministic safe reference changes to stage.")
+            return 0
 
         if args.review:
             try:
