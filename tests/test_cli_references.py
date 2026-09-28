@@ -440,6 +440,49 @@ class ReferencesCliTests(unittest.TestCase):
 
         self.assertEqual(explanation, "explained-provider-expansion")
 
+    def test_review_accepts_formatting_evidence_for_non_doi_structural_pair(self):
+        current = (
+            Reference(identifiers={"doi": "10.1/a"}, citation="A"),
+            Reference(identifiers={}, citation="Khalil HK. Nonlinear Systems (2002)"),
+        )
+        proposed = (
+            Reference(identifiers={"doi": "10.1/a"}, citation="A refreshed"),
+            Reference(identifiers={}, citation="Khalil HK, Nonlinear Systems (2002)"),
+            Reference(identifiers={"doi": "10.1/new"}, citation="New"),
+        )
+        item = SimpleNamespace(
+            proposed_references=proposed,
+            reason="reference-count-changed",
+            changed_indices=(1, 2, 3),
+        )
+
+        explanation = project_references._review_reference_explanation(item, current)
+
+        self.assertEqual(explanation, "explained-provider-expansion")
+
+    def test_review_keeps_metadata_enrichment_structural_pair_ambiguous(self):
+        current = (
+            Reference(identifiers={"doi": "10.1/a"}, citation="A"),
+            Reference(identifiers={}, citation="Example Book (2009)"),
+        )
+        proposed = (
+            Reference(identifiers={"doi": "10.1/a"}, citation="A refreshed"),
+            Reference(
+                identifiers={},
+                citation="Smith A (2009) Example Book. Publisher",
+            ),
+            Reference(identifiers={"doi": "10.1/new"}, citation="New"),
+        )
+        item = SimpleNamespace(
+            proposed_references=proposed,
+            reason="reference-count-changed",
+            changed_indices=(1, 2, 3),
+        )
+
+        explanation = project_references._review_reference_explanation(item, current)
+
+        self.assertEqual(explanation, "ambiguous-structural-drift")
+
     def test_review_keeps_non_doi_structural_pair_ambiguous(self):
         current = (
             Reference(identifiers={"doi": "10.1/a"}, citation="A"),
@@ -620,6 +663,65 @@ class ReferencesCliTests(unittest.TestCase):
                 current[1],
             ),
         )
+
+    def test_safe_projection_preserves_doi_less_canonical_pair_during_expansion(self):
+        current = (
+            Reference(identifiers={"doi": "10.1/a"}, citation="Canonical A"),
+            Reference(
+                identifiers={},
+                citation="Khalil HK. Nonlinear Systems (2002)",
+            ),
+        )
+        proposed = (
+            Reference(identifiers={"doi": "10.1/a"}, citation="Provider A"),
+            Reference(
+                identifiers={},
+                citation="Khalil HK, Nonlinear Systems (2002)",
+            ),
+            Reference(identifiers={"doi": "10.1/new"}, citation="New reference"),
+        )
+        item = SimpleNamespace(
+            classification="review-required",
+            proposed_references=proposed,
+            reason="reference-count-changed",
+            changed_indices=(1, 2, 3),
+            provider_refusals=(),
+        )
+
+        projection = project_references.safe_reference_projection(item, current)
+
+        self.assertEqual(projection.inserted_references, 1)
+        self.assertEqual(
+            projection.references,
+            (
+                current[0],
+                current[1],
+                proposed[2],
+            ),
+        )
+
+    def test_safe_projection_skips_formatting_equivalent_doi_less_duplicate_insertion(self):
+        current = (
+            Reference(citation="Khalil HK. Nonlinear Systems (2002)"),
+            Reference(identifiers={"doi": "10.1/a"}, citation="A"),
+        )
+        proposed = (
+            Reference(citation="Khalil HK, Nonlinear Systems (2002)"),
+            Reference(citation="Khalil HK, Nonlinear Systems (2002)"),
+            Reference(identifiers={"doi": "10.1/a"}, citation="Provider A"),
+        )
+        item = SimpleNamespace(
+            classification="review-required",
+            proposed_references=proposed,
+            reason="reference-count-changed",
+            changed_indices=(1, 2, 3),
+            provider_refusals=(),
+        )
+
+        projection = project_references.safe_reference_projection(item, current)
+
+        self.assertFalse(projection.changed)
+        self.assertEqual(projection.references, current)
 
     def test_safe_projection_skips_refused_provider_insertion(self):
         current = (
