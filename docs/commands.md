@@ -358,16 +358,22 @@ other canonical reference fields verbatim. The initial safe operations are:
   empty, duplicate, or identity-colliding insertions are skipped.
 
 The command deliberately does **not** auto-apply substantive same-DOI citation
-rewrites, DOI-less metadata enrichment, provider-added identifiers, or ambiguous
-structural drift. Those remain evidence for a later explicit review policy.
+rewrites, DOI-less metadata enrichment, or provider-added identifiers. When
+their drift is deterministically explained, the safe policy resolves them by
+preserving the canonical value; they do **not** require publication-by-publication
+human review merely because provider evidence differs. Ambiguous or unclassified
+drift, and provider-only insertions that cannot themselves be handled safely,
+remain genuine human-review cases.
 
 The dry-run/application summary distinguishes the original review-required
-population from the residual human workload after safe projection. It reports
-how many review cases are fully covered by deterministic policy, how many still
-need a human decision, and how many of those residual cases are only partially
-staged because another part of the same publication was safe. JSON output also
-lists the remaining publication IDs so staged changes never make unresolved
-review work disappear from view.
+population from the residual human workload after deterministic policy. A case
+is auto-resolved either because BibReview stages every authorized safe change
+or because an explicit conservative rule keeps the existing canonical evidence.
+The remaining count therefore means that BibReview still lacks enough
+deterministic evidence or policy to decide the case. Partially staged residual
+cases remain visible when one safe operation can be automated but another
+ambiguity still needs a human decision. JSON output also lists the remaining
+publication IDs.
 
 Safe application writes complete revised publications only to normal
 `collected.json` staging. It never edits `bibliography.json` directly.
