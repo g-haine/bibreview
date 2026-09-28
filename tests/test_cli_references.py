@@ -561,6 +561,39 @@ class ReferencesCliTests(unittest.TestCase):
 
         self.assertEqual(explanation, "ambiguous-structural-drift")
 
+    def test_review_accepts_identical_duplicate_doi_group_as_invariant_anchor(self):
+        duplicate_current = Reference(
+            identifiers={"doi": "10.1/dup"},
+            citation="Historical duplicate citation",
+        )
+        duplicate_provider = Reference(
+            identifiers={"doi": "10.1/dup"},
+            citation="Provider duplicate citation",
+        )
+        current = (
+            Reference(identifiers={"doi": "10.1/a"}, citation="A"),
+            duplicate_current,
+            duplicate_current,
+            Reference(identifiers={"doi": "10.1/b"}, citation="B"),
+        )
+        proposed = (
+            Reference(identifiers={"doi": "10.1/a"}, citation="A refreshed"),
+            Reference(citation="Inserted before duplicate group"),
+            duplicate_provider,
+            duplicate_provider,
+            Reference(citation="Inserted after duplicate group"),
+            Reference(identifiers={"doi": "10.1/b"}, citation="B refreshed"),
+        )
+        item = SimpleNamespace(
+            proposed_references=proposed,
+            reason="reference-count-changed",
+            changed_indices=(1, 2, 3, 4, 5, 6),
+        )
+
+        explanation = project_references._review_reference_explanation(item, current)
+
+        self.assertEqual(explanation, "explained-provider-expansion")
+
     def test_review_keeps_duplicate_doi_structural_alignment_ambiguous(self):
         current = (
             Reference(identifiers={"doi": "10.1/dup"}, citation="Duplicate A"),
