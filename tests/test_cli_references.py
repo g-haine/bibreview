@@ -14,7 +14,7 @@ from bibreview.config import load_config
 from bibreview.identity import new_publication_id
 from bibreview.model import Author, Publication, Reference
 from bibreview import project_references
-from bibreview.storage import write_bibliography
+from bibreview.storage import read_bibliography, write_bibliography
 
 
 CONFIG = """\
@@ -590,6 +590,181 @@ class ReferencesCliTests(unittest.TestCase):
 
         self.assertEqual(explanation, "ambiguous-citation-drift")
 
+    def test_safe_projection_adds_only_provider_insertions(self):
+        current = (
+            Reference(identifiers={"doi": "10.1/a"}, citation="Canonical A"),
+            Reference(identifiers={"doi": "10.1/b"}, citation="Canonical B"),
+        )
+        proposed = (
+            Reference(identifiers={"doi": "10.1/new"}, citation="New reference"),
+            Reference(identifiers={"doi": "10.1/a"}, citation="Provider A"),
+            Reference(identifiers={"doi": "10.1/b"}, citation="Provider B"),
+        )
+        item = SimpleNamespace(
+            classification="review-required",
+            proposed_references=proposed,
+            reason="reference-count-changed",
+            changed_indices=(1, 2, 3),
+            provider_refusals=(),
+        )
+
+        projection = project_references.safe_reference_projection(item, current)
+
+        self.assertEqual(projection.inserted_references, 1)
+        self.assertEqual(projection.citation_updates, 0)
+        self.assertEqual(
+            projection.references,
+            (
+                proposed[0],
+                current[0],
+                current[1],
+            ),
+        )
+
+    def test_safe_projection_skips_refused_provider_insertion(self):
+        current = (
+            Reference(identifiers={"doi": "10.1/a"}, citation="Canonical A"),
+        )
+        proposed = (
+            Reference(citation="<script>unsafe</script>"),
+            Reference(identifiers={"doi": "10.1/a"}, citation="Provider A"),
+        )
+        item = SimpleNamespace(
+            classification="review-required",
+            proposed_references=proposed,
+            reason="reference-count-changed",
+            changed_indices=(1, 2),
+            provider_refusals=((1, "script-markup"),),
+        )
+
+        projection = project_references.safe_reference_projection(item, current)
+
+        self.assertFalse(projection.changed)
+        self.assertEqual(projection.references, current)
+
+    def test_safe_projection_keeps_substantive_same_doi_citation(self):
+        current = (
+            Reference(
+                identifiers={"doi": "10.1/a"},
+                citation="Historical citation",
+            ),
+        )
+        proposed = (
+            Reference(
+                identifiers={"doi": "10.1/a"},
+                citation="Substantively different provider citation",
+            ),
+        )
+        item = SimpleNamespace(
+            classification="review-required",
+            proposed_references=proposed,
+            reason="reference-citation-drift:1",
+            changed_indices=(1,),
+            provider_refusals=(),
+        )
+
+        projection = project_references.safe_reference_projection(item, current)
+
+        self.assertFalse(projection.changed)
+        self.assertEqual(projection.references, current)
+
+    def test_safe_projection_applies_punctuation_but_not_case_only_drift(self):
+        punctuation_current = (
+            Reference(citation="Khalil HK. Nonlinear Systems (2002)"),
+        )
+        punctuation_proposed = (
+            Reference(citation="Khalil HK, Nonlinear Systems (2002)"),
+        )
+        item = SimpleNamespace(
+            classification="review-required",
+            proposed_references=punctuation_proposed,
+            reason="reference-citation-drift:1",
+            changed_indices=(1,),
+            provider_refusals=(),
+        )
+
+        punctuation = project_references.safe_reference_projection(
+            item,
+            punctuation_current,
+        )
+
+        self.assertEqual(punctuation.citation_updates, 1)
+        self.assertEqual(
+            punctuation.references[0].citation,
+            punctuation_proposed[0].citation,
+        )
+
+        case_current = (Reference(citation="pH control (2002)"),)
+        case_proposed = (Reference(citation="PH control (2002)"),)
+        case_item = SimpleNamespace(
+            classification="review-required",
+            proposed_references=case_proposed,
+            reason="reference-citation-drift:1",
+            changed_indices=(1,),
+            provider_refusals=(),
+        )
+
+        case_projection = project_references.safe_reference_projection(
+            case_item,
+            case_current,
+        )
+
+        self.assertFalse(case_projection.changed)
+        self.assertEqual(case_projection.references, case_current)
+
+    def test_safe_projection_does_not_auto_apply_metadata_enrichment(self):
+        current = (
+            Reference(citation="Example Book (2009)"),
+        )
+        proposed = (
+            Reference(citation="Smith A (2009) Example Book. Publisher"),
+        )
+        item = SimpleNamespace(
+            classification="review-required",
+            proposed_references=proposed,
+            reason="reference-citation-drift:1",
+            changed_indices=(1,),
+            provider_refusals=(),
+        )
+
+        projection = project_references.safe_reference_projection(item, current)
+
+        self.assertFalse(projection.changed)
+        self.assertEqual(projection.references, current)
+
+    def test_safe_projection_normalizes_doi_typography_without_changing_citation(self):
+        current = (
+            Reference(
+                identifiers={"doi": "10.1007/s10444‐004‐7629‐9"},
+                citation="Canonical citation",
+            ),
+        )
+        proposed = (
+            Reference(
+                identifiers={"doi": "10.1007/s10444-004-7629-9"},
+                citation="Different provider citation",
+            ),
+        )
+        item = SimpleNamespace(
+            classification="review-required",
+            proposed_references=proposed,
+            reason="reference-identifiers-changed:1",
+            changed_indices=(1,),
+            provider_refusals=(),
+        )
+
+        projection = project_references.safe_reference_projection(item, current)
+
+        self.assertEqual(projection.identifier_updates, 1)
+        self.assertEqual(
+            projection.references[0].identifiers["doi"],
+            "10.1007/s10444-004-7629-9",
+        )
+        self.assertEqual(
+            projection.references[0].citation,
+            "Canonical citation",
+        )
+
     def test_single_verbose_review_omits_reference_diff(self):
         provider = FakeBatchProvider(
             {
@@ -618,6 +793,118 @@ class ReferencesCliTests(unittest.TestCase):
         self.assertNotIn("Reference 1", stdout)
         self.assertNotIn("Current     :", stdout)
         self.assertNotIn("Proposed    :", stdout)
+
+    def test_apply_safe_dry_run_then_stages_safe_update(self):
+        provider = FakeBatchProvider(
+            {
+                "10.1000/parent": {
+                    "reference": [
+                        {"unstructured": "Systems &amp; Control Letters"}
+                    ]
+                }
+            }
+        )
+        with patch(
+            "bibreview.cli.build_reference_services",
+            return_value=SimpleNamespace(batch_provider=provider),
+        ):
+            code, _, stderr = self.run_cli("references")
+        self.assertEqual(code, 0, stderr)
+
+        code, stdout, stderr = self.run_cli(
+            "--dry-run",
+            "references",
+            "--apply-safe",
+            "--json",
+        )
+
+        self.assertEqual(code, 0, stderr)
+        payload = json.loads(stdout)
+        self.assertTrue(payload["dry_run"])
+        self.assertEqual(payload["publications_to_stage"], 1)
+        self.assertEqual(payload["citation_updates"], 1)
+        self.assertFalse(self.config.paths.collected.exists())
+
+        code, stdout, stderr = self.run_cli(
+            "references",
+            "--apply-safe",
+            "--json",
+        )
+
+        self.assertEqual(code, 0, stderr)
+        payload = json.loads(stdout)
+        self.assertFalse(payload["dry_run"])
+        staged = read_bibliography(self.config.paths.collected)
+        self.assertEqual(len(staged), 1)
+        self.assertEqual(
+            staged[0].references[0].citation,
+            "Systems & Control Letters",
+        )
+        canonical = read_bibliography(self.config.paths.bibliography)
+        self.assertEqual(
+            canonical[0].references[0].citation,
+            "Systems &amp; Control Letters",
+        )
+
+    def test_apply_safe_refuses_stale_canonical_references(self):
+        provider = FakeBatchProvider(
+            {
+                "10.1000/parent": {
+                    "reference": [
+                        {"unstructured": "Systems &amp; Control Letters"}
+                    ]
+                }
+            }
+        )
+        with patch(
+            "bibreview.cli.build_reference_services",
+            return_value=SimpleNamespace(batch_provider=provider),
+        ):
+            code, _, stderr = self.run_cli("references")
+        self.assertEqual(code, 0, stderr)
+
+        write_bibliography(
+            self.config.paths.bibliography,
+            (
+                Publication(
+                    id=self.publication.id,
+                    identifiers=self.publication.identifiers,
+                    title=self.publication.title,
+                    authors=self.publication.authors,
+                    references=(Reference(citation="Manual correction"),),
+                ),
+            ),
+        )
+
+        code, _, stderr = self.run_cli("references", "--apply-safe")
+
+        self.assertEqual(code, 1)
+        self.assertIn("stale reference review", stderr)
+        self.assertFalse(self.config.paths.collected.exists())
+
+    def test_apply_safe_refuses_nonempty_staging(self):
+        provider = FakeBatchProvider(
+            {
+                "10.1000/parent": {
+                    "reference": [
+                        {"unstructured": "Systems &amp; Control Letters"}
+                    ]
+                }
+            }
+        )
+        with patch(
+            "bibreview.cli.build_reference_services",
+            return_value=SimpleNamespace(batch_provider=provider),
+        ):
+            code, _, stderr = self.run_cli("references")
+        self.assertEqual(code, 0, stderr)
+        write_bibliography(self.config.paths.collected, (self.publication,))
+
+        code, _, stderr = self.run_cli("references", "--apply-safe")
+
+        self.assertEqual(code, 1)
+        self.assertIn("merge the existing batch", stderr)
+
 
     def test_review_json_contains_persisted_proposal(self):
         provider = FakeBatchProvider(
