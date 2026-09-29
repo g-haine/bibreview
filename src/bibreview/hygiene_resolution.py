@@ -1,4 +1,4 @@
-"""Resumable human decisions for historical canonical abstract hygiene."""
+"""Resumable human decisions for historical canonical hygiene."""
 
 from __future__ import annotations
 
@@ -21,6 +21,7 @@ from .storage import read_json, write_json
 
 HYGIENE_RESOLUTION_SCHEMA_VERSION = 1
 _DECISIONS = frozenset({"accepted", "custom", "rejected", "deferred"})
+_FIELDS = frozenset({"abstract", "title"})
 
 
 @dataclass(frozen=True)
@@ -38,7 +39,7 @@ class HygieneResolutionCandidate:
 
 @dataclass(frozen=True)
 class HygieneResolutionDecision:
-    """Persisted human decision for one historical abstract proposal."""
+    """Persisted human decision for one historical hygiene proposal."""
 
     key: str
     publication_id: str
@@ -63,10 +64,12 @@ class HygieneResolutionState:
     review_fingerprint: str
     total_proposals: int
     decisions: tuple[HygieneResolutionDecision, ...] = ()
+    field: str = "abstract"
 
     def data(self) -> dict[str, Any]:
         return {
             "schema_version": HYGIENE_RESOLUTION_SCHEMA_VERSION,
+            "field": self.field,
             "review_fingerprint": self.review_fingerprint,
             "total_proposals": self.total_proposals,
             "decisions": [item.data() for item in self.decisions],
@@ -75,7 +78,7 @@ class HygieneResolutionState:
     def summary(self) -> str:
         counts = hygiene_resolution_counts(self)
         return (
-            "Canonical abstract hygiene resolution\n"
+            f"Canonical {self.field} hygiene resolution\n"
             f"  Proposals  : {self.total_proposals}\n"
             f"  Accepted   : {counts['accepted']}\n"
             f"  Custom     : {counts['custom']}\n"
@@ -85,9 +88,19 @@ class HygieneResolutionState:
         )
 
 
-def hygiene_resolution_path(config: BibReviewConfig) -> Path:
-    """Return resolution state beside the configured audit report."""
-    path = config.audit.report.with_name("hygiene-resolutions.json")
+def hygiene_resolution_path(
+    config: BibReviewConfig,
+    field: str = "abstract",
+) -> Path:
+    """Return field-specific resolution state beside the configured audit report."""
+    if field not in _FIELDS:
+        raise ProjectStateError(f"unsupported hygiene resolution field: {field}")
+    filename = (
+        "hygiene-resolutions.json"
+        if field == "abstract"
+        else "title-hygiene-resolutions.json"
+    )
+    path = config.audit.report.with_name(filename)
     if path in {config.audit.report, config.audit.campaign}:
         raise ProjectStateError("hygiene resolution path collides with audit state")
     return path
@@ -105,7 +118,10 @@ def hygiene_resolution_candidates(
 
 
 def hygiene_review_fingerprint(review: HygieneMigrationReview) -> str:
-    """Fingerprint the exact canonical abstract evidence behind the review."""
+    """Fingerprint the exact canonical evidence behind one hygiene review."""
+    # Keep the historical abstract fingerprint payload byte-for-byte compatible.
+    # Title decisions use a distinct state file, so the same payload shape is
+    # sufficient without invalidating existing abstract resolution files.
     payload = [
         {
             "publication_id": item.publication_id,
@@ -137,6 +153,11 @@ def hygiene_resolution_state_from_data(value: Any) -> HygieneResolutionState:
             f"{value.get('schema_version')!r}"
         )
 
+    field = value.get("field", "abstract")
+    if field not in _FIELDS:
+        raise ProjectStateError(
+            f"hygiene resolutions field is unsupported: {field!r}"
+        )
     fingerprint = value.get("review_fingerprint")
     total = value.get("total_proposals")
     raw_decisions = value.get("decisions")
@@ -185,7 +206,7 @@ def hygiene_resolution_state_from_data(value: Any) -> HygieneResolutionState:
             raise ProjectStateError(
                 f"hygiene resolution decision {index} must not define resolved_value"
             )
-        if strings["key"] != f"{strings['publication_id']}:abstract":
+        if strings["key"] != f"{strings['publication_id']}:{field}":
             raise ProjectStateError(
                 f"hygiene resolution decision {index}.key is inconsistent"
             )
@@ -212,6 +233,7 @@ def hygiene_resolution_state_from_data(value: Any) -> HygieneResolutionState:
         review_fingerprint=fingerprint,
         total_proposals=total,
         decisions=tuple(decisions),
+        field=field,
     )
 
 
@@ -222,15 +244,20 @@ def load_project_hygiene_resolutions(
     """Load/resume decisions and reject stale state after canonical changes."""
     fingerprint = hygiene_review_fingerprint(review)
     candidates = hygiene_resolution_candidates(review)
-    path = hygiene_resolution_path(config)
+    path = hygiene_resolution_path(config, review.field)
 
     if not path.exists():
         return HygieneResolutionState(
             review_fingerprint=fingerprint,
             total_proposals=len(candidates),
+            field=review.field,
         )
 
     state = hygiene_resolution_state_from_data(read_json(path, dict))
+    if state.field != review.field:
+        raise ProjectStateError(
+            f"{path}: hygiene resolution field does not match the current review"
+        )
     if (
         state.review_fingerprint != fingerprint
         or state.total_proposals != len(candidates)
@@ -276,6 +303,10 @@ def record_hygiene_resolution(
     """Record or replace one explicit human migration decision."""
     if decision not in _DECISIONS:
         raise ProjectStateError(f"unsupported hygiene decision: {decision}")
+    if candidate.proposal.field != state.field:
+        raise ProjectStateError(
+            "hygiene candidate field does not match resolution state"
+        )
 
     proposal = candidate.proposal
     if decision == "accepted":
@@ -314,7 +345,7 @@ def save_project_hygiene_resolutions(
     state: HygieneResolutionState,
 ) -> None:
     """Persist resumable historical hygiene decisions."""
-    write_json(hygiene_resolution_path(config), state.data())
+    write_json(hygiene_resolution_path(config, state.field), state.data())
 
 
 def hygiene_resolution_counts(
@@ -339,6 +370,10 @@ def unresolved_hygiene_candidates(
     state: HygieneResolutionState,
 ) -> tuple[HygieneResolutionCandidate, ...]:
     """Return unresolved and deferred migration proposals for the next session."""
+    if review.field != state.field:
+        raise ProjectStateError(
+            "hygiene review field does not match resolution state"
+        )
     terminal = {
         item.key
         for item in state.decisions
@@ -354,13 +389,13 @@ def unresolved_hygiene_candidates(
 def format_hygiene_resolution_candidate(
     candidate: HygieneResolutionCandidate,
 ) -> str:
-    """Format one full current/proposed abstract pair for human review."""
+    """Format one full current/proposed field pair for human review."""
     proposal = candidate.proposal
     lines = [
         f"[{candidate.position}/{candidate.total}] "
         f"{proposal.doi or proposal.publication_id} — {proposal.title}",
         "",
-        "Field: abstract",
+        f"Field: {proposal.field}",
         "Families: " + ", ".join(proposal.families),
         f"Normalizer: {proposal.reason}",
         "",
@@ -378,7 +413,7 @@ def format_hygiene_resolution_candidate(
         lines.extend(
             (
                 "Status: REVIEW REQUIRED",
-                "No safe automatic normalized abstract is available.",
+                f"No safe automatic normalized {proposal.field} is available.",
             )
         )
     else:
