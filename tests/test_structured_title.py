@@ -87,6 +87,27 @@ class StructuredTitleNormalizationTests(unittest.TestCase):
             "entity-decoding+structural-unwrapping",
         )
 
+    def test_inline_word_wrapper_without_boundary_spacing_is_refused(self) -> None:
+        value = (
+            "Stabilization of an underactuated bottom‐heavy "
+            "airship<i>via</i>interconnection and damping assignment"
+        )
+        result = normalize_structured_title(value)
+
+        self.assertFalse(result.deterministic)
+        self.assertFalse(result.changed)
+        self.assertEqual(result.normalized, value)
+        self.assertEqual(result.reason, "ambiguous-inline-boundary")
+
+    def test_inline_variable_adjacent_to_word_is_refused(self) -> None:
+        value = "Linear wave systems on<i>n</i>-D spatial domains"
+        result = normalize_structured_title(value)
+
+        self.assertFalse(result.deterministic)
+        self.assertFalse(result.changed)
+        self.assertEqual(result.normalized, value)
+        self.assertEqual(result.reason, "ambiguous-inline-boundary")
+
     def test_direct_subscript_markup_is_refused(self) -> None:
         value = "Stabilisation and ℋ<sub>∞</sub>control"
         result = normalize_structured_title(value)

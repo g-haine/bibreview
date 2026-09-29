@@ -266,6 +266,44 @@ def _mathml_to_tex(tag) -> str | None:
     return None
 
 
+def _ambiguous_inline_boundary(soup, inline_wrappers: frozenset[str]) -> bool:
+    """Return whether unwrapping inline markup would require spacing inference."""
+    exempt = {"scp", "small-caps"}
+
+    for tag in soup.find_all(True):
+        local = _local_name(tag.name)
+        if local not in inline_wrappers or local in exempt:
+            continue
+
+        inner = tag.get_text()
+        if not inner:
+            continue
+
+        previous = tag.previous_sibling
+        if isinstance(previous, NavigableString):
+            outside = str(previous)
+            if (
+                outside
+                and not outside[-1].isspace()
+                and outside[-1].isalnum()
+                and inner[0].isalnum()
+            ):
+                return True
+
+        following = tag.next_sibling
+        if isinstance(following, NavigableString):
+            outside = str(following)
+            if (
+                outside
+                and not outside[0].isspace()
+                and outside[0].isalnum()
+                and inner[-1].isalnum()
+            ):
+                return True
+
+    return False
+
+
 def _provider_error_page(soup) -> bool:
     """Recognize an observed upstream HTTP error page captured as citation text."""
     text = " ".join(soup.stripped_strings).casefold()
@@ -281,6 +319,7 @@ def _normalize(
     *,
     inline_wrappers: frozenset[str],
     block_wrappers: frozenset[str],
+    refuse_ambiguous_inline_boundaries: bool = False,
 ) -> StructuredMetadataNormalization:
     """Normalize one short bibliographic text under an explicit wrapper policy."""
     if not isinstance(value, str):
@@ -315,6 +354,11 @@ def _normalize(
 
     parser_value = value.replace("&", "&amp;")
     soup = BeautifulSoup(parser_value, "html.parser")
+    if (
+        refuse_ambiguous_inline_boundaries
+        and _ambiguous_inline_boundary(soup, inline_wrappers)
+    ):
+        return _refused(original, "ambiguous-inline-boundary")
     if _provider_error_page(soup):
         return _refused(original, "provider-error-page")
     if any(
@@ -403,6 +447,7 @@ def normalize_structured_title(value: str) -> StructuredMetadataNormalization:
         value,
         inline_wrappers=_TITLE_INLINE_WRAPPERS,
         block_wrappers=frozenset(),
+        refuse_ambiguous_inline_boundaries=True,
     )
 
 

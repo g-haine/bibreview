@@ -2,6 +2,20 @@
 
 All notable BibReview releases are documented here.
 
+## 1.6.33 — 2026-09-29
+
+### Conservative inline-title boundary handling
+
+- harden the T2/T3 publication-title normalizer against inline formatting
+  wrappers whose removal would require guessing missing word boundaries;
+- classify ambiguous adjacency such as
+  `airship<i>via</i>interconnection` and `on<i>n</i>-D` as
+  `ambiguous-inline-boundary` instead of emitting concatenated text;
+- keep observed safe small-caps cases such as
+  `Port‐<scp>H</scp>amiltonian` deterministic;
+- leave reference-citation normalization unchanged;
+- add PHRAISE regression tests for both real ambiguous title shapes.
+
 ## 1.6.32 — 2026-09-29
 
 ### Reviewed publication-title hygiene migration
