@@ -4,6 +4,8 @@ from dataclasses import replace
 from datetime import date
 import unittest
 
+import yaml
+
 from bibreview.site import (
     JekyllPublicationRenderOptions,
     SiteModel,
@@ -117,7 +119,7 @@ class JekyllPublicationRendererTests(unittest.TestCase):
         self.assertEqual(
             rendered[0].content,
             """---
-title: "A \\\\\\\\( x \\\\\\\\) title"
+title: "A \\\\( x \\\\) title"
 date: 2025-05-10 00:00:00 +0100
 permalink: example-publication
 year: 2025
@@ -171,7 +173,18 @@ fluid-structure, energy
             options=options(),
         )[0].content
         self.assertIn(r"An \\( H \\) abstract.", content)
-        self.assertIn(r'"A \\\\( x \\\\) title"', content)
+        self.assertIn(r'"A \\( x \\) title"', content)
+
+    def test_front_matter_mathjax_title_parses_to_single_delimiters(self) -> None:
+        content = render_jekyll_publication_posts(
+            model(publication()),
+            {"pub-id": "@article{x}\n"},
+            options=options(),
+        )[0].content
+        front_matter = content.split("---", 2)[1]
+        parsed = yaml.safe_load(front_matter)
+
+        self.assertEqual(parsed["title"], r"A \( x \) title")
 
     def test_tex_closing_braces_are_preserved_in_abstract(self) -> None:
         item = replace(
@@ -209,6 +222,46 @@ fluid-structure, energy
             content,
         )
         self.assertNotIn("[[:space:]]", content)
+
+    def test_reference_citation_preserves_parenthesis_mathjax_delimiters_through_markdown(self) -> None:
+        item = publication(
+            references=(
+                SiteReference(
+                    doi=None,
+                    citation=r"Finite-time \(H_2\) control",
+                ),
+                SiteReference(
+                    doi=None,
+                    citation=r"Display \[H_2\] form",
+                ),
+            )
+        )
+        content = render_jekyll_publication_posts(
+            model(item),
+            {"pub-id": "@article{x}\n"},
+            options=options(),
+        )[0].content
+
+        self.assertIn(r"- Finite-time \\(H_2\\) control", content)
+        self.assertIn(r"- Display \\[H_2\\] form", content)
+
+    def test_reference_citation_does_not_overescape_existing_markdown_delimiters(self) -> None:
+        item = publication(
+            references=(
+                SiteReference(
+                    doi=None,
+                    citation=r"Already \\(H_2\\) escaped",
+                ),
+            )
+        )
+        content = render_jekyll_publication_posts(
+            model(item),
+            {"pub-id": "@article{x}\n"},
+            options=options(),
+        )[0].content
+
+        self.assertIn(r"- Already \\(H_2\\) escaped", content)
+        self.assertNotIn(r"- Already \\\(H_2", content)
 
     def test_reference_citations_escape_literal_liquid_openers(self) -> None:
         item = publication(

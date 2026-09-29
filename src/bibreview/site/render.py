@@ -155,6 +155,17 @@ def _jekyll_text(value: str, *, mathjax_backslashes: int = 1) -> str:
     )
 
 
+_MATHJAX_DELIMITER_BACKSLASH_RE = re.compile(
+    r"(?<!\\)\\(?=[()\[\]])"
+)
+
+
+def _markdown_mathjax_text(value: str) -> str:
+    """Preserve existing MathJax delimiters through Markdown/Kramdown parsing."""
+    value = _MATHJAX_DELIMITER_BACKSLASH_RE.sub(r"\\\\", value)
+    return _escape_liquid_openers(value)
+
+
 def _publication_row(publication: SitePublication, options: JekyllIndexRenderOptions) -> str:
     if publication.authors:
         names = ", ".join(author.name for author in publication.authors)
@@ -236,7 +247,7 @@ def _publication_keyword_text(
 
 
 def _render_publication_reference(reference) -> str | None:
-    citation = _escape_liquid_openers(reference.citation)
+    citation = _markdown_mathjax_text(reference.citation)
     if reference.doi is None:
         return f"- {citation}" if citation else None
     if reference.permalink:
@@ -257,12 +268,12 @@ def _render_jekyll_publication_post(
     # Front matter values are YAML data, not page-body Liquid source.  Keep
     # literal braces untouched there; Liquid is not recursively evaluated when
     # the layout later emits page.title or page.tags.
-    title = _mathjax_text(publication.title, mathjax_backslashes=2)
+    title = _mathjax_text(publication.title, mathjax_backslashes=1)
     names = [author.name for author in publication.authors]
     editor_names = [editor.name for editor in publication.editors]
     keyword_text = _mathjax_text(
         options.keyword_joiner.join(publication.keywords),
-        mathjax_backslashes=2,
+        mathjax_backslashes=1,
     )
     keyword_body_text = _publication_keyword_text(publication, options)
     category = _publication_category(publication, options)
