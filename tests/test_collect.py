@@ -83,7 +83,7 @@ class BuildPublicationTests(unittest.TestCase):
         self.assertEqual(publication.doi, "10.1/test")
         self.assertEqual(publication.identifiers["isbn"], "978-1-234")
         # Structured title normalization preserves the mathematical semantics.
-        self.assertEqual(publication.title, r"Fluid \\(x\\) structure")
+        self.assertEqual(publication.title, r"Fluid \(x\) structure")
         self.assertEqual([(a.given, a.family) for a in publication.authors], [("Ada", "Lovelace")])
         self.assertEqual(
             [(editor.given, editor.family) for editor in publication.editors],
