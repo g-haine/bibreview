@@ -159,8 +159,40 @@ inventory uses a SHA-256 fingerprint of the complete original citation; an
 ordinal is added only when duplicate identities occur within one publication.
 This reporting identity does not introduce fuzzy bibliographic matching.
 
-`hygiene --titles` is mutually exclusive with the migration actions below and
-never writes project state.
+With no migration action, `hygiene --titles` remains the read-only combined
+title/reference-citation inventory above. When combined with `--review`,
+`--resolve`, or `--apply`, the same flag selects **publication-title
+migration**; reference citations are not migrated by those actions.
+
+### Reviewed historical title migration
+
+T3 of issue #97 reuses the proven historical hygiene decision boundary for
+publication titles:
+
+~~~bash
+bibreview --config bibreview.yml hygiene --titles --review
+bibreview --config bibreview.yml -v hygiene --titles --review
+bibreview --config bibreview.yml hygiene --titles --resolve
+bibreview --config bibreview.yml --dry-run hygiene --titles --apply
+bibreview --config bibreview.yml hygiene --titles --apply
+~~~
+
+The review is derived from the current canonical bibliography on every run.
+Only findings that need a decision are included: deterministic normalizations
+that actually change the title and normalizer refusals. Existing valid TeX and
+other deterministic no-op findings remain inventory signals only.
+
+`hygiene --titles --resolve` stores decisions in the separate
+`title-hygiene-resolutions.json` file. Deterministic proposals may be accepted,
+rejected, customized, deferred, or used to stop/resume the session. A refused
+title has no automatic replacement and therefore requires an explicit custom
+value, rejection, or defer.
+
+`hygiene --titles --apply` requires complete decisions and empty staging,
+rechecks the exact current canonical title, and writes accepted/custom
+publication replacements only to `collected.json`. It changes the `title`
+field only: the publication UUID and existing `permalink` are preserved
+exactly. Canonical promotion still requires an explicit `bibreview merge`.
 
 ### Reviewed historical abstract migration
 

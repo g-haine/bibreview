@@ -25,20 +25,21 @@ from .storage import (
 
 @dataclass(frozen=True)
 class HygieneApplyChange:
-    """One accepted/custom abstract migration staged for ordinary merge."""
+    """One accepted/custom historical hygiene migration staged for ordinary merge."""
 
     publication_id: str
     doi: str
     title: str
     decision: str
     value: str
+    field: str = "abstract"
 
     def data(self) -> dict[str, Any]:
         return {
             "publication_id": self.publication_id,
             "doi": self.doi,
             "title": self.title,
-            "field": "abstract",
+            "field": self.field,
             "decision": self.decision,
             "value": self.value,
         }
@@ -60,7 +61,7 @@ class ProjectHygieneApplyPlan:
     def summary(self) -> str:
         counts = hygiene_resolution_counts(self.state)
         return (
-            "Canonical abstract hygiene application\n"
+            f"Canonical {self.state.field} hygiene application\n"
             f"  Proposals             : {self.state.total_proposals}\n"
             f"  Accepted              : {counts['accepted']}\n"
             f"  Custom                : {counts['custom']}\n"
@@ -72,6 +73,7 @@ class ProjectHygieneApplyPlan:
     def data(self) -> dict[str, Any]:
         counts = hygiene_resolution_counts(self.state)
         return {
+            "field": self.state.field,
             "proposals": self.state.total_proposals,
             "accepted": counts["accepted"],
             "custom": counts["custom"],
@@ -84,10 +86,30 @@ class ProjectHygieneApplyPlan:
         }
 
 
+def _publication_field_value(publication, field: str) -> str:
+    if field == "abstract":
+        return publication.abstract
+    if field == "title":
+        return publication.title
+    raise ProjectStateError(f"unsupported hygiene application field: {field}")
+
+
+def _replace_publication_field(publication, field: str, value: str):
+    if field == "abstract":
+        return replace(publication, abstract=value)
+    if field == "title":
+        # Existing permalinks are intentionally preserved. Historical title
+        # hygiene must never regenerate or rewrite a canonical URL.
+        return replace(publication, title=value)
+    raise ProjectStateError(f"unsupported hygiene application field: {field}")
+
+
 def plan_project_hygiene_apply(
     config: BibReviewConfig,
+    *,
+    field: str = "abstract",
 ) -> ProjectHygieneApplyPlan:
-    """Stage only explicitly accepted/custom historical abstract migrations."""
+    """Stage only explicitly accepted/custom historical hygiene migrations."""
     staged = (
         read_bibliography(config.paths.collected)
         if config.paths.collected.exists()
@@ -99,7 +121,7 @@ def plan_project_hygiene_apply(
             "merge the existing batch before applying hygiene decisions"
         )
 
-    review = project_hygiene_migration_review(config)
+    review = project_hygiene_migration_review(config, field=field)
     state = load_project_hygiene_resolutions(config, review)
     counts = hygiene_resolution_counts(state)
     if counts["deferred"] or counts["unresolved"]:
@@ -127,9 +149,10 @@ def plan_project_hygiene_apply(
             raise ProjectStateError(
                 f"{proposal.publication_id}: canonical publication is missing"
             )
-        if publication.abstract != proposal.current_value:
+        current_value = _publication_field_value(publication, proposal.field)
+        if current_value != proposal.current_value:
             raise ProjectStateError(
-                f"{proposal.key}: stale proposal; canonical abstract changed"
+                f"{proposal.key}: stale proposal; canonical {proposal.field} changed"
             )
 
         decision = decisions[proposal.key]
@@ -149,17 +172,18 @@ def plan_project_hygiene_apply(
         if not isinstance(value, str) or not value.strip():
             raise ProjectStateError(
                 f"{proposal.key}: accepted/custom decision has no meaningful "
-                "resolved abstract"
+                f"resolved {proposal.field}"
             )
-        if value == publication.abstract:
+        if value == current_value:
             raise ProjectStateError(
                 f"{proposal.key}: accepted/custom decision does not change "
-                "the canonical abstract; reject the proposal instead"
+                f"the canonical {proposal.field}; reject the proposal instead"
             )
 
-        updated[proposal.publication_id] = replace(
+        updated[proposal.publication_id] = _replace_publication_field(
             publication,
-            abstract=value,
+            proposal.field,
+            value,
         )
         changed_ids.append(proposal.publication_id)
         changes.append(
@@ -169,6 +193,7 @@ def plan_project_hygiene_apply(
                 title=publication.title,
                 decision=decision.decision,
                 value=value,
+                field=proposal.field,
             )
         )
 

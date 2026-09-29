@@ -1,4 +1,4 @@
-"""Project-level canonical abstract hygiene orchestration."""
+"""Project-level canonical hygiene inventory and reviewed migration orchestration."""
 
 from __future__ import annotations
 
@@ -14,12 +14,16 @@ from .hygiene import (
     scan_title_reference_hygiene,
 )
 from .structured_abstract import normalize_structured_abstract
+from .structured_title import normalize_structured_title
 from .storage import read_bibliography
+
+
+_MIGRATION_FIELDS = frozenset({"abstract", "title"})
 
 
 @dataclass(frozen=True)
 class HygieneMigrationProposal:
-    """One historical canonical abstract prepared for explicit human review."""
+    """One historical canonical field prepared for explicit human review."""
 
     publication_id: str
     doi: str
@@ -29,17 +33,18 @@ class HygieneMigrationProposal:
     proposed_value: str
     review_required: bool
     reason: str
+    field: str = "abstract"
 
     @property
     def key(self) -> str:
-        return f"{self.publication_id}:abstract"
+        return f"{self.publication_id}:{self.field}"
 
     def data(self) -> dict[str, Any]:
         return {
             "publication_id": self.publication_id,
             "doi": self.doi,
             "title": self.title,
-            "field": "abstract",
+            "field": self.field,
             "families": list(self.families),
             "current_value": self.current_value,
             "proposed_value": self.proposed_value,
@@ -53,8 +58,17 @@ class HygieneMigrationReview:
     """Read-only migration proposals derived from the current canonical bibliography."""
 
     scanned_publications: int
-    suspicious_abstracts: int
+    suspicious_values: int
     proposals: tuple[HygieneMigrationProposal, ...]
+    field: str = "abstract"
+
+    @property
+    def suspicious_abstracts(self) -> int:
+        return self.suspicious_values if self.field == "abstract" else 0
+
+    @property
+    def suspicious_titles(self) -> int:
+        return self.suspicious_values if self.field == "title" else 0
 
     @property
     def deterministic_proposals(self) -> int:
@@ -64,23 +78,43 @@ class HygieneMigrationReview:
     def review_required(self) -> int:
         return sum(item.review_required for item in self.proposals)
 
+    @property
+    def preserved_no_change(self) -> int:
+        """Return hygiene findings intentionally excluded from migration."""
+        return max(0, self.suspicious_values - len(self.proposals))
+
     def summary(self) -> str:
+        if self.field == "abstract":
+            return (
+                "Canonical abstract hygiene migration review\n"
+                f"  Publications scanned     : {self.scanned_publications}\n"
+                f"  Suspicious abstracts     : {self.suspicious_values}\n"
+                f"  Deterministic proposals  : {self.deterministic_proposals}\n"
+                f"  Review required          : {self.review_required}"
+            )
         return (
-            "Canonical abstract hygiene migration review\n"
+            "Canonical title hygiene migration review\n"
             f"  Publications scanned     : {self.scanned_publications}\n"
-            f"  Suspicious abstracts     : {self.suspicious_abstracts}\n"
+            f"  Titles with signals      : {self.suspicious_values}\n"
+            f"  Preserved/no change      : {self.preserved_no_change}\n"
             f"  Deterministic proposals  : {self.deterministic_proposals}\n"
             f"  Review required          : {self.review_required}"
         )
 
     def data(self) -> dict[str, Any]:
-        return {
+        data: dict[str, Any] = {
+            "field": self.field,
             "scanned_publications": self.scanned_publications,
-            "suspicious_abstracts": self.suspicious_abstracts,
             "deterministic_proposals": self.deterministic_proposals,
             "review_required": self.review_required,
             "proposals": [item.data() for item in self.proposals],
         }
+        if self.field == "abstract":
+            data["suspicious_abstracts"] = self.suspicious_values
+        else:
+            data["titles_with_hygiene_signals"] = self.suspicious_values
+            data["preserved_no_change"] = self.preserved_no_change
+        return data
 
 
 def project_abstract_hygiene(config: BibReviewConfig) -> AbstractHygieneReport:
@@ -99,16 +133,42 @@ def project_title_reference_hygiene(
 
 def project_hygiene_migration_review(
     config: BibReviewConfig,
+    *,
+    field: str = "abstract",
 ) -> HygieneMigrationReview:
-    """Derive migration proposals from the current canonical bibliography only."""
+    """Derive field migration proposals from the current canonical bibliography."""
+    if field not in _MIGRATION_FIELDS:
+        raise ValueError(f"unsupported hygiene migration field: {field}")
+
     publications = read_bibliography(config.paths.bibliography)
-    report = scan_abstract_hygiene(publications)
     by_id = {publication.id: publication for publication in publications}
 
+    if field == "abstract":
+        report = scan_abstract_hygiene(publications)
+        findings = report.findings
+        suspicious = report.suspicious_abstracts
+    else:
+        report = scan_title_reference_hygiene(publications)
+        findings = report.title_findings
+        suspicious = report.suspicious_titles
+
     proposals: list[HygieneMigrationProposal] = []
-    for finding in report.findings:
+    for finding in findings:
         publication = by_id[finding.publication_id]
-        result = normalize_structured_abstract(publication.abstract)
+        current_value = (
+            publication.abstract if field == "abstract" else publication.title
+        )
+        result = (
+            normalize_structured_abstract(current_value)
+            if field == "abstract"
+            else normalize_structured_title(current_value)
+        )
+
+        # Existing valid TeX and other deterministic no-op findings are inventory
+        # signals, not historical migration decisions.
+        if field == "title" and result.deterministic and not result.changed:
+            continue
+
         deterministic = result.deterministic and result.changed
         proposals.append(
             HygieneMigrationProposal(
@@ -116,7 +176,7 @@ def project_hygiene_migration_review(
                 doi=publication.doi or "",
                 title=publication.title,
                 families=finding.families,
-                current_value=publication.abstract,
+                current_value=current_value,
                 proposed_value=result.normalized if deterministic else "",
                 review_required=not deterministic,
                 reason=(
@@ -128,13 +188,15 @@ def project_hygiene_migration_review(
                         else "no-deterministic-change"
                     )
                 ),
+                field=field,
             )
         )
 
     return HygieneMigrationReview(
         scanned_publications=report.scanned_publications,
-        suspicious_abstracts=report.suspicious_abstracts,
+        suspicious_values=suspicious,
         proposals=tuple(proposals),
+        field=field,
     )
 
 
@@ -147,8 +209,13 @@ def format_project_hygiene_migration_review(
     lines = [review.summary()]
     if not verbose:
         if review.proposals:
+            command = (
+                "hygiene --review"
+                if review.field == "abstract"
+                else "hygiene --titles --review"
+            )
             lines.append(
-                "Use -v hygiene --review to inspect current/proposed abstracts."
+                f"Use -v {command} to inspect current/proposed {review.field}s."
             )
         return "\n".join(lines)
 
@@ -158,6 +225,7 @@ def format_project_hygiene_migration_review(
                 "",
                 f"[{index}/{len(review.proposals)}] "
                 f"{proposal.doi or proposal.publication_id} — {proposal.title}",
+                f"  Field: {proposal.field}",
                 "  Families: " + ", ".join(proposal.families),
                 f"  Normalizer: {proposal.reason}",
                 "  Current:",

@@ -1,6 +1,6 @@
 # Installation
 
-BibReview **v1.6.31** requires **Python 3.12 or newer** and exposes the
+BibReview **v1.6.32** requires **Python 3.12 or newer** and exposes the
 **bibreview** command-line program.
 
 For normal use, install an exact release tag. Pinning the version keeps local
@@ -30,7 +30,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 
 python -m pip install --upgrade pip
-python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.31"
+python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.32"
 
 bibreview --version
 ~~~
@@ -44,7 +44,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 
 python -m pip install --upgrade pip
-python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.31"
+python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.32"
 
 bibreview --version
 ~~~
@@ -61,7 +61,7 @@ py -3.12 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 
 python -m pip install --upgrade pip
-python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.31"
+python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.32"
 
 bibreview --version
 ~~~
@@ -82,7 +82,7 @@ A different release tag or exact commit can be installed explicitly:
 python -m pip install "git+https://github.com/g-haine/bibreview.git@<TAG-OR-COMMIT>"
 ~~~
 
-For production automation, prefer an exact release such as **v1.6.31** or an
+For production automation, prefer an exact release such as **v1.6.32** or an
 exact commit. Avoid installing an unpinned **main**.
 
 ## Development checkout
