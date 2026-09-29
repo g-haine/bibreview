@@ -228,11 +228,11 @@ fluid-structure, energy
             references=(
                 SiteReference(
                     doi=None,
-                    citation=r"Finite-time \\(H_2\\) control",
+                    citation=r"Finite-time \(H_2\) control",
                 ),
                 SiteReference(
                     doi=None,
-                    citation=r"Display \\[H_2\\] form",
+                    citation=r"Display \[H_2\] form",
                 ),
             )
         )
@@ -242,15 +242,15 @@ fluid-structure, energy
             options=options(),
         )[0].content
 
-        self.assertIn(r"- Finite-time \\\\(H_2\\\\) control", content)
-        self.assertIn(r"- Display \\\\[H_2\\\\] form", content)
+        self.assertIn(r"- Finite-time \\(H_2\\) control", content)
+        self.assertIn(r"- Display \\[H_2\\] form", content)
 
     def test_reference_citation_does_not_overescape_existing_markdown_delimiters(self) -> None:
         item = publication(
             references=(
                 SiteReference(
                     doi=None,
-                    citation=r"Already \\\\(H_2\\\\) escaped",
+                    citation=r"Already \\(H_2\\) escaped",
                 ),
             )
         )
@@ -260,8 +260,8 @@ fluid-structure, energy
             options=options(),
         )[0].content
 
-        self.assertIn(r"- Already \\\\(H_2\\\\) escaped", content)
-        self.assertNotIn(r"- Already \\\\\\(H_2", content)
+        self.assertIn(r"- Already \\(H_2\\) escaped", content)
+        self.assertNotIn(r"- Already \\\(H_2", content)
 
     def test_reference_citations_escape_literal_liquid_openers(self) -> None:
         item = publication(
