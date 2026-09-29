@@ -2,6 +2,38 @@
 
 All notable BibReview releases are documented here.
 
+## 1.6.31 — 2026-09-29
+
+### Completed reference review workflow
+
+- expose detailed reference diffs for human inspection without weakening the
+  canonical/provider safety boundary;
+- align structural reference drift through stable DOI anchors, mutually unique
+  DOI-less evidence, and semantically invariant duplicate DOI groups;
+- add deterministic `references --apply-safe` staging while preserving existing
+  canonical reference objects during safe provider-only expansion;
+- report residual human review separately from deterministic policy outcomes;
+- add persistent `references --resolve` / `references --apply` decisions and a
+  durable resolution ledger;
+- persist deterministic outcomes and support explicit reconciliation of
+  historically applied reference batches.
+
+### Jekyll reference rendering hardening
+
+- escape literal Liquid openers in rendered reference citation text using the
+  same reversible raw guards already used for other page-body content;
+- keep canonical/provider citation values and reference fingerprints unchanged:
+  this is a rendering-only safeguard;
+- prevent Jekyll/Liquid from interpreting TeX fragments such as
+  `{{\\rm curl}}` or `{{\\mathcal{H}_2} ... }}` as Liquid expressions.
+
+### Validation
+
+- add regression coverage for literal Liquid openers inside rendered reference
+  citations, including the two TeX shapes observed in the PHRAISE final
+  reference-review batch;
+- retain the existing compile and full unittest validation in CI.
+
 ## 1.6.30 — 2026-09-24
 
 ### DOI citation response hardening

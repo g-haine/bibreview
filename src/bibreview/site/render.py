@@ -236,7 +236,7 @@ def _publication_keyword_text(
 
 
 def _render_publication_reference(reference) -> str | None:
-    citation = reference.citation
+    citation = _escape_liquid_openers(reference.citation)
     if reference.doi is None:
         return f"- {citation}" if citation else None
     if reference.permalink:

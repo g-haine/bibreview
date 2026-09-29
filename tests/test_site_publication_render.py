@@ -210,6 +210,39 @@ fluid-structure, energy
         )
         self.assertNotIn("[[:space:]]", content)
 
+    def test_reference_citations_escape_literal_liquid_openers(self) -> None:
+        item = publication(
+            references=(
+                SiteReference(
+                    doi=None,
+                    citation=(
+                        r"Optimization via ${{\\mathcal{H}_2} "
+                        r"\\otimes {\\mathcal{L}_2}}$"
+                    ),
+                ),
+                SiteReference(
+                    doi=None,
+                    citation=r"Model problem in $H({{\\rm curl}})$.",
+                ),
+            )
+        )
+        content = render_jekyll_publication_posts(
+            model(item),
+            {"pub-id": "@article{x}\\n"},
+            options=options(),
+        )[0].content
+        self.assertIn(
+            r"- Optimization via ${% raw %}{{{% endraw %}\\mathcal{H}_2} "
+            r"\\otimes {\\mathcal{L}_2}}$",
+            content,
+        )
+        self.assertIn(
+            r"- Model problem in $H({% raw %}{{{% endraw %}\\rm curl}})$.",
+            content,
+        )
+        self.assertNotIn(r"{{\\mathcal{H}", content)
+        self.assertNotIn(r"{{\\rm curl", content)
+
     def test_front_matter_title_keeps_literal_braces_as_data(self) -> None:
         item = replace(
             publication(),
