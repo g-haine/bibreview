@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import json
 from pathlib import Path
 
 from . import __version__
@@ -14,6 +15,31 @@ from .storage import atomic_write
 
 class ProjectArxivError(ValueError):
     """Raised when the configured arXiv module cannot run safely."""
+
+
+def _arxiv_cache_changed(current: bytes | None, proposed: bytes) -> bool:
+    """Return whether a proposed cache differs beyond its generation time."""
+    if current is None:
+        return True
+
+    try:
+        current_payload = json.loads(current)
+        proposed_payload = json.loads(proposed)
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return current != proposed
+
+    if not isinstance(current_payload, dict) or not isinstance(
+        proposed_payload, dict
+    ):
+        return current != proposed
+    if "generated_at" not in current_payload or "generated_at" not in proposed_payload:
+        return current != proposed
+
+    current_without_timestamp = dict(current_payload)
+    proposed_without_timestamp = dict(proposed_payload)
+    current_without_timestamp.pop("generated_at")
+    proposed_without_timestamp.pop("generated_at")
+    return current_without_timestamp != proposed_without_timestamp
 
 
 @dataclass(frozen=True)
@@ -75,14 +101,16 @@ def plan_project_arxiv(
         generated_at=generated_at or datetime.now(timezone.utc),
         entries=entries,
     )
-    content = arxiv_feed_json_bytes(feed)
+    proposed = arxiv_feed_json_bytes(feed)
     output = config.arxiv.output
     current = output.read_bytes() if output.exists() else None
+    changed = _arxiv_cache_changed(current, proposed)
+    content = proposed if changed or current is None else current
     return ProjectArxivPlan(
         output=output,
         content=content,
         entry_count=len(entries),
-        changed=current != content,
+        changed=changed,
     )
 
 

@@ -37,10 +37,13 @@ site:
 
 
 class FakeArxivProvider:
+    def __init__(self, *, title: str = "Fluid-structure example"):
+        self.title = title
+
     def fetch(self):
         return (
             ArxivEntry(
-                title="Fluid-structure example",
+                title=self.title,
                 summary="Summary",
                 url="https://arxiv.org/abs/2609.12345v2",
                 authors=("Ada Lovelace", "Emmy Noether"),
@@ -101,12 +104,60 @@ class ProjectArxivTests(unittest.TestCase):
             ],
         )
 
+        original = plan.output.read_bytes()
+        later = self.generated_at.replace(minute=31)
         second = plan_project_arxiv(
+            self.config,
+            provider=FakeArxivProvider(),
+            generated_at=later,
+        )
+        self.assertFalse(second.changed)
+        self.assertEqual(second.content, original)
+
+        apply_project_arxiv(second)
+        self.assertEqual(plan.output.read_bytes(), original)
+
+    def test_real_entry_change_refreshes_timestamp(self):
+        first = plan_project_arxiv(
             self.config,
             provider=FakeArxivProvider(),
             generated_at=self.generated_at,
         )
-        self.assertFalse(second.changed)
+        apply_project_arxiv(first)
+
+        later = self.generated_at.replace(minute=31)
+        second = plan_project_arxiv(
+            self.config,
+            provider=FakeArxivProvider(title="Updated fluid-structure example"),
+            generated_at=later,
+        )
+        self.assertTrue(second.changed)
+
+        apply_project_arxiv(second)
+        payload = json.loads(second.output.read_text(encoding="utf-8"))
+        self.assertEqual(payload["generated_at"], "2026-09-18T09:31:00Z")
+        self.assertEqual(
+            payload["papers"][0]["title"],
+            "Updated fluid-structure example",
+        )
+
+    def test_malformed_existing_cache_is_replaced(self):
+        output = self.config.arxiv.output
+        assert output is not None
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_bytes(b"not-json")
+
+        plan = plan_project_arxiv(
+            self.config,
+            provider=FakeArxivProvider(),
+            generated_at=self.generated_at,
+        )
+        self.assertTrue(plan.changed)
+
+        apply_project_arxiv(plan)
+        payload = json.loads(output.read_text(encoding="utf-8"))
+        self.assertEqual(payload["generated_at"], "2026-09-18T09:30:00Z")
+        self.assertEqual(len(payload["papers"]), 1)
 
     def test_planning_is_read_only(self):
         plan = plan_project_arxiv(

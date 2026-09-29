@@ -2,6 +2,26 @@
 
 All notable BibReview releases are documented here.
 
+## 1.6.37 — 2026-09-29
+
+### Stable arXiv cache no-op semantics
+
+- fix issue #126 so repeated arXiv refreshes do not rewrite the cache when the
+  fetched paper payload is unchanged and only the newly generated timestamp
+  differs;
+- preserve the existing cache bytes and `generated_at` value on semantic no-op
+  refreshes;
+- continue updating `generated_at` when the paper payload actually changes;
+- treat missing, malformed, or structurally incompatible existing cache content
+  as replaceable rather than silently accepting it.
+
+### PHRAISE validation
+
+- motivated by PHRAISE PR #116, which contained only a `generated_at` change
+  immediately after a successful arXiv update;
+- add regression coverage for later-timestamp no-ops, genuine entry changes,
+  and malformed existing cache recovery.
+
 ## 1.6.36 — 2026-09-29
 
 ### Prevent future structured metadata contamination
