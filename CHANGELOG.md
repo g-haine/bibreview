@@ -2,6 +2,20 @@
 
 All notable BibReview releases are documented here.
 
+## 1.6.35 — 2026-09-29
+
+### Jekyll / MathJax delimiter rendering
+
+- fix publication-title front matter so MathJax `\(...\)` delimiters parse
+  from YAML with exactly one backslash instead of two;
+- add a parsed-front-matter regression test rather than checking only generated
+  source text;
+- preserve existing `\(...\)` and `\[...\]` citation delimiters across
+  Markdown/Kramdown by escaping only the delimiter backslashes at render time;
+- keep internal TeX commands such as `\infty`, `\mathcal`, and `\lambda`
+  untouched;
+- leave canonical titles, citations, identifiers, and permalinks unchanged.
+
 ## 1.6.34 — 2026-09-29
 
 ### Reviewed residual reference-citation hygiene migration

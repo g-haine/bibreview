@@ -11,7 +11,14 @@ feed.
 BibReview is designed so that provider output remains inspectable and ambiguous
 decisions remain human decisions.
 
-Current stable release: **v1.6.34**.
+Current stable release: **v1.6.35**.
+
+BibReview v1.6.35 fixes Jekyll/MathJax delimiter rendering discovered during
+the PHRAISE T4 rollout. Publication titles in YAML front matter now parse to a
+single `\(...\)` delimiter pair instead of retaining doubled backslashes,
+while reference citations rendered through Markdown preserve those delimiters
+across Kramdown. Canonical bibliography values are unchanged by this patch.
+
 
 ## What BibReview provides
 
