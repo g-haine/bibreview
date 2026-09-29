@@ -350,27 +350,38 @@ replacement.
 
 ### Historical hygiene resolution state
 
-Historical canonical abstract migration deliberately does **not** persist a
-proposal file. `hygiene --review` derives proposals directly from the current
-canonical bibliography every time. Only human decisions are stored:
+Historical canonical hygiene migration deliberately does **not** persist a
+proposal file. Reviews are derived directly from the current canonical
+bibliography every time. Human decisions are stored separately by field:
 
 ~~~text
-data/audit/hygiene-resolutions.json
+data/audit/hygiene-resolutions.json        historical abstract decisions
+data/audit/title-hygiene-resolutions.json  publication-title decisions
 ~~~
 
-The resolution file contains a SHA-256 fingerprint of the exact derived review,
+The historical abstract path and schema remain backward-compatible: a
+pre-v1.6.32 abstract resolution file with no explicit `field` member is read as
+`abstract`.
+
+Each resolution file contains a SHA-256 fingerprint of the exact derived review,
 the total proposal count, and accepted/custom/rejected/deferred decisions. The
-fingerprint covers each publication ID/DOI, exact current canonical abstract,
+fingerprint covers each publication ID/DOI, exact current canonical field value,
 proposed normalized value, review-required flag, normalizer reason, and detected
-markup families. If the canonical abstract or normalization state changes,
+markup families. If the canonical value or normalization state changes,
 BibReview refuses to reuse the stale resolution file.
 
-Review-required proposals have no automatic proposed value and cannot be
-accepted directly. An explicit custom value may be staged after human review.
-`hygiene --apply` requires complete decisions and empty existing staging,
-rechecks the exact canonical abstract, and writes only accepted/custom
-publication replacements into `collected.json`. Canonical
-`bibliography.json` remains untouched until the ordinary `merge` command.
+For title migration, deterministic inventory findings that produce no actual
+change (for example already-valid TeX) are not migration proposals. Refused
+values remain review-required and have no automatic proposed value.
+
+Review-required proposals cannot be accepted directly. An explicit custom value
+may be staged after human review. `hygiene --apply` and
+`hygiene --titles --apply` require complete decisions and empty existing
+staging, recheck the exact canonical field, and write only accepted/custom
+publication replacements into `collected.json`. Title application replaces the
+title only and preserves the existing publication UUID and permalink exactly.
+Canonical `bibliography.json` remains untouched until the ordinary `merge`
+command.
 
 ### Backfill proposal and resolution state
 

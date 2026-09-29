@@ -2,6 +2,34 @@
 
 All notable BibReview releases are documented here.
 
+## 1.6.32 — 2026-09-29
+
+### Reviewed publication-title hygiene migration
+
+- implement issue #97 T3 by extending the proven historical hygiene
+  review/resolve/apply boundary to canonical publication titles;
+- support `hygiene --titles --review`, `--resolve`, and `--apply` while
+  preserving the existing read-only `hygiene --titles` inventory;
+- derive title proposals directly from `normalize_structured_title()`;
+- exclude already-valid TeX and other deterministic no-op findings from the
+  migration decision queue;
+- persist title decisions separately in
+  `title-hygiene-resolutions.json`, without colliding with historical abstract
+  decisions;
+- preserve backward compatibility with pre-v1.6.32 abstract resolution files
+  that do not contain an explicit field marker;
+- stage only accepted/custom title changes through ordinary `collected.json`
+  and `merge`;
+- preserve publication UUIDs and existing permalinks exactly when historical
+  titles change.
+
+### Validation
+
+- cover read-only title review, distinct inventory/migration CLI behavior,
+  resumable title decisions, separate resolution state, legacy abstract-state
+  compatibility, staging, and permalink stability;
+- retain compilation and the full unittest suite in CI.
+
 ## 1.6.31 — 2026-09-29
 
 ### Completed reference review workflow

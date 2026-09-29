@@ -212,7 +212,7 @@ def _parser() -> argparse.ArgumentParser:
     hygiene_actions.add_argument(
         "--resolve",
         action="store_true",
-        help="Interactively resolve historical abstract migration proposals",
+        help="Interactively resolve historical field migration proposals",
     )
     hygiene_actions.add_argument(
         "--apply",

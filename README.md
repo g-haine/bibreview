@@ -11,7 +11,7 @@ feed.
 BibReview is designed so that provider output remains inspectable and ambiguous
 decisions remain human decisions.
 
-Current stable release: **v1.6.31**.
+Current stable release: **v1.6.32**.
 
 ## What BibReview provides
 
@@ -42,7 +42,7 @@ BibReview currently requires **Python 3.12 or newer**.
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.31"
+python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.32"
 
 bibreview --version
 ~~~
@@ -126,7 +126,7 @@ Full details: [command reference](docs/commands.md).
 
 ### Reference refresh inventory
 
-BibReview v1.6.31 adds the missing **second citation round** to the read-only
+BibReview v1.6.32 adds the missing **second citation round** to the read-only
 `bibreview references` workflow. Parent CrossRef records still define the
 ordered reference structure. BibReview then collects every cited DOI across the
 whole campaign batch, de-duplicates them, retrieves their CrossRef metadata in
@@ -140,7 +140,7 @@ The local renderer uses `citeproc-py` plus the single bundled
 its upstream provenance/license notice under `bibreview/data/styles/`; the
 full multi-style package is not required.
 
-Because v1.6.31 changes reference-report semantics materially, the references
+Because v1.6.32 changes reference-report semantics materially, the references
 report schema is bumped to **v2**. A v1.6.28 pilot campaign/report is refused
 rather than silently mixed with two-round results; archive both files and start
 a fresh campaign.
@@ -259,6 +259,28 @@ preserved, the small semantic MathML subset observed in PHRAISE can be converted
 losslessly to inline TeX, and script markup / malformed structures / replacement
 characters remain review-required. No canonical title or citation is migrated
 automatically in v1.6.26.
+
+BibReview v1.6.32 adds the reviewed T3 migration for **publication titles**
+without changing the title/reference inventory behavior:
+
+~~~bash
+bibreview hygiene --titles --review
+bibreview -v hygiene --titles --review
+bibreview hygiene --titles --resolve
+bibreview --dry-run hygiene --titles --apply
+bibreview hygiene --titles --apply
+bibreview merge
+~~~
+
+Only title findings that require a decision enter the migration review:
+deterministic normalizations that actually change the title, plus values refused
+by the normalizer. Existing valid TeX and other deterministic no-op findings
+remain visible in the inventory but are not turned into migration decisions.
+Title decisions are persisted separately in
+`title-hygiene-resolutions.json`, so they cannot collide with the historical
+abstract ledger. Accepted/custom changes are staged through `collected.json`
+and **preserve the existing publication UUID and permalink exactly**. Reference
+citation migration remains out of scope for T3 and follows later as T4.
 
 BibReview v1.6.25 starts the separate title/reference hygiene campaign with a
 strictly read-only T1 inventory:
