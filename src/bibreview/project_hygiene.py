@@ -58,9 +58,17 @@ class HygieneMigrationReview:
     """Read-only migration proposals derived from the current canonical bibliography."""
 
     scanned_publications: int
-    suspicious_abstracts: int
+    suspicious_values: int
     proposals: tuple[HygieneMigrationProposal, ...]
     field: str = "abstract"
+
+    @property
+    def suspicious_abstracts(self) -> int:
+        return self.suspicious_values if self.field == "abstract" else 0
+
+    @property
+    def suspicious_titles(self) -> int:
+        return self.suspicious_values if self.field == "title" else 0
 
     @property
     def deterministic_proposals(self) -> int:
@@ -73,21 +81,21 @@ class HygieneMigrationReview:
     @property
     def preserved_no_change(self) -> int:
         """Return hygiene findings intentionally excluded from migration."""
-        return max(0, self.suspicious_abstracts - len(self.proposals))
+        return max(0, self.suspicious_values - len(self.proposals))
 
     def summary(self) -> str:
         if self.field == "abstract":
             return (
                 "Canonical abstract hygiene migration review\n"
                 f"  Publications scanned     : {self.scanned_publications}\n"
-                f"  Suspicious abstracts     : {self.suspicious_abstracts}\n"
+                f"  Suspicious abstracts     : {self.suspicious_values}\n"
                 f"  Deterministic proposals  : {self.deterministic_proposals}\n"
                 f"  Review required          : {self.review_required}"
             )
         return (
             "Canonical title hygiene migration review\n"
             f"  Publications scanned     : {self.scanned_publications}\n"
-            f"  Titles with signals      : {self.suspicious_abstracts}\n"
+            f"  Titles with signals      : {self.suspicious_values}\n"
             f"  Preserved/no change      : {self.preserved_no_change}\n"
             f"  Deterministic proposals  : {self.deterministic_proposals}\n"
             f"  Review required          : {self.review_required}"
@@ -102,9 +110,9 @@ class HygieneMigrationReview:
             "proposals": [item.data() for item in self.proposals],
         }
         if self.field == "abstract":
-            data["suspicious_abstracts"] = self.suspicious_abstracts
+            data["suspicious_abstracts"] = self.suspicious_values
         else:
-            data["titles_with_hygiene_signals"] = self.suspicious_abstracts
+            data["titles_with_hygiene_signals"] = self.suspicious_values
             data["preserved_no_change"] = self.preserved_no_change
         return data
 
@@ -186,7 +194,7 @@ def project_hygiene_migration_review(
 
     return HygieneMigrationReview(
         scanned_publications=report.scanned_publications,
-        suspicious_abstracts=suspicious,
+        suspicious_values=suspicious,
         proposals=tuple(proposals),
         field=field,
     )

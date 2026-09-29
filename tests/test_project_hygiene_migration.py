@@ -163,7 +163,7 @@ class ProjectHygieneMigrationTests(unittest.TestCase):
 
         self.assertEqual(review.field, "title")
         self.assertEqual(review.scanned_publications, 3)
-        self.assertEqual(review.suspicious_abstracts, 3)
+        self.assertEqual(review.suspicious_titles, 3)
         self.assertEqual(review.preserved_no_change, 1)
         self.assertEqual(review.deterministic_proposals, 1)
         self.assertEqual(review.review_required, 1)
