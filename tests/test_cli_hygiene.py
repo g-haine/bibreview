@@ -243,6 +243,127 @@ class HygieneCliTests(unittest.TestCase):
         self.assertEqual(staged[0].title, "A Port‐Hamiltonian Approach")
         self.assertEqual(staged[0].permalink, "stable-title-url")
 
+    def test_reference_citation_review_reports_safe_and_human_cases(self) -> None:
+        item = Publication(
+            id=new_publication_id(),
+            identifiers={"doi": "10.1/citation-review"},
+            title="Citation review",
+            authors=(Author(literal="Ada Lovelace"),),
+            references=(
+                Reference(citation="A &amp; B"),
+                Reference(citation="H<sub>2</sub> control"),
+                Reference(citation=r"Already \(H_2\)"),
+            ),
+        )
+        write_bibliography(self.config.paths.bibliography, (item,))
+        before = self.snapshot()
+
+        code, stdout, stderr = self.run_cli(
+            "hygiene",
+            "--citations",
+            "--review",
+        )
+
+        self.assertEqual(code, 0, stderr)
+        self.assertIn(
+            "Canonical reference-citation hygiene migration review",
+            stdout,
+        )
+        self.assertIn("Citations with signals   : 3", stdout)
+        self.assertIn("Preserved/no change      : 1", stdout)
+        self.assertIn("Deterministic proposals  : 1", stdout)
+        self.assertIn("Review required          : 1", stdout)
+        self.assertEqual(before, self.snapshot())
+
+    def test_reference_citation_apply_safe_stages_only_deterministic_changes(self) -> None:
+        item = Publication(
+            id=new_publication_id(),
+            identifiers={"doi": "10.1/citation-safe"},
+            title="Citation safe",
+            authors=(Author(literal="Ada Lovelace"),),
+            references=(
+                Reference(citation="A &amp; B"),
+                Reference(citation="H<sub>2</sub> control"),
+            ),
+        )
+        write_bibliography(self.config.paths.bibliography, (item,))
+        canonical_before = self.config.paths.bibliography.read_bytes()
+
+        code, stdout, stderr = self.run_cli(
+            "hygiene",
+            "--citations",
+            "--apply-safe",
+        )
+
+        self.assertEqual(code, 0, stderr)
+        self.assertIn("Deterministic proposals: 1", stdout)
+        self.assertIn("Review required        : 1", stdout)
+        self.assertIn("Changes to stage       : 1", stdout)
+        self.assertEqual(
+            self.config.paths.bibliography.read_bytes(),
+            canonical_before,
+        )
+        staged = read_bibliography(self.config.paths.collected)
+        self.assertEqual(staged[0].references[0].citation, "A & B")
+        self.assertEqual(
+            staged[0].references[1].citation,
+            "H<sub>2</sub> control",
+        )
+
+    def test_reference_citation_resolve_then_apply_custom_value(self) -> None:
+        item = Publication(
+            id=new_publication_id(),
+            identifiers={"doi": "10.1/citation-custom"},
+            title="Citation custom",
+            authors=(Author(literal="Ada Lovelace"),),
+            references=(
+                Reference(
+                    identifiers={"doi": "10.2/reference"},
+                    citation="H<sub>2</sub> control",
+                ),
+            ),
+        )
+        write_bibliography(self.config.paths.bibliography, (item,))
+
+        with patch(
+            "builtins.input",
+            side_effect=[r"f \(H_2\) control"],
+        ):
+            code, stdout, stderr = self.run_cli(
+                "hygiene",
+                "--citations",
+                "--resolve",
+            )
+
+        self.assertEqual(code, 0, stderr)
+        self.assertIn("Canonical reference-citation hygiene resolution", stdout)
+        self.assertIn("Custom     : 1", stdout)
+
+        review = project_hygiene_migration_review(
+            self.config,
+            field="reference-citation",
+        )
+        state = load_project_hygiene_resolutions(self.config, review)
+        self.assertEqual(state.decisions[0].decision, "custom")
+        self.assertTrue(
+            state.decisions[0].key.startswith(
+                f"{item.id}:reference-citation:doi:10.2/reference"
+            )
+        )
+
+        code, stdout, stderr = self.run_cli(
+            "hygiene",
+            "--citations",
+            "--apply",
+        )
+        self.assertEqual(code, 0, stderr)
+        self.assertIn("Changes to stage      : 1", stdout)
+        staged = read_bibliography(self.config.paths.collected)
+        self.assertEqual(
+            staged[0].references[0].citation,
+            r"\(H_2\) control",
+        )
+
     def test_hygiene_review_derives_proposals_without_writing_state(self) -> None:
         before = self.snapshot()
 
