@@ -119,7 +119,7 @@ class JekyllPublicationRendererTests(unittest.TestCase):
         self.assertEqual(
             rendered[0].content,
             """---
-title: "A \\\\\\\\( x \\\\\\\\) title"
+title: "A \\\\( x \\\\) title"
 date: 2025-05-10 00:00:00 +0100
 permalink: example-publication
 year: 2025
