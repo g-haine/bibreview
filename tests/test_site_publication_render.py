@@ -166,6 +166,27 @@ fluid-structure, energy
 """,
         )
 
+    def test_doi_only_reference_renders_without_empty_citation_separator(self) -> None:
+        item = publication(
+            references=(
+                SiteReference(
+                    doi="10.1234/identity-only",
+                    citation="",
+                ),
+            )
+        )
+        content = render_jekyll_publication_posts(
+            model(item),
+            {"pub-id": "@article{x}\n"},
+            options=options(),
+        )[0].content
+
+        self.assertIn(
+            "- [10.1234/identity-only](https://doi.org/10.1234/identity-only)",
+            content,
+        )
+        self.assertNotIn("-  -- [10.1234/identity-only]", content)
+
     def test_publication_mathjax_uses_post_escaping(self) -> None:
         content = render_jekyll_publication_posts(
             model(publication()),

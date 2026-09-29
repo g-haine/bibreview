@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 
 from bibreview.identity import IdentityError
-from bibreview.pipeline.collect import Enrichment, build_publication, collect, prepare_dois
+from bibreview.pipeline.collect import Enrichment, build_publication, collect, prepare_dois, scalar_metadata_values
 
 
 class FakeProvider:
@@ -55,7 +55,7 @@ class PrepareDoisTests(unittest.TestCase):
 
 class BuildPublicationTests(unittest.TestCase):
     def test_builds_canonical_publication_from_crossref(self):
-        data = message("Fluid <mml:math>x</mml:math> structure")
+        data = message("Fluid <mml:math><mml:mi>x</mml:mi></mml:math> structure")
         data["editor"] = [
             {
                 "given": "Grace",
@@ -82,8 +82,8 @@ class BuildPublicationTests(unittest.TestCase):
 
         self.assertEqual(publication.doi, "10.1/test")
         self.assertEqual(publication.identifiers["isbn"], "978-1-234")
-        # Verify generic metadata normalization: strip MathML tags, retain text content.
-        self.assertEqual(publication.title, "Fluid x structure")
+        # Structured title normalization preserves the mathematical semantics.
+        self.assertEqual(publication.title, r"Fluid \\(x\\) structure")
         self.assertEqual([(a.given, a.family) for a in publication.authors], [("Ada", "Lovelace")])
         self.assertEqual(
             [(editor.given, editor.family) for editor in publication.editors],
@@ -103,6 +103,126 @@ class BuildPublicationTests(unittest.TestCase):
         self.assertEqual(publication.references[0].citation, "Citation for 10.2/ref")
         self.assertEqual(publication.references[1].identifiers, {})
         self.assertEqual(publication.references[1].citation, "A, Title. (2020)")
+
+    def test_safe_structured_title_is_normalized_before_slug_generation(self):
+        provider = FakeProvider(
+            {"10.1/new": message("Adaptive <scp>H</scp>amiltonian systems")}
+        )
+
+        result = collect(["10.1/new"], provider=provider)
+
+        publication = result.publications[0]
+        self.assertEqual(publication.title, "Adaptive Hamiltonian systems")
+        self.assertEqual(publication.permalink, "adaptive-hamiltonian-systems")
+
+    def test_unsafe_structured_title_is_rejected_instead_of_flattened(self):
+        data = message(
+            "Stabilization of an airship<i>via</i>interconnection"
+        )
+
+        with self.assertRaisesRegex(
+            ValueError,
+            r"10\.1/test: unsafe structured title \(ambiguous-inline-boundary\)",
+        ):
+            build_publication("10.1/test", data, "unsafe-title")
+
+    def test_scalar_title_evidence_preserves_unsafe_provider_value(self):
+        data = message("Stabilisation and H<sub>∞</sub> control")
+
+        values = scalar_metadata_values("10.1/test", data, ("title",))
+
+        self.assertEqual(
+            values["title"],
+            "Stabilisation and H<sub>∞</sub> control",
+        )
+
+    def test_reference_citation_uses_structured_normalizer(self):
+        data = message()
+        data["reference"] = [
+            {"DOI": "10.2/ref", "unstructured": "Fallback citation"}
+        ]
+
+        publication = build_publication(
+            "10.1/test",
+            data,
+            "safe-reference",
+            citation_lookup=lambda doi: "Systems &amp; Control Letters",
+        )
+
+        self.assertEqual(
+            publication.references[0].citation,
+            "Systems & Control Letters",
+        )
+
+    def test_unsafe_doi_citation_falls_back_to_crossref_text(self):
+        data = message()
+        data["reference"] = [
+            {"DOI": "10.2/ref", "unstructured": "Fallback citation"}
+        ]
+
+        publication = build_publication(
+            "10.1/test",
+            data,
+            "reference-fallback",
+            citation_lookup=lambda doi: "H<sub>∞</sub> control",
+        )
+
+        self.assertEqual(publication.references[0].citation, "Fallback citation")
+
+    def test_unsafe_unstructured_reference_falls_back_to_structured_fields(self):
+        data = message()
+        data["reference"] = [
+            {
+                "DOI": "10.2/ref",
+                "unstructured": "H<sub>∞</sub> control",
+                "author": "Ada Lovelace",
+                "article-title": "Safe title",
+                "year": 2024,
+            }
+        ]
+
+        publication = build_publication(
+            "10.1/test",
+            data,
+            "structured-reference-fallback",
+            citation_lookup=lambda doi: "<sub/>",
+        )
+
+        self.assertEqual(
+            publication.references[0].citation,
+            "Ada Lovelace, Safe title. (2024)",
+        )
+
+    def test_doi_reference_with_no_safe_citation_keeps_identity_only(self):
+        data = message()
+        data["reference"] = [
+            {"DOI": "10.2/ref", "unstructured": "H<sub>∞</sub> control"}
+        ]
+
+        publication = build_publication(
+            "10.1/test",
+            data,
+            "doi-only-reference",
+            citation_lookup=lambda doi: "<sub/>",
+        )
+
+        self.assertEqual(len(publication.references), 1)
+        self.assertEqual(publication.references[0].identifiers["doi"], "10.2/ref")
+        self.assertEqual(publication.references[0].citation, "")
+
+    def test_non_doi_reference_with_no_safe_citation_is_rejected(self):
+        data = message()
+        data["reference"] = [
+            {"unstructured": "H<sub>∞</sub> control"}
+        ]
+
+        publication = build_publication(
+            "10.1/test",
+            data,
+            "rejected-reference",
+        )
+
+        self.assertEqual(publication.references, ())
 
     def test_article_number_fills_pages_when_crossref_page_is_missing(self):
         data = message()
