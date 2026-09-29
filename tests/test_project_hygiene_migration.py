@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import json
 from pathlib import Path
 import tempfile
 import unittest
@@ -233,6 +234,30 @@ class ProjectHygieneMigrationTests(unittest.TestCase):
                 unsafe,
                 decision="accepted",
             )
+
+    def test_legacy_abstract_resolution_state_without_field_is_supported(self):
+        review = self.review()
+        state = load_project_hygiene_resolutions(self.config, review)
+        first = hygiene_resolution_candidates(review)[0]
+        state = record_hygiene_resolution(
+            state,
+            first,
+            decision="accepted",
+        )
+        save_project_hygiene_resolutions(self.config, state)
+
+        path = hygiene_resolution_path(self.config)
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        payload.pop("field")
+        path.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+        loaded = load_project_hygiene_resolutions(self.config, review)
+
+        self.assertEqual(loaded.field, "abstract")
+        self.assertEqual(len(loaded.decisions), 1)
 
     def test_saved_resolutions_are_stale_after_canonical_abstract_changes(self):
         review = self.review()
