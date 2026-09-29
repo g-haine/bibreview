@@ -250,9 +250,12 @@ def _render_publication_reference(reference) -> str | None:
     citation = _markdown_mathjax_text(reference.citation)
     if reference.doi is None:
         return f"- {citation}" if citation else None
+    doi_link = f"[{reference.doi}](https://doi.org/{reference.doi})"
+    if not citation:
+        return f"- {doi_link}"
     if reference.permalink:
         citation = f"[{citation}]({reference.permalink})"
-    return f"- {citation} -- [{reference.doi}](https://doi.org/{reference.doi})"
+    return f"- {citation} -- {doi_link}"
 
 
 def _render_jekyll_publication_post(

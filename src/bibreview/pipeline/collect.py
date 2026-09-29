@@ -11,7 +11,6 @@ from collections.abc import Callable, Iterable, Mapping
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import date
-import re
 from typing import Any, Protocol
 
 from ..identity import IdentityError, new_publication_id, normalize_doi
@@ -19,6 +18,7 @@ from ..model import Author, Editor, Publication, Reference
 from ..providers.base import AbstractEvidence, Enrichment
 from ..providers.crossref import crossref_page_locator
 from ..reporting import Reporter
+from ..structured_title import normalize_structured_citation, normalize_structured_title
 from ..text import clean_metadata, normalize_provider_abstract, safe_component, slugify
 
 
@@ -68,8 +68,6 @@ EnrichmentManyLookup = Callable[
 CitationLookup = Callable[[str], str]
 BibtexLookup = Callable[[str], str]
 
-_MATHML = re.compile(r"<[^>]*mml[^>]*>")
-
 
 def prepare_dois(submitted: Iterable[str], known: Iterable[str] = ()) -> tuple[str, ...]:
     """Normalize, de-duplicate and filter submitted DOI values while preserving order."""
@@ -106,6 +104,35 @@ def _first(value: Any) -> str:
     if isinstance(value, list) and value:
         return _string(value[0])
     return ""
+
+
+def _provider_title(
+    doi: str,
+    message: Mapping[str, Any],
+    *,
+    reject_unsafe: bool,
+) -> str:
+    """Normalize a provider title, optionally rejecting refused structures."""
+    raw = _first(message.get("title"))
+    normalized = normalize_structured_title(raw)
+    if not normalized.deterministic:
+        if reject_unsafe:
+            raise ValueError(
+                f"{doi}: unsafe structured title ({normalized.reason})"
+            )
+        return raw
+    title = clean_metadata(normalized.normalized)
+    if reject_unsafe and not title:
+        raise ValueError(f"{doi}: missing publication title")
+    return title
+
+
+def _safe_reference_citation(value: str) -> str:
+    """Return one deterministic citation value or an empty safe fallback."""
+    normalized = normalize_structured_citation(value)
+    if not normalized.deterministic:
+        return ""
+    return clean_metadata(normalized.normalized)
 
 
 def _created_date(message: Mapping[str, Any], doi: str) -> date:
@@ -170,10 +197,15 @@ def _editors(value: Any) -> tuple[Editor, ...]:
     return _contributors(value, Editor)
 
 
-def _reference_citation(reference: Mapping[str, Any]) -> str:
-    unstructured = _string(reference.get("unstructured")).strip()
-    if unstructured:
-        return clean_metadata(unstructured)
+def _reference_citation(
+    reference: Mapping[str, Any],
+    *,
+    include_unstructured: bool = True,
+) -> str:
+    if include_unstructured:
+        unstructured = _string(reference.get("unstructured")).strip()
+        if unstructured:
+            return unstructured
     values = [
         f"{reference['author']}," if reference.get("author") else "",
         f"{reference['article-title']}." if reference.get("article-title") else "",
@@ -181,7 +213,7 @@ def _reference_citation(reference: Mapping[str, Any]) -> str:
         reference.get("volume-title"),
         f"({reference['year']})" if reference.get("year") else "",
     ]
-    return clean_metadata(" ".join(str(value) for value in values if value))
+    return " ".join(str(value) for value in values if value)
 
 
 def _references(value: Any, citation_lookup: CitationLookup | None) -> tuple[Reference, ...]:
@@ -201,8 +233,27 @@ def _references(value: Any, citation_lookup: CitationLookup | None) -> tuple[Ref
                 doi = None
         if doi is not None:
             identifiers["doi"] = doi
-        citation = citation_lookup(doi) if doi is not None and citation_lookup else _reference_citation(item)
-        result.append(Reference(identifiers=identifiers, citation=clean_metadata(citation)))
+
+        candidates: list[str] = []
+        if doi is not None and citation_lookup is not None:
+            candidates.append(citation_lookup(doi))
+        candidates.append(_reference_citation(item))
+        candidates.append(
+            _reference_citation(item, include_unstructured=False)
+        )
+
+        citation = ""
+        for candidate in candidates:
+            citation = _safe_reference_citation(candidate)
+            if citation:
+                break
+
+        # Preserve an exact DOI identity even when no trustworthy citation text
+        # survives.  Without a DOI there is no stable reference identity left,
+        # so an unsafe/empty citation is rejected rather than canonicalized.
+        if not citation and doi is None:
+            continue
+        result.append(Reference(identifiers=identifiers, citation=citation))
     return tuple(result)
 
 
@@ -334,7 +385,13 @@ def scalar_metadata_values(
     values: dict[str, str] = {}
     for field in requested:
         if field == "title":
-            values[field] = _MATHML.sub("", _first(message.get("title")))
+            raw_title = _first(message.get("title"))
+            normalized_title = normalize_structured_title(raw_title)
+            values[field] = (
+                clean_metadata(normalized_title.normalized)
+                if normalized_title.deterministic
+                else raw_title
+            )
         elif field == "abstract":
             assert enrichment is not None
             values[field] = _usable_abstract(enrichment.abstract)
@@ -369,16 +426,21 @@ def build_publication(
     enrichment_lookup: EnrichmentLookup | None = None,
     citation_lookup: CitationLookup | None = None,
     enrichment: Enrichment | None = None,
+    reject_unsafe_title: bool = True,
 ) -> Publication:
     """Build one canonical publication from a CrossRef work message."""
     normalized_doi = normalize_doi(doi)
     safe_component(slug)
     created = _created_date(message, normalized_doi)
+    title = _provider_title(
+        normalized_doi,
+        message,
+        reject_unsafe=reject_unsafe_title,
+    )
     scalar = scalar_metadata_values(
         normalized_doi,
         message,
         (
-            "title",
             "container_title",
             "publication_year",
             "volume",
@@ -412,7 +474,7 @@ def build_publication(
         id=new_publication_id(),
         identifiers=identifiers,
         type=_string(message.get("type")),
-        title=scalar["title"],
+        title=title,
         authors=_authors(message.get("author")),
         editors=_editors(message.get("editor")),
         abstract=_usable_abstract(enrichment.abstract),
@@ -430,8 +492,12 @@ def build_publication(
     )
 
 
-def _slug_for_message(message: Mapping[str, Any], used: set[str]) -> str:
-    title = _MATHML.sub("", _first(message.get("title")))
+def _slug_for_message(
+    doi: str,
+    message: Mapping[str, Any],
+    used: set[str],
+) -> str:
+    title = _provider_title(doi, message, reject_unsafe=True)
     slug = slugify(title)
     safe_component(slug)
     while slug in used:
@@ -472,7 +538,7 @@ def collect(
             continue
         if not isinstance(message, Mapping):
             raise ValueError(f"{doi}: metadata provider returned a non-mapping work record")
-        slug = _slug_for_message(message, used)
+        slug = _slug_for_message(doi, message, used)
         progress.detail(f"{doi}: permalink {slug}")
         publication = build_publication(
             doi,
