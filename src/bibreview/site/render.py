@@ -161,12 +161,9 @@ _MATHJAX_DELIMITER_BACKSLASH_RE = re.compile(
 
 
 def _markdown_mathjax_text(value: str) -> str:
-    """Preserve MathJax delimiters through Markdown/Kramdown parsing."""
+    """Preserve existing MathJax delimiters through Markdown/Kramdown parsing."""
     value = _MATHJAX_DELIMITER_BACKSLASH_RE.sub(r"\\\\", value)
-    return _mathjax_text(
-        _escape_liquid_openers(value),
-        mathjax_backslashes=2,
-    )
+    return _escape_liquid_openers(value)
 
 
 def _publication_row(publication: SitePublication, options: JekyllIndexRenderOptions) -> str:
