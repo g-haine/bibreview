@@ -4,6 +4,8 @@ from dataclasses import replace
 from datetime import date
 import unittest
 
+import yaml
+
 from bibreview.site import (
     JekyllPublicationRenderOptions,
     SiteModel,
@@ -172,6 +174,17 @@ fluid-structure, energy
         )[0].content
         self.assertIn(r"An \\( H \\) abstract.", content)
         self.assertIn(r'"A \\( x \\) title"', content)
+
+    def test_front_matter_mathjax_title_parses_to_single_delimiters(self) -> None:
+        content = render_jekyll_publication_posts(
+            model(publication()),
+            {"pub-id": "@article{x}\n"},
+            options=options(),
+        )[0].content
+        front_matter = content.split("---", 2)[1]
+        parsed = yaml.safe_load(front_matter)
+
+        self.assertEqual(parsed["title"], r"A \( x \) title")
 
     def test_tex_closing_braces_are_preserved_in_abstract(self) -> None:
         item = replace(
