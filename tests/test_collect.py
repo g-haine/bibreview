@@ -126,6 +126,21 @@ class BuildPublicationTests(unittest.TestCase):
         ):
             build_publication("10.1/test", data, "unsafe-title")
 
+    def test_non_strict_recollection_preserves_unsafe_title_evidence(self):
+        data = message("Stabilisation and H<sub>∞</sub> control")
+
+        publication = build_publication(
+            "10.1/test",
+            data,
+            "existing-permalink",
+            reject_unsafe_title=False,
+        )
+
+        self.assertEqual(
+            publication.title,
+            "Stabilisation and H<sub>∞</sub> control",
+        )
+
     def test_scalar_title_evidence_preserves_unsafe_provider_value(self):
         data = message("Stabilisation and H<sub>∞</sub> control")
 

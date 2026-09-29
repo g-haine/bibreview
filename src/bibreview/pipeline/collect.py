@@ -106,16 +106,23 @@ def _first(value: Any) -> str:
     return ""
 
 
-def _collection_title(doi: str, message: Mapping[str, Any]) -> str:
-    """Return one safe normalized title for a newly collected publication."""
+def _provider_title(
+    doi: str,
+    message: Mapping[str, Any],
+    *,
+    reject_unsafe: bool,
+) -> str:
+    """Normalize a provider title, optionally rejecting refused structures."""
     raw = _first(message.get("title"))
     normalized = normalize_structured_title(raw)
     if not normalized.deterministic:
-        raise ValueError(
-            f"{doi}: unsafe structured title ({normalized.reason})"
-        )
+        if reject_unsafe:
+            raise ValueError(
+                f"{doi}: unsafe structured title ({normalized.reason})"
+            )
+        return raw
     title = clean_metadata(normalized.normalized)
-    if not title:
+    if reject_unsafe and not title:
         raise ValueError(f"{doi}: missing publication title")
     return title
 
@@ -419,12 +426,17 @@ def build_publication(
     enrichment_lookup: EnrichmentLookup | None = None,
     citation_lookup: CitationLookup | None = None,
     enrichment: Enrichment | None = None,
+    reject_unsafe_title: bool = True,
 ) -> Publication:
     """Build one canonical publication from a CrossRef work message."""
     normalized_doi = normalize_doi(doi)
     safe_component(slug)
     created = _created_date(message, normalized_doi)
-    title = _collection_title(normalized_doi, message)
+    title = _provider_title(
+        normalized_doi,
+        message,
+        reject_unsafe=reject_unsafe_title,
+    )
     scalar = scalar_metadata_values(
         normalized_doi,
         message,
@@ -485,7 +497,7 @@ def _slug_for_message(
     message: Mapping[str, Any],
     used: set[str],
 ) -> str:
-    title = _collection_title(doi, message)
+    title = _provider_title(doi, message, reject_unsafe=True)
     slug = slugify(title)
     safe_component(slug)
     while slug in used:

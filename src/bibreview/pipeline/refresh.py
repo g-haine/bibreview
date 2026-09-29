@@ -183,6 +183,7 @@ def refresh(
             publication.permalink,
             citation_lookup=citation_lookup,
             enrichment=resolved_enrichment,
+            reject_unsafe_title=False,
         )
         current_fields = publication_audit_record(publication).fields
         proposed_fields = publication_audit_record(recollected).fields
