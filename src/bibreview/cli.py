@@ -195,16 +195,19 @@ def _parser() -> argparse.ArgumentParser:
         "hygiene",
         help="Scan canonical metadata for historical structured/encoding contamination",
     )
-    hygiene_actions = hygiene.add_mutually_exclusive_group()
-    hygiene_actions.add_argument(
+    hygiene.add_argument(
         "--titles",
         action="store_true",
-        help="Read-only inventory of publication titles and reference citations",
+        help=(
+            "Use the title/reference inventory; with --review/--resolve/--apply, "
+            "operate on publication titles"
+        ),
     )
+    hygiene_actions = hygiene.add_mutually_exclusive_group()
     hygiene_actions.add_argument(
         "--review",
         action="store_true",
-        help="Derive historical abstract migration proposals without writing state",
+        help="Derive historical field migration proposals without writing state",
     )
     hygiene_actions.add_argument(
         "--resolve",
@@ -385,7 +388,7 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def _run_hygiene_resolution(config, args) -> int:
-    """Run resumable human review for historical canonical abstract hygiene."""
+    """Run resumable human review for historical canonical hygiene."""
     if args.quiet:
         raise ProjectStateError(
             "--quiet cannot be used with interactive hygiene --resolve"
@@ -395,10 +398,11 @@ def _run_hygiene_resolution(config, args) -> int:
             "--json cannot be used with interactive hygiene --resolve"
         )
 
-    review = project_hygiene_migration_review(config)
+    field = "title" if args.titles else "abstract"
+    review = project_hygiene_migration_review(config, field=field)
     state = load_project_hygiene_resolutions(config, review)
     candidates = unresolved_hygiene_candidates(review, state)
-    path = hygiene_resolution_path(config)
+    path = hygiene_resolution_path(config, field)
 
     if not candidates:
         prefix = "Dry run: " if args.dry_run else ""
@@ -434,8 +438,8 @@ def _run_hygiene_resolution(config, args) -> int:
                 if raw == "" or choice in {"y", "yes"}:
                     if review_required:
                         print(
-                            "No safe automatic normalized abstract is available; "
-                            "use f VALUE for a reviewed custom abstract, "
+                            f"No safe automatic normalized {field} is available; "
+                            f"use f VALUE for a reviewed custom {field}, "
                             "n to reject, or s to defer."
                         )
                         continue
@@ -471,7 +475,7 @@ def _run_hygiene_resolution(config, args) -> int:
                     custom = raw[1:].strip()
                     if not custom:
                         try:
-                            custom = input("Custom abstract: ").strip()
+                            custom = input(f"Custom {field}: ").strip()
                         except (EOFError, KeyboardInterrupt):
                             print()
                             print(
@@ -505,7 +509,6 @@ def _run_hygiene_resolution(config, args) -> int:
     print(prefix + state.summary())
     print(f"Resolutions: {path}")
     return 0
-
 
 def _run_audit_resolution(config, args) -> int:
     """Run the resumable interactive resolver for actionable audit findings."""
@@ -1041,27 +1044,11 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "hygiene":
-        if args.titles:
-            try:
-                report = project_title_reference_hygiene(config)
-            except (OSError, StorageError, ValueError, TypeError) as error:
-                print(f"bibreview hygiene: {error}", file=sys.stderr)
-                return 1
-
-            if args.json_output:
-                print(json.dumps(report.data(), ensure_ascii=False, indent=2))
-            elif not args.quiet:
-                print(
-                    format_title_reference_hygiene_report(
-                        report,
-                        verbose=bool(args.verbose),
-                    )
-                )
-            return 0
+        field = "title" if args.titles else "abstract"
 
         if args.apply:
             try:
-                plan = plan_project_hygiene_apply(config)
+                plan = plan_project_hygiene_apply(config, field=field)
                 if not args.dry_run:
                     apply_project_hygiene_apply(plan)
             except (
@@ -1111,7 +1098,7 @@ def main(argv: list[str] | None = None) -> int:
 
         if args.review:
             try:
-                review = project_hygiene_migration_review(config)
+                review = project_hygiene_migration_review(config, field=field)
             except (
                 OSError,
                 StorageError,
@@ -1128,6 +1115,24 @@ def main(argv: list[str] | None = None) -> int:
                 print(
                     format_project_hygiene_migration_review(
                         review,
+                        verbose=bool(args.verbose),
+                    )
+                )
+            return 0
+
+        if args.titles:
+            try:
+                report = project_title_reference_hygiene(config)
+            except (OSError, StorageError, ValueError, TypeError) as error:
+                print(f"bibreview hygiene: {error}", file=sys.stderr)
+                return 1
+
+            if args.json_output:
+                print(json.dumps(report.data(), ensure_ascii=False, indent=2))
+            elif not args.quiet:
+                print(
+                    format_title_reference_hygiene_report(
+                        report,
                         verbose=bool(args.verbose),
                     )
                 )
