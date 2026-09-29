@@ -203,7 +203,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install pinned BibReview
-        run: python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.29"
+        run: python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.37"
 
       - name: Render bibliography
         run: bibreview --config bibreview.yml render
@@ -236,7 +236,7 @@ jobs:
         uses: actions/deploy-pages@v4
 ~~~
 
-The example above pins BibReview to **v1.6.29**. Keep an exact release tag or
+The example above pins BibReview to **v1.6.37**. Keep an exact release tag or
 commit pin for reproducibility, and update it deliberately when adopting a newer
 BibReview release.
 
@@ -249,7 +249,10 @@ deployment workflow.
 ## 7. Schedule the optional arXiv cache
 
 If the arXiv module is enabled, it can be refreshed automatically because it is
-display-only and independent from the curated canonical bibliography.
+display-only and independent from the curated canonical bibliography. Since
+v1.6.37, a successful refresh whose paper payload is unchanged preserves the
+existing cache bytes and `generated_at`, so timestamp-only scheduled churn does
+not create a commit.
 
 Example .github/workflows/update-arxiv.yml:
 
@@ -283,7 +286,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install pinned BibReview
-        run: python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.29"
+        run: python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.37"
 
       - name: Refresh arXiv cache
         run: bibreview --config bibreview.yml arxiv

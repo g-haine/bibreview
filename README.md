@@ -11,7 +11,11 @@ feed.
 BibReview is designed so that provider output remains inspectable and ambiguous
 decisions remain human decisions.
 
-Current stable release: **v1.6.36**.
+Current stable release: **v1.6.37**.
+
+BibReview v1.6.37 makes scheduled arXiv refreshes true semantic no-ops when the
+paper payload is unchanged. A later refresh timestamp alone no longer rewrites
+the cache; `generated_at` advances only when the cached papers actually change.
 
 BibReview v1.6.36 completes issue #97 by applying the validated structured
 title/citation normalizer to **future collection**. New publication titles are
@@ -59,7 +63,7 @@ BibReview currently requires **Python 3.12 or newer**.
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.32"
+python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.37"
 
 bibreview --version
 ~~~
