@@ -194,6 +194,60 @@ publication replacements only to `collected.json`. It changes the `title`
 field only: the publication UUID and existing `permalink` are preserved
 exactly. Canonical promotion still requires an explicit `bibreview merge`.
 
+### Reviewed historical reference-citation migration
+
+T4 of issue #97 operates on complete stored `Reference.citation` strings.
+Select this scope explicitly with `--citations`:
+
+~~~bash
+bibreview --config bibreview.yml hygiene --citations --review
+bibreview --config bibreview.yml -v hygiene --citations --review
+~~~
+
+The review is rebuilt from the current canonical bibliography on every run.
+Each proposal carries the parent publication identity plus a stable reference
+identity: DOI when available, otherwise the complete-citation SHA-256 identity
+used by the inventory. Existing valid TeX and other deterministic no-op
+findings are preserved rather than proposed.
+
+Because the residual PHRAISE corpus contains thousands of deterministic
+citation cleanups, T4 provides one explicit safe staging boundary instead of
+requiring thousands of individual confirmations:
+
+~~~bash
+bibreview --config bibreview.yml --dry-run hygiene --citations --apply-safe
+bibreview --config bibreview.yml hygiene --citations --apply-safe
+bibreview --config bibreview.yml merge
+~~~
+
+`--apply-safe` stages only deterministic, lossless citation normalizations.
+It never stages review-required values and never changes reference identifiers,
+reference order, publication UUIDs, titles, or permalinks. Multiple safe
+citation changes in one parent publication produce one staged publication.
+
+After merging that deterministic pass, rerun the citation review. Remaining
+ambiguous citations use the resumable human resolver:
+
+~~~bash
+bibreview --config bibreview.yml hygiene --citations --resolve
+bibreview --config bibreview.yml --dry-run hygiene --citations --apply
+bibreview --config bibreview.yml hygiene --citations --apply
+bibreview --config bibreview.yml merge
+~~~
+
+Human decisions are persisted separately in
+`citation-hygiene-resolutions.json`. Review-required proposals cannot be
+accepted directly: provide a complete custom citation string, reject the
+proposal, or defer it. Application rechecks the exact reference slot, DOI
+identity where present, and canonical citation before staging.
+
+The citation normalizer also refuses inline wrapper removal when doing so would
+require inferring an alphanumeric word boundary. These cases are classified
+`ambiguous-inline-boundary` and remain human-reviewed.
+
+T4 does not parse a title out of citation prose and does not perform fuzzy
+reference matching.
+
 ### Reviewed historical abstract migration
 
 Historical abstract migration is an explicit second workflow:
