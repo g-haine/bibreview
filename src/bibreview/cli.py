@@ -64,7 +64,9 @@ from .project_hygiene import (
 )
 from .project_hygiene_apply import (
     apply_project_hygiene_apply,
+    apply_project_hygiene_safe_apply,
     plan_project_hygiene_apply,
+    plan_project_hygiene_safe_apply,
 )
 from .project_backfill import (
     apply_project_backfill_plan,
@@ -195,12 +197,21 @@ def _parser() -> argparse.ArgumentParser:
         "hygiene",
         help="Scan canonical metadata for historical structured/encoding contamination",
     )
-    hygiene.add_argument(
+    hygiene_scope = hygiene.add_mutually_exclusive_group()
+    hygiene_scope.add_argument(
         "--titles",
         action="store_true",
         help=(
-            "Use the title/reference inventory; with --review/--resolve/--apply, "
+            "Use the title/reference inventory; with migration actions, "
             "operate on publication titles"
+        ),
+    )
+    hygiene_scope.add_argument(
+        "--citations",
+        action="store_true",
+        help=(
+            "Use the title/reference inventory; with migration actions, "
+            "operate on complete reference citation strings"
         ),
     )
     hygiene_actions = hygiene.add_mutually_exclusive_group()
@@ -213,6 +224,14 @@ def _parser() -> argparse.ArgumentParser:
         "--resolve",
         action="store_true",
         help="Interactively resolve historical field migration proposals",
+    )
+    hygiene_actions.add_argument(
+        "--apply-safe",
+        action="store_true",
+        help=(
+            "Stage deterministic reference-citation normalizations for "
+            "ordinary merge"
+        ),
     )
     hygiene_actions.add_argument(
         "--apply",
@@ -387,6 +406,15 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _hygiene_field(args) -> str:
+    """Return the canonical field selected by hygiene CLI scope flags."""
+    if args.citations:
+        return "reference-citation"
+    if args.titles:
+        return "title"
+    return "abstract"
+
+
 def _run_hygiene_resolution(config, args) -> int:
     """Run resumable human review for historical canonical hygiene."""
     if args.quiet:
@@ -398,7 +426,7 @@ def _run_hygiene_resolution(config, args) -> int:
             "--json cannot be used with interactive hygiene --resolve"
         )
 
-    field = "title" if args.titles else "abstract"
+    field = _hygiene_field(args)
     review = project_hygiene_migration_review(config, field=field)
     state = load_project_hygiene_resolutions(config, review)
     candidates = unresolved_hygiene_candidates(review, state)
@@ -1044,7 +1072,44 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "hygiene":
-        field = "title" if args.titles else "abstract"
+        field = _hygiene_field(args)
+
+        if args.apply_safe:
+            try:
+                plan = plan_project_hygiene_safe_apply(config, field=field)
+                if not args.dry_run:
+                    apply_project_hygiene_safe_apply(plan)
+            except (
+                OSError,
+                StorageError,
+                ProjectStateError,
+                ValueError,
+                TypeError,
+            ) as error:
+                print(f"bibreview hygiene: {error}", file=sys.stderr)
+                return 1
+
+            if args.json_output:
+                print(
+                    json.dumps(
+                        {
+                            "dry_run": bool(args.dry_run),
+                            "changed": plan.changed,
+                            "staging": str(config.paths.collected),
+                            **plan.data(),
+                        },
+                        ensure_ascii=False,
+                        indent=2,
+                    )
+                )
+            elif not args.quiet:
+                prefix = "Dry run: " if args.dry_run else ""
+                print(prefix + plan.summary())
+                if plan.changed:
+                    print(f"Staging: {config.paths.collected}")
+                else:
+                    print("No deterministic citation changes to stage.")
+            return 0
 
         if args.apply:
             try:
@@ -1120,7 +1185,7 @@ def main(argv: list[str] | None = None) -> int:
                 )
             return 0
 
-        if args.titles:
+        if args.titles or args.citations:
             try:
                 report = project_title_reference_hygiene(config)
             except (OSError, StorageError, ValueError, TypeError) as error:

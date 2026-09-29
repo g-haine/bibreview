@@ -15,7 +15,7 @@ from bibreview.hygiene_resolution import (
     save_project_hygiene_resolutions,
 )
 from bibreview.identity import new_publication_id
-from bibreview.model import Author, Publication
+from bibreview.model import Author, Publication, Reference
 from bibreview.project import ProjectStateError
 from bibreview.project_hygiene import (
     format_project_hygiene_migration_review,
@@ -23,7 +23,9 @@ from bibreview.project_hygiene import (
 )
 from bibreview.project_hygiene_apply import (
     apply_project_hygiene_apply,
+    apply_project_hygiene_safe_apply,
     plan_project_hygiene_apply,
+    plan_project_hygiene_safe_apply,
 )
 from bibreview.storage import read_bibliography, write_bibliography
 
@@ -215,6 +217,165 @@ class ProjectHygieneMigrationTests(unittest.TestCase):
         self.assertEqual(
             self.config.paths.bibliography.read_bytes(),
             canonical_before,
+        )
+
+    def test_reference_citation_review_preserves_noop_and_stable_identity(self):
+        publication = Publication(
+            id=new_publication_id(),
+            identifiers={"doi": "10.1/citations"},
+            title="Citation hygiene",
+            authors=(Author(literal="Ada Lovelace"),),
+            references=(
+                Reference(
+                    identifiers={"doi": "10.2/safe"},
+                    citation="Systems &amp; Control Letters",
+                ),
+                Reference(
+                    identifiers={"doi": "10.2/unsafe"},
+                    citation="Stabilisation and H<sub>2</sub> control",
+                ),
+                Reference(
+                    citation=r"Already clean \(H_2\) reference",
+                ),
+            ),
+        )
+        write_bibliography(self.config.paths.bibliography, (publication,))
+        before = self.snapshot()
+
+        review = project_hygiene_migration_review(
+            self.config,
+            field="reference-citation",
+        )
+
+        self.assertEqual(before, self.snapshot())
+        self.assertEqual(review.field, "reference-citation")
+        self.assertEqual(review.suspicious_citations, 3)
+        self.assertEqual(review.preserved_no_change, 1)
+        self.assertEqual(review.deterministic_proposals, 1)
+        self.assertEqual(review.review_required, 1)
+        self.assertEqual(len(review.proposals), 2)
+
+        safe, unsafe = review.proposals
+        self.assertEqual(safe.reference_key, "doi:10.2/safe")
+        self.assertEqual(safe.reference_index, 1)
+        self.assertEqual(safe.reference_doi, "10.2/safe")
+        self.assertEqual(
+            safe.proposed_value,
+            "Systems & Control Letters",
+        )
+        self.assertTrue(
+            safe.key.startswith(
+                f"{publication.id}:reference-citation:doi:10.2/safe"
+            )
+        )
+        self.assertTrue(unsafe.review_required)
+        self.assertEqual(unsafe.reason, "script-markup")
+
+        verbose = format_project_hygiene_migration_review(
+            review,
+            verbose=True,
+        )
+        self.assertIn("Reference: doi:10.2/safe", verbose)
+        self.assertIn("REVIEW REQUIRED", verbose)
+
+    def test_reference_citation_safe_apply_updates_all_safe_slots_once(self):
+        publication = Publication(
+            id=new_publication_id(),
+            identifiers={"doi": "10.1/citations-safe"},
+            title="Citation safe apply",
+            authors=(Author(literal="Ada Lovelace"),),
+            permalink="stable-citation-url",
+            references=(
+                Reference(citation="A &amp; B"),
+                Reference(citation="C &amp; D"),
+                Reference(citation="H<sub>2</sub> remains reviewed"),
+            ),
+        )
+        write_bibliography(self.config.paths.bibliography, (publication,))
+        canonical_before = self.config.paths.bibliography.read_bytes()
+
+        plan = plan_project_hygiene_safe_apply(
+            self.config,
+            field="reference-citation",
+        )
+
+        self.assertEqual(plan.review.deterministic_proposals, 2)
+        self.assertEqual(plan.review.review_required, 1)
+        self.assertEqual(len(plan.changes), 2)
+        self.assertEqual(plan.affected_publication_ids, (publication.id,))
+        self.assertEqual(
+            self.config.paths.bibliography.read_bytes(),
+            canonical_before,
+        )
+
+        apply_project_hygiene_safe_apply(plan)
+
+        staged = read_bibliography(self.config.paths.collected)
+        self.assertEqual(len(staged), 1)
+        self.assertEqual(staged[0].references[0].citation, "A & B")
+        self.assertEqual(staged[0].references[1].citation, "C & D")
+        self.assertEqual(
+            staged[0].references[2].citation,
+            "H<sub>2</sub> remains reviewed",
+        )
+        self.assertEqual(staged[0].permalink, "stable-citation-url")
+        self.assertEqual(
+            self.config.paths.bibliography.read_bytes(),
+            canonical_before,
+        )
+
+    def test_reference_citation_custom_resolution_stages_only_target_slot(self):
+        publication = Publication(
+            id=new_publication_id(),
+            identifiers={"doi": "10.1/citations-custom"},
+            title="Citation custom apply",
+            authors=(Author(literal="Grace Hopper"),),
+            references=(
+                Reference(
+                    identifiers={"doi": "10.2/unsafe"},
+                    citation="H<sub>2</sub> control",
+                ),
+                Reference(citation="Untouched reference"),
+            ),
+        )
+        write_bibliography(self.config.paths.bibliography, (publication,))
+        review = project_hygiene_migration_review(
+            self.config,
+            field="reference-citation",
+        )
+        self.assertEqual(len(review.proposals), 1)
+        state = load_project_hygiene_resolutions(self.config, review)
+        candidate = hygiene_resolution_candidates(review)[0]
+        state = record_hygiene_resolution(
+            state,
+            candidate,
+            decision="custom",
+            resolved_value=r"\(H_2\) control",
+        )
+        save_project_hygiene_resolutions(self.config, state)
+
+        self.assertTrue(
+            hygiene_resolution_path(
+                self.config,
+                "reference-citation",
+            ).exists()
+        )
+
+        plan = plan_project_hygiene_apply(
+            self.config,
+            field="reference-citation",
+        )
+        self.assertEqual(len(plan.changes), 1)
+        apply_project_hygiene_apply(plan)
+
+        staged = read_bibliography(self.config.paths.collected)
+        self.assertEqual(
+            staged[0].references[0].citation,
+            r"\(H_2\) control",
+        )
+        self.assertEqual(
+            staged[0].references[1].citation,
+            "Untouched reference",
         )
 
     def test_review_required_proposal_cannot_be_accepted_directly(self):

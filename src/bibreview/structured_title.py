@@ -457,4 +457,5 @@ def normalize_structured_citation(value: str) -> StructuredMetadataNormalization
         value,
         inline_wrappers=_CITATION_INLINE_WRAPPERS,
         block_wrappers=_CITATION_BLOCK_WRAPPERS,
+        refuse_ambiguous_inline_boundaries=True,
     )

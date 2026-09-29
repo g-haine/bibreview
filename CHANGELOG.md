@@ -2,6 +2,36 @@
 
 All notable BibReview releases are documented here.
 
+## 1.6.34 — 2026-09-29
+
+### Reviewed residual reference-citation hygiene migration
+
+- implement issue #97 T4 for complete stored `Reference.citation` strings;
+- add `hygiene --citations --review` with stable parent/reference identity,
+  deterministic/no-op separation, and review-required residuals;
+- add explicit `hygiene --citations --apply-safe` staging for deterministic
+  lossless citation normalization at corpus scale;
+- preserve reference identifiers, ordered reference structure, publication
+  UUIDs, titles, and permalinks during deterministic citation cleanup;
+- add the separate resumable `citation-hygiene-resolutions.json` ledger for
+  residual human decisions;
+- support `hygiene --citations --resolve` and reviewed `--apply` for complete
+  custom citation strings;
+- include reference identity/index in citation-review fingerprints so stale or
+  reordered evidence cannot silently reuse decisions;
+- refuse ambiguous inline citation boundaries rather than concatenating text
+  when presentation markup removal would require spacing inference;
+- keep T4 strictly citation-level: no fuzzy matching and no inferred
+  reference-title extraction.
+
+### Validation
+
+- cover deterministic citation staging, multiple safe slots in one parent,
+  human custom citation replacement, stable reference identity, no-op TeX
+  preservation, and ambiguous inline-boundary refusal;
+- retain the historical abstract/title hygiene behavior and ordinary
+  `collected.json -> merge` canonical boundary.
+
 ## 1.6.33 — 2026-09-29
 
 ### Conservative inline-title boundary handling

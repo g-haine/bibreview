@@ -14,11 +14,14 @@ from .hygiene import (
     scan_title_reference_hygiene,
 )
 from .structured_abstract import normalize_structured_abstract
-from .structured_title import normalize_structured_title
+from .structured_title import (
+    normalize_structured_citation,
+    normalize_structured_title,
+)
 from .storage import read_bibliography
 
 
-_MIGRATION_FIELDS = frozenset({"abstract", "title"})
+_MIGRATION_FIELDS = frozenset({"abstract", "title", "reference-citation"})
 
 
 @dataclass(frozen=True)
@@ -34,13 +37,21 @@ class HygieneMigrationProposal:
     review_required: bool
     reason: str
     field: str = "abstract"
+    reference_key: str = ""
+    reference_doi: str | None = None
+    reference_index: int | None = None
 
     @property
     def key(self) -> str:
+        if self.field == "reference-citation":
+            return (
+                f"{self.publication_id}:reference-citation:"
+                f"{self.reference_key}"
+            )
         return f"{self.publication_id}:{self.field}"
 
     def data(self) -> dict[str, Any]:
-        return {
+        data: dict[str, Any] = {
             "publication_id": self.publication_id,
             "doi": self.doi,
             "title": self.title,
@@ -51,6 +62,15 @@ class HygieneMigrationProposal:
             "review_required": self.review_required,
             "reason": self.reason,
         }
+        if self.field == "reference-citation":
+            data.update(
+                {
+                    "reference_key": self.reference_key,
+                    "reference_doi": self.reference_doi,
+                    "reference_index": self.reference_index,
+                }
+            )
+        return data
 
 
 @dataclass(frozen=True)
@@ -69,6 +89,14 @@ class HygieneMigrationReview:
     @property
     def suspicious_titles(self) -> int:
         return self.suspicious_values if self.field == "title" else 0
+
+    @property
+    def suspicious_citations(self) -> int:
+        return (
+            self.suspicious_values
+            if self.field == "reference-citation"
+            else 0
+        )
 
     @property
     def deterministic_proposals(self) -> int:
@@ -92,10 +120,19 @@ class HygieneMigrationReview:
                 f"  Deterministic proposals  : {self.deterministic_proposals}\n"
                 f"  Review required          : {self.review_required}"
             )
+        if self.field == "title":
+            return (
+                "Canonical title hygiene migration review\n"
+                f"  Publications scanned     : {self.scanned_publications}\n"
+                f"  Titles with signals      : {self.suspicious_values}\n"
+                f"  Preserved/no change      : {self.preserved_no_change}\n"
+                f"  Deterministic proposals  : {self.deterministic_proposals}\n"
+                f"  Review required          : {self.review_required}"
+            )
         return (
-            "Canonical title hygiene migration review\n"
+            "Canonical reference-citation hygiene migration review\n"
             f"  Publications scanned     : {self.scanned_publications}\n"
-            f"  Titles with signals      : {self.suspicious_values}\n"
+            f"  Citations with signals   : {self.suspicious_values}\n"
             f"  Preserved/no change      : {self.preserved_no_change}\n"
             f"  Deterministic proposals  : {self.deterministic_proposals}\n"
             f"  Review required          : {self.review_required}"
@@ -111,8 +148,11 @@ class HygieneMigrationReview:
         }
         if self.field == "abstract":
             data["suspicious_abstracts"] = self.suspicious_values
-        else:
+        elif self.field == "title":
             data["titles_with_hygiene_signals"] = self.suspicious_values
+            data["preserved_no_change"] = self.preserved_no_change
+        else:
+            data["citations_with_hygiene_signals"] = self.suspicious_values
             data["preserved_no_change"] = self.preserved_no_change
         return data
 
@@ -149,24 +189,50 @@ def project_hygiene_migration_review(
         suspicious = report.suspicious_abstracts
     else:
         report = scan_title_reference_hygiene(publications)
-        findings = report.title_findings
-        suspicious = report.suspicious_titles
+        if field == "title":
+            findings = report.title_findings
+            suspicious = report.suspicious_titles
+        else:
+            findings = report.citation_findings
+            suspicious = report.suspicious_citations
 
     proposals: list[HygieneMigrationProposal] = []
     for finding in findings:
         publication = by_id[finding.publication_id]
-        current_value = (
-            publication.abstract if field == "abstract" else publication.title
-        )
-        result = (
-            normalize_structured_abstract(current_value)
-            if field == "abstract"
-            else normalize_structured_title(current_value)
-        )
+
+        reference_key = ""
+        reference_doi = None
+        reference_index = None
+        if field == "abstract":
+            current_value = publication.abstract
+            result = normalize_structured_abstract(current_value)
+        elif field == "title":
+            current_value = publication.title
+            result = normalize_structured_title(current_value)
+        else:
+            reference_index = finding.reference_index
+            if (
+                reference_index is None
+                or reference_index < 1
+                or reference_index > len(publication.references)
+            ):
+                raise ValueError(
+                    f"{publication.id}: invalid reference hygiene index "
+                    f"{reference_index!r}"
+                )
+            reference = publication.references[reference_index - 1]
+            current_value = reference.citation
+            reference_key = finding.reference_key
+            reference_doi = finding.reference_doi
+            result = normalize_structured_citation(current_value)
 
         # Existing valid TeX and other deterministic no-op findings are inventory
         # signals, not historical migration decisions.
-        if field == "title" and result.deterministic and not result.changed:
+        if (
+            field in {"title", "reference-citation"}
+            and result.deterministic
+            and not result.changed
+        ):
             continue
 
         deterministic = result.deterministic and result.changed
@@ -189,6 +255,9 @@ def project_hygiene_migration_review(
                     )
                 ),
                 field=field,
+                reference_key=reference_key,
+                reference_doi=reference_doi,
+                reference_index=reference_index,
             )
         )
 
@@ -209,13 +278,14 @@ def format_project_hygiene_migration_review(
     lines = [review.summary()]
     if not verbose:
         if review.proposals:
-            command = (
-                "hygiene --review"
-                if review.field == "abstract"
-                else "hygiene --titles --review"
-            )
+            command = {
+                "abstract": "hygiene --review",
+                "title": "hygiene --titles --review",
+                "reference-citation": "hygiene --citations --review",
+            }[review.field]
             lines.append(
-                f"Use -v {command} to inspect current/proposed {review.field}s."
+                f"Use -v {command} to inspect current/proposed "
+                f"{review.field} values."
             )
         return "\n".join(lines)
 
@@ -226,6 +296,17 @@ def format_project_hygiene_migration_review(
                 f"[{index}/{len(review.proposals)}] "
                 f"{proposal.doi or proposal.publication_id} — {proposal.title}",
                 f"  Field: {proposal.field}",
+            )
+        )
+        if proposal.field == "reference-citation":
+            lines.append(
+                "  Reference: "
+                f"{proposal.reference_key} "
+                f"(index {proposal.reference_index}, "
+                f"DOI {proposal.reference_doi or 'none'})"
+            )
+        lines.extend(
+            (
                 "  Families: " + ", ".join(proposal.families),
                 f"  Normalizer: {proposal.reason}",
                 "  Current:",

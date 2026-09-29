@@ -14,7 +14,11 @@ from .hygiene_resolution import (
     load_project_hygiene_resolutions,
 )
 from .project import ProjectStateError
-from .project_hygiene import project_hygiene_migration_review
+from .project_hygiene import (
+    HygieneMigrationProposal,
+    HygieneMigrationReview,
+    project_hygiene_migration_review,
+)
 from .storage import (
     atomic_write_batch,
     bibliography_document_data,
@@ -25,7 +29,7 @@ from .storage import (
 
 @dataclass(frozen=True)
 class HygieneApplyChange:
-    """One accepted/custom historical hygiene migration staged for ordinary merge."""
+    """One accepted historical hygiene migration staged for ordinary merge."""
 
     publication_id: str
     doi: str
@@ -33,9 +37,11 @@ class HygieneApplyChange:
     decision: str
     value: str
     field: str = "abstract"
+    reference_key: str = ""
+    reference_index: int | None = None
 
     def data(self) -> dict[str, Any]:
-        return {
+        data: dict[str, Any] = {
             "publication_id": self.publication_id,
             "doi": self.doi,
             "title": self.title,
@@ -43,6 +49,14 @@ class HygieneApplyChange:
             "decision": self.decision,
             "value": self.value,
         }
+        if self.field == "reference-citation":
+            data.update(
+                {
+                    "reference_key": self.reference_key,
+                    "reference_index": self.reference_index,
+                }
+            )
+        return data
 
 
 @dataclass(frozen=True)
@@ -86,30 +100,44 @@ class ProjectHygieneApplyPlan:
         }
 
 
-def _publication_field_value(publication, field: str) -> str:
-    if field == "abstract":
-        return publication.abstract
-    if field == "title":
-        return publication.title
-    raise ProjectStateError(f"unsupported hygiene application field: {field}")
+@dataclass(frozen=True)
+class ProjectHygieneSafeApplyPlan:
+    """Deterministic citation-normalization staging plan."""
+
+    review: HygieneMigrationReview
+    changes: tuple[HygieneApplyChange, ...]
+    outputs: Mapping[Path, bytes]
+    affected_publication_ids: tuple[str, ...]
+
+    @property
+    def changed(self) -> bool:
+        return bool(self.outputs)
+
+    def summary(self) -> str:
+        return (
+            "Canonical reference-citation deterministic hygiene application\n"
+            f"  Citations with signals : {self.review.suspicious_values}\n"
+            f"  Preserved/no change    : {self.review.preserved_no_change}\n"
+            f"  Deterministic proposals: {self.review.deterministic_proposals}\n"
+            f"  Review required        : {self.review.review_required}\n"
+            f"  Changes to stage       : {len(self.changes)}\n"
+            f"  Publications affected  : {len(self.affected_publication_ids)}"
+        )
+
+    def data(self) -> dict[str, Any]:
+        return {
+            "field": self.review.field,
+            "citations_with_hygiene_signals": self.review.suspicious_values,
+            "preserved_no_change": self.review.preserved_no_change,
+            "deterministic_proposals": self.review.deterministic_proposals,
+            "review_required": self.review.review_required,
+            "changes_to_stage": len(self.changes),
+            "publications_affected": len(self.affected_publication_ids),
+            "changes": [item.data() for item in self.changes],
+        }
 
 
-def _replace_publication_field(publication, field: str, value: str):
-    if field == "abstract":
-        return replace(publication, abstract=value)
-    if field == "title":
-        # Existing permalinks are intentionally preserved. Historical title
-        # hygiene must never regenerate or rewrite a canonical URL.
-        return replace(publication, title=value)
-    raise ProjectStateError(f"unsupported hygiene application field: {field}")
-
-
-def plan_project_hygiene_apply(
-    config: BibReviewConfig,
-    *,
-    field: str = "abstract",
-) -> ProjectHygieneApplyPlan:
-    """Stage only explicitly accepted/custom historical hygiene migrations."""
+def _ensure_empty_staging(config: BibReviewConfig) -> None:
     staged = (
         read_bibliography(config.paths.collected)
         if config.paths.collected.exists()
@@ -120,6 +148,176 @@ def plan_project_hygiene_apply(
             f"{config.paths.collected}: contains {len(staged)} staged publication(s); "
             "merge the existing batch before applying hygiene decisions"
         )
+
+
+def _proposal_current_value(publication, proposal: HygieneMigrationProposal) -> str:
+    if proposal.field == "abstract":
+        return publication.abstract
+    if proposal.field == "title":
+        return publication.title
+    if proposal.field == "reference-citation":
+        index = proposal.reference_index
+        if (
+            index is None
+            or index < 1
+            or index > len(publication.references)
+        ):
+            raise ProjectStateError(
+                f"{proposal.key}: canonical reference index is invalid"
+            )
+        reference = publication.references[index - 1]
+        reference_doi = reference.identifiers.get("doi")
+        if reference_doi != proposal.reference_doi:
+            raise ProjectStateError(
+                f"{proposal.key}: stale proposal; canonical reference identity changed"
+            )
+        return reference.citation
+    raise ProjectStateError(
+        f"unsupported hygiene application field: {proposal.field}"
+    )
+
+
+def _replace_proposal_value(publication, proposal: HygieneMigrationProposal, value: str):
+    if proposal.field == "abstract":
+        return replace(publication, abstract=value)
+    if proposal.field == "title":
+        # Existing permalinks are intentionally preserved. Historical title
+        # hygiene must never regenerate or rewrite a canonical URL.
+        return replace(publication, title=value)
+    if proposal.field == "reference-citation":
+        index = proposal.reference_index
+        if index is None or index < 1 or index > len(publication.references):
+            raise ProjectStateError(
+                f"{proposal.key}: canonical reference index is invalid"
+            )
+        references = list(publication.references)
+        references[index - 1] = replace(references[index - 1], citation=value)
+        return replace(publication, references=tuple(references))
+    raise ProjectStateError(
+        f"unsupported hygiene application field: {proposal.field}"
+    )
+
+
+def _append_changed_id(
+    changed_ids: list[str],
+    changed_set: set[str],
+    publication_id: str,
+) -> None:
+    if publication_id not in changed_set:
+        changed_set.add(publication_id)
+        changed_ids.append(publication_id)
+
+
+def _change(
+    proposal: HygieneMigrationProposal,
+    *,
+    title: str,
+    decision: str,
+    value: str,
+) -> HygieneApplyChange:
+    return HygieneApplyChange(
+        publication_id=proposal.publication_id,
+        doi=proposal.doi,
+        title=title,
+        decision=decision,
+        value=value,
+        field=proposal.field,
+        reference_key=proposal.reference_key,
+        reference_index=proposal.reference_index,
+    )
+
+
+def plan_project_hygiene_safe_apply(
+    config: BibReviewConfig,
+    *,
+    field: str,
+) -> ProjectHygieneSafeApplyPlan:
+    """Stage only deterministic lossless citation normalizations."""
+    if field != "reference-citation":
+        raise ProjectStateError(
+            "--apply-safe is currently supported only for reference citations"
+        )
+    _ensure_empty_staging(config)
+
+    review = project_hygiene_migration_review(config, field=field)
+    canonical = read_bibliography(config.paths.bibliography)
+    originals = {publication.id: publication for publication in canonical}
+    updated = dict(originals)
+    changes: list[HygieneApplyChange] = []
+    changed_ids: list[str] = []
+    changed_set: set[str] = set()
+
+    for proposal in review.proposals:
+        if proposal.review_required:
+            continue
+        publication = originals.get(proposal.publication_id)
+        if publication is None:
+            raise ProjectStateError(
+                f"{proposal.publication_id}: canonical publication is missing"
+            )
+        current_value = _proposal_current_value(publication, proposal)
+        if current_value != proposal.current_value:
+            raise ProjectStateError(
+                f"{proposal.key}: stale proposal; canonical "
+                f"{proposal.field} changed"
+            )
+        value = proposal.proposed_value
+        if not value or value == current_value:
+            raise ProjectStateError(
+                f"{proposal.key}: deterministic proposal has no actual change"
+            )
+
+        updated[proposal.publication_id] = _replace_proposal_value(
+            updated[proposal.publication_id],
+            proposal,
+            value,
+        )
+        _append_changed_id(
+            changed_ids,
+            changed_set,
+            proposal.publication_id,
+        )
+        changes.append(
+            _change(
+                proposal,
+                title=publication.title,
+                decision="deterministic",
+                value=value,
+            )
+        )
+
+    outputs: dict[Path, bytes] = {}
+    staged_publications = tuple(updated[item] for item in changed_ids)
+    if staged_publications:
+        outputs[config.paths.collected] = json_bytes(
+            bibliography_document_data(staged_publications)
+        )
+
+    return ProjectHygieneSafeApplyPlan(
+        review=review,
+        changes=tuple(changes),
+        outputs=MappingProxyType(outputs),
+        affected_publication_ids=tuple(changed_ids),
+    )
+
+
+def apply_project_hygiene_safe_apply(
+    plan: ProjectHygieneSafeApplyPlan,
+) -> None:
+    """Apply one deterministic citation staging plan."""
+    if not isinstance(plan, ProjectHygieneSafeApplyPlan):
+        raise ProjectStateError("plan must be a ProjectHygieneSafeApplyPlan")
+    if plan.outputs:
+        atomic_write_batch(plan.outputs)
+
+
+def plan_project_hygiene_apply(
+    config: BibReviewConfig,
+    *,
+    field: str = "abstract",
+) -> ProjectHygieneApplyPlan:
+    """Stage only explicitly accepted/custom historical hygiene migrations."""
+    _ensure_empty_staging(config)
 
     review = project_hygiene_migration_review(config, field=field)
     state = load_project_hygiene_resolutions(config, review)
@@ -142,6 +340,7 @@ def plan_project_hygiene_apply(
     updated = dict(originals)
     changes: list[HygieneApplyChange] = []
     changed_ids: list[str] = []
+    changed_set: set[str] = set()
 
     for proposal in review.proposals:
         publication = originals.get(proposal.publication_id)
@@ -149,10 +348,11 @@ def plan_project_hygiene_apply(
             raise ProjectStateError(
                 f"{proposal.publication_id}: canonical publication is missing"
             )
-        current_value = _publication_field_value(publication, proposal.field)
+        current_value = _proposal_current_value(publication, proposal)
         if current_value != proposal.current_value:
             raise ProjectStateError(
-                f"{proposal.key}: stale proposal; canonical {proposal.field} changed"
+                f"{proposal.key}: stale proposal; canonical "
+                f"{proposal.field} changed"
             )
 
         decision = decisions[proposal.key]
@@ -180,20 +380,22 @@ def plan_project_hygiene_apply(
                 f"the canonical {proposal.field}; reject the proposal instead"
             )
 
-        updated[proposal.publication_id] = _replace_publication_field(
-            publication,
-            proposal.field,
+        updated[proposal.publication_id] = _replace_proposal_value(
+            updated[proposal.publication_id],
+            proposal,
             value,
         )
-        changed_ids.append(proposal.publication_id)
+        _append_changed_id(
+            changed_ids,
+            changed_set,
+            proposal.publication_id,
+        )
         changes.append(
-            HygieneApplyChange(
-                publication_id=proposal.publication_id,
-                doi=proposal.doi,
+            _change(
+                proposal,
                 title=publication.title,
                 decision=decision.decision,
                 value=value,
-                field=proposal.field,
             )
         )
 

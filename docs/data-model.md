@@ -355,8 +355,9 @@ proposal file. Reviews are derived directly from the current canonical
 bibliography every time. Human decisions are stored separately by field:
 
 ~~~text
-data/audit/hygiene-resolutions.json        historical abstract decisions
-data/audit/title-hygiene-resolutions.json  publication-title decisions
+data/audit/hygiene-resolutions.json         historical abstract decisions
+data/audit/title-hygiene-resolutions.json   publication-title decisions
+data/audit/citation-hygiene-resolutions.json reference-citation decisions
 ~~~
 
 The historical abstract path and schema remain backward-compatible: a
@@ -373,6 +374,18 @@ BibReview refuses to reuse the stale resolution file.
 For title migration, deterministic inventory findings that produce no actual
 change (for example already-valid TeX) are not migration proposals. Refused
 values remain review-required and have no automatic proposed value.
+
+Reference-citation migration uses the same no-op rule and adds stable
+reference identity to each derived proposal fingerprint. DOI is preferred when
+available; otherwise the inventory's complete-citation SHA-256 key is used,
+with an ordinal only for duplicates inside one parent publication.
+
+Deterministic citation proposals are not stored in the human resolution ledger.
+An explicit `hygiene --citations --apply-safe` command may stage them directly
+through `collected.json` while preserving every reference identifier and list
+position. After those changes are merged, the review is recomputed from the new
+canonical state and only the residual ambiguous citations enter
+`citation-hygiene-resolutions.json`.
 
 Review-required proposals cannot be accepted directly. An explicit custom value
 may be staged after human review. `hygiene --apply` and

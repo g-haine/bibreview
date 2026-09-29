@@ -21,7 +21,7 @@ from .storage import read_json, write_json
 
 HYGIENE_RESOLUTION_SCHEMA_VERSION = 1
 _DECISIONS = frozenset({"accepted", "custom", "rejected", "deferred"})
-_FIELDS = frozenset({"abstract", "title"})
+_FIELDS = frozenset({"abstract", "title", "reference-citation"})
 
 
 @dataclass(frozen=True)
@@ -95,11 +95,11 @@ def hygiene_resolution_path(
     """Return field-specific resolution state beside the configured audit report."""
     if field not in _FIELDS:
         raise ProjectStateError(f"unsupported hygiene resolution field: {field}")
-    filename = (
-        "hygiene-resolutions.json"
-        if field == "abstract"
-        else "title-hygiene-resolutions.json"
-    )
+    filename = {
+        "abstract": "hygiene-resolutions.json",
+        "title": "title-hygiene-resolutions.json",
+        "reference-citation": "citation-hygiene-resolutions.json",
+    }[field]
     path = config.audit.report.with_name(filename)
     if path in {config.audit.report, config.audit.campaign}:
         raise ProjectStateError("hygiene resolution path collides with audit state")
@@ -122,8 +122,9 @@ def hygiene_review_fingerprint(review: HygieneMigrationReview) -> str:
     # Keep the historical abstract fingerprint payload byte-for-byte compatible.
     # Title decisions use a distinct state file, so the same payload shape is
     # sufficient without invalidating existing abstract resolution files.
-    payload = [
-        {
+    payload = []
+    for item in review.proposals:
+        entry: dict[str, Any] = {
             "publication_id": item.publication_id,
             "doi": item.doi,
             "families": list(item.families),
@@ -132,8 +133,15 @@ def hygiene_review_fingerprint(review: HygieneMigrationReview) -> str:
             "review_required": item.review_required,
             "reason": item.reason,
         }
-        for item in review.proposals
-    ]
+        if item.field == "reference-citation":
+            entry.update(
+                {
+                    "reference_key": item.reference_key,
+                    "reference_doi": item.reference_doi,
+                    "reference_index": item.reference_index,
+                }
+            )
+        payload.append(entry)
     encoded = json.dumps(
         payload,
         ensure_ascii=False,
@@ -206,7 +214,14 @@ def hygiene_resolution_state_from_data(value: Any) -> HygieneResolutionState:
             raise ProjectStateError(
                 f"hygiene resolution decision {index} must not define resolved_value"
             )
-        if strings["key"] != f"{strings['publication_id']}:{field}":
+        expected_prefix = f"{strings['publication_id']}:{field}"
+        if field == "reference-citation":
+            valid_key = strings["key"].startswith(expected_prefix + ":") and (
+                strings["key"] != expected_prefix + ":"
+            )
+        else:
+            valid_key = strings["key"] == expected_prefix
+        if not valid_key:
             raise ProjectStateError(
                 f"hygiene resolution decision {index}.key is inconsistent"
             )
@@ -396,6 +411,16 @@ def format_hygiene_resolution_candidate(
         f"{proposal.doi or proposal.publication_id} — {proposal.title}",
         "",
         f"Field: {proposal.field}",
+    ]
+    if proposal.field == "reference-citation":
+        lines.append(
+            "Reference: "
+            f"{proposal.reference_key} "
+            f"(index {proposal.reference_index}, "
+            f"DOI {proposal.reference_doi or 'none'})"
+        )
+    lines.extend(
+        [
         "Families: " + ", ".join(proposal.families),
         f"Normalizer: {proposal.reason}",
         "",
@@ -407,7 +432,8 @@ def format_hygiene_resolution_candidate(
             subsequent_indent="  ",
         ),
         "",
-    ]
+        ]
+    )
 
     if proposal.review_required:
         lines.extend(

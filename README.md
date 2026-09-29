@@ -11,7 +11,7 @@ feed.
 BibReview is designed so that provider output remains inspectable and ambiguous
 decisions remain human decisions.
 
-Current stable release: **v1.6.33**.
+Current stable release: **v1.6.34**.
 
 ## What BibReview provides
 
@@ -281,6 +281,40 @@ Title decisions are persisted separately in
 abstract ledger. Accepted/custom changes are staged through `collected.json`
 and **preserve the existing publication UUID and permalink exactly**. Reference
 citation migration remains out of scope for T3 and follows later as T4.
+
+BibReview v1.6.34 implements T4 for residual **reference-citation**
+hygiene after provider-driven reference refresh and title migration:
+
+~~~bash
+bibreview hygiene --citations --review
+bibreview -v hygiene --citations --review
+bibreview --dry-run hygiene --citations --apply-safe
+bibreview hygiene --citations --apply-safe
+bibreview merge
+~~~
+
+The safe pass stages only deterministic, lossless transformations of complete
+`Reference.citation` strings. Existing identifiers, reference order,
+publication UUIDs, titles and permalinks are preserved. Deterministic no-op
+findings such as already-valid TeX stay visible in the inventory but are not
+staged. Inline formatting whose removal would require guessing a missing word
+boundary is now refused for citations as `ambiguous-inline-boundary`.
+
+After merging the deterministic pass, rerun the review. Residual ambiguous
+citations use a separate resumable human workflow:
+
+~~~bash
+bibreview hygiene --citations --resolve
+bibreview --dry-run hygiene --citations --apply
+bibreview hygiene --citations --apply
+bibreview merge
+~~~
+
+Human citation decisions are stored in
+`citation-hygiene-resolutions.json`. Reference identity prefers DOI and
+otherwise uses the stable citation fingerprint already exposed by the hygiene
+inventory. T4 always operates on the **complete citation string** and never
+extracts or rewrites an inferred reference title heuristically.
 
 BibReview v1.6.25 starts the separate title/reference hygiene campaign with a
 strictly read-only T1 inventory:
