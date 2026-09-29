@@ -58,6 +58,13 @@ publication.
 
 ## Collected staging
 
+Newly collected metadata is filtered before it can enter this staging file.
+Publication titles must pass the conservative structured-title normalizer before
+their permalink is generated. Reference citations must either pass the
+structured-citation normalizer or fall back to safe provider evidence. A
+DOI-backed reference may be represented with an empty citation when only its
+identity is trustworthy; an unsafe DOI-less reference is not staged.
+
 **collected.json** uses the same document envelope and is temporary staging for
 **collect**, reviewed **refresh --apply**, explicit **audit --apply**, reviewed
 **backfill --apply**, and deterministic **references --apply-safe** promotion.

@@ -2,6 +2,27 @@
 
 All notable BibReview releases are documented here.
 
+## 1.6.36 — 2026-09-29
+
+### Prevent future structured metadata contamination
+
+- complete issue #97 T5 by replacing historical regex-based MathML stripping
+  during collection with the conservative structured-title normalizer;
+- normalize incoming titles before slug generation and reject ambiguous or
+  unsupported structured titles rather than flattening them;
+- keep refresh non-interactive by preserving refused provider titles as raw
+  comparison evidence instead of mutating existing canonical values;
+- sanitize newly constructed reference citations through the same conservative
+  citation normalizer used by historical hygiene;
+- fall back in order from DOI-formatted citation text to CrossRef unstructured
+  citation text and then to CrossRef structured reference fields;
+- retain DOI-only reference identity when no trustworthy citation text survives,
+  and omit unsafe DOI-less references that have no stable identity or safe text;
+- render DOI-only references without an empty citation separator;
+- add regression coverage for pre-slug title normalization, refused title
+  structures, refresh evidence preservation, citation fallback, DOI-only
+  references and unsafe DOI-less reference rejection.
+
 ## 1.6.35 — 2026-09-29
 
 ### Jekyll / MathJax delimiter rendering

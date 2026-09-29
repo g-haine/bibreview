@@ -175,6 +175,12 @@ when the field was filled after proposal generation.
 
 ## 5. Collect new pending DOI values
 
+Collection is intentionally non-interactive. Titles and reference citations
+are normalized only when BibReview can preserve their scholarly semantics
+deterministically. Unsafe titles stop that incoming publication before slug
+generation; unsafe reference text falls back to safer provider evidence, DOI
+identity only, or omission for an unidentifiable DOI-less reference.
+
 ~~~bash
 bibreview --config bibreview.yml --dry-run collect
 bibreview --config bibreview.yml collect

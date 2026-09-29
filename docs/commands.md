@@ -832,6 +832,30 @@ Use **--dry-run** to inspect the discovery plan without writing queue files.
 Collect metadata for DOI values in the pending queue and write canonical staging
 plus available BibTeX files:
 
+
+As of v1.6.36, collection applies the conservative structured metadata policy
+before any new record is staged:
+
+- publication titles pass through the title normalizer **before permalink/slug
+  generation**;
+- deterministic entity, presentation-wrapper, trusted TeX and supported MathML
+  cleanup is canonicalized immediately;
+- a title with unsupported or ambiguous structured markup is rejected with its
+  refusal reason rather than flattened or sent to an interactive collection
+  review;
+- DOI-formatted reference citations are sanitized first, then fall back to the
+  CrossRef unstructured citation and finally to CrossRef's structured
+  author/title/journal/year fields;
+- when a DOI-backed reference has no safe textual citation, its DOI identity is
+  retained with an empty citation and renders as a DOI-only reference;
+- an unsafe DOI-less reference with no deterministic textual fallback is
+  omitted rather than persisted as contaminated canonical text.
+
+Refresh remains non-interactive: when provider title structure is unsafe, its
+raw title is retained as provider evidence for comparison rather than causing
+historical canonical metadata to be rewritten.
+
+
 ~~~bash
 bibreview --config bibreview.yml collect
 ~~~

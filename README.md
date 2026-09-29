@@ -11,7 +11,17 @@ feed.
 BibReview is designed so that provider output remains inspectable and ambiguous
 decisions remain human decisions.
 
-Current stable release: **v1.6.35**.
+Current stable release: **v1.6.36**.
+
+BibReview v1.6.36 completes issue #97 by applying the validated structured
+title/citation normalizer to **future collection**. New publication titles are
+normalized before slug generation and refused when scholarly structure cannot
+be preserved deterministically. New reference citations use the same
+conservative sanitizer with automatic fallback from DOI-formatted text to
+CrossRef citation evidence; DOI identity is retained even when no safe citation
+text survives, while unsafe DOI-less references are not canonicalized. No
+interactive hygiene queue is introduced into collection.
+
 
 BibReview v1.6.35 fixes Jekyll/MathJax delimiter rendering discovered during
 the PHRAISE T4 rollout. Publication titles in YAML front matter now parse to a
