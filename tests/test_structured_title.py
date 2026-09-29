@@ -404,6 +404,15 @@ class StructuredCitationNormalizationTests(unittest.TestCase):
         self.assertEqual(result.reason, "provider-error-page")
         self.assertEqual(result.normalized, value)
 
+    def test_ambiguous_inline_citation_boundary_is_refused(self) -> None:
+        value = "A. Author. airship<i>via</i>interconnection. Journal."
+        result = normalize_structured_citation(value)
+
+        self.assertFalse(result.deterministic)
+        self.assertFalse(result.changed)
+        self.assertEqual(result.normalized, value)
+        self.assertEqual(result.reason, "ambiguous-inline-boundary")
+
     def test_script_markup_is_refused(self) -> None:
         value = "<sub/>. IEEE Trans Smart Grid 15(1):67–76."
         result = normalize_structured_citation(value)
