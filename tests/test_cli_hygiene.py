@@ -178,6 +178,71 @@ class HygieneCliTests(unittest.TestCase):
             )
         )
 
+    def test_title_migration_review_is_distinct_from_inventory(self) -> None:
+        item = Publication(
+            id=new_publication_id(),
+            identifiers={"doi": "10.1/title-migration"},
+            title="A Port‐<scp>H</scp>amiltonian Approach",
+            authors=(Author(literal="Ada Lovelace"),),
+            abstract="Clean.",
+            permalink="stable-title-url",
+        )
+        write_bibliography(self.config.paths.bibliography, (item,))
+        before = self.snapshot()
+
+        code, stdout, stderr = self.run_cli(
+            "hygiene",
+            "--titles",
+            "--review",
+        )
+
+        self.assertEqual(code, 0, stderr)
+        self.assertIn("Canonical title hygiene migration review", stdout)
+        self.assertIn("Deterministic proposals  : 1", stdout)
+        self.assertNotIn("Citations with hygiene signals", stdout)
+        self.assertEqual(before, self.snapshot())
+
+    def test_title_resolve_then_apply_preserves_permalink(self) -> None:
+        item = Publication(
+            id=new_publication_id(),
+            identifiers={"doi": "10.1/title-migration"},
+            title="A Port‐<scp>H</scp>amiltonian Approach",
+            authors=(Author(literal="Ada Lovelace"),),
+            abstract="Clean.",
+            permalink="stable-title-url",
+        )
+        write_bibliography(self.config.paths.bibliography, (item,))
+        canonical_before = self.config.paths.bibliography.read_bytes()
+
+        with patch("builtins.input", side_effect=[""]):
+            code, stdout, stderr = self.run_cli(
+                "hygiene",
+                "--titles",
+                "--resolve",
+            )
+
+        self.assertEqual(code, 0, stderr)
+        self.assertIn("Canonical title hygiene resolution", stdout)
+        self.assertIn("Accepted   : 1", stdout)
+
+        code, stdout, stderr = self.run_cli(
+            "hygiene",
+            "--titles",
+            "--apply",
+        )
+
+        self.assertEqual(code, 0, stderr)
+        self.assertIn("Canonical title hygiene application", stdout)
+        self.assertIn("Changes to stage      : 1", stdout)
+        self.assertEqual(
+            self.config.paths.bibliography.read_bytes(),
+            canonical_before,
+        )
+        staged = read_bibliography(self.config.paths.collected)
+        self.assertEqual(len(staged), 1)
+        self.assertEqual(staged[0].title, "A Port‐Hamiltonian Approach")
+        self.assertEqual(staged[0].permalink, "stable-title-url")
+
     def test_hygiene_review_derives_proposals_without_writing_state(self) -> None:
         before = self.snapshot()
 

@@ -125,6 +125,97 @@ class ProjectHygieneMigrationTests(unittest.TestCase):
         self.assertIn("math-0002.png", verbose)
         self.assertIn("REVIEW REQUIRED", verbose)
 
+    def test_title_review_and_apply_preserve_existing_permalink(self):
+        safe_title = Publication(
+            id=new_publication_id(),
+            identifiers={"doi": "10.1/title-safe"},
+            title="A Port‐<scp>H</scp>amiltonian Approach",
+            authors=(Author(literal="Ada Lovelace"),),
+            abstract="Clean.",
+            permalink="stable-title-url",
+        )
+        preserve_tex = Publication(
+            id=new_publication_id(),
+            identifiers={"doi": "10.1/title-tex"},
+            title=r"Fixed-Time $\mathcal{H}_{\infty}$ Control",
+            authors=(Author(literal="Alan Turing"),),
+            abstract="Clean.",
+            permalink="tex-title-url",
+        )
+        unsafe_title = Publication(
+            id=new_publication_id(),
+            identifiers={"doi": "10.1/title-unsafe"},
+            title="Stabilisation and ℋ<sub>∞</sub>control",
+            authors=(Author(literal="Grace Hopper"),),
+            abstract="Clean.",
+            permalink="unsafe-title-url",
+        )
+        write_bibliography(
+            self.config.paths.bibliography,
+            (safe_title, preserve_tex, unsafe_title),
+        )
+        canonical_before = self.config.paths.bibliography.read_bytes()
+
+        review = project_hygiene_migration_review(
+            self.config,
+            field="title",
+        )
+
+        self.assertEqual(review.field, "title")
+        self.assertEqual(review.scanned_publications, 3)
+        self.assertEqual(review.suspicious_abstracts, 3)
+        self.assertEqual(review.preserved_no_change, 1)
+        self.assertEqual(review.deterministic_proposals, 1)
+        self.assertEqual(review.review_required, 1)
+        self.assertEqual(len(review.proposals), 2)
+        self.assertTrue(all(item.key.endswith(":title") for item in review.proposals))
+
+        safe = next(item for item in review.proposals if not item.review_required)
+        self.assertEqual(
+            safe.proposed_value,
+            "A Port‐Hamiltonian Approach",
+        )
+
+        state = load_project_hygiene_resolutions(self.config, review)
+        for candidate in hygiene_resolution_candidates(review):
+            state = record_hygiene_resolution(
+                state,
+                candidate,
+                decision=(
+                    "rejected"
+                    if candidate.proposal.review_required
+                    else "accepted"
+                ),
+            )
+        save_project_hygiene_resolutions(self.config, state)
+
+        self.assertTrue(
+            hygiene_resolution_path(self.config, "title").exists()
+        )
+        self.assertFalse(hygiene_resolution_path(self.config).exists())
+
+        plan = plan_project_hygiene_apply(
+            self.config,
+            field="title",
+        )
+        self.assertEqual(len(plan.changes), 1)
+        self.assertEqual(plan.changes[0].field, "title")
+        self.assertEqual(
+            self.config.paths.bibliography.read_bytes(),
+            canonical_before,
+        )
+
+        apply_project_hygiene_apply(plan)
+
+        staged = read_bibliography(self.config.paths.collected)
+        self.assertEqual(len(staged), 1)
+        self.assertEqual(staged[0].title, "A Port‐Hamiltonian Approach")
+        self.assertEqual(staged[0].permalink, "stable-title-url")
+        self.assertEqual(
+            self.config.paths.bibliography.read_bytes(),
+            canonical_before,
+        )
+
     def test_review_required_proposal_cannot_be_accepted_directly(self):
         review = self.review()
         state = load_project_hygiene_resolutions(self.config, review)
