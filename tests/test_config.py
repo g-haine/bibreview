@@ -41,12 +41,16 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(config.project.slug, "example-review")
         self.assertEqual(config.paths.bibliography, root / "data/bibliography.json")
         self.assertEqual(config.paths.collected, root / "data/collected.json")
+        self.assertEqual(
+            config.paths.author_mappings,
+            root / "data/author_mappings.json",
+        )
         self.assertEqual(config.paths.known, root / "data/ID.txt")
         self.assertEqual(config.paths.pending, root / "data/newID.txt")
         self.assertEqual(config.paths.rejected, root / "data/badID.txt")
         self.assertEqual(config.paths.review, root / "data/checkID.txt")
-        self.assertEqual(config.audit.campaign, root / "data/audit/campaign.json")
-        self.assertEqual(config.audit.report, root / "data/audit/report.json")
+        self.assertEqual(config.audit.campaign, root / "audit/campaign.json")
+        self.assertEqual(config.audit.report, root / "audit/report.json")
         self.assertEqual(config.audit.batch_size, 50)
         self.assertEqual(
             config.references.campaign,
@@ -60,6 +64,17 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(config.discovery.query, "fluid-structure interaction")
         self.assertEqual(config.discovery.accepted_types, DEFAULT_DISCOVERY_TYPES)
         self.assertEqual(config.discovery.exclude_doi_substrings, ())
+
+    def test_site_publish_data_defaults_to_false_and_can_be_enabled(self):
+        _, path = self.write()
+        self.assertFalse(load_config(path).site.jekyll.publish_data)
+
+        enabled = BASE.replace(
+            "site:\n  enabled: false\n",
+            "site:\n  enabled: false\n  jekyll:\n    publish_data: true\n",
+        )
+        _, enabled_path = self.write(enabled)
+        self.assertTrue(load_config(enabled_path).site.jekyll.publish_data)
 
     def test_resolves_optional_environment_file_relative_to_config(self):
         root, path = self.write(BASE.replace(

@@ -1,3 +1,3 @@
 """BibReview: a generic bibliographic review engine."""
 
-__version__ = "1.6.38"
+__version__ = "1.6.39"

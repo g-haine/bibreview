@@ -2,6 +2,28 @@
 
 All notable BibReview releases are documented here.
 
+## 1.6.39 — 2026-09-30
+
+### Recommended project layout
+
+- standardize canonical project state under `data/`, tracked BibTeX under
+  `bib/`, maintenance evidence under `audit/`, backups under `archive/`, and
+  static-site source under `site/`;
+- rename the default reviewed author mapping file to
+  `data/author_mappings.json`;
+- align the default audit campaign/report paths with the top-level `audit/`
+  namespace already used by reference maintenance;
+- align the example arXiv cache with `site/assets/data/arxiv.json`.
+
+### Generated public data snapshots
+
+- add opt-in `site.jekyll.publish_data`, disabled by default;
+- when enabled, `bibreview render` owns only
+  `site/assets/data/bibreview/` and publishes read-only generated snapshots of
+  `bibliography.json` and `author_mappings.json`;
+- keep canonical project data outside the site tree and keep unrelated public
+  data such as `assets/data/arxiv.json` outside BibReview's managed subtree.
+
 ## 1.6.38 — 2026-09-30
 
 ### Typed identifier project state

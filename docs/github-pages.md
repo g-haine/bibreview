@@ -38,7 +38,7 @@ Example:
 paths:
   bibliography: data/bibliography.json
   collected: data/collected.json
-  author_mappings: data/authors.json
+  author_mappings: data/author_mappings.json
   known: data/ID.txt
   pending: data/newID.txt
   rejected: data/badID.txt
@@ -51,6 +51,8 @@ site:
   enabled: true
   implementation: jekyll
   source: site
+  jekyll:
+    publish_data: true
 ~~~
 
 Add your discovery, relevance, provider and rendering policies as described in
@@ -203,7 +205,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install pinned BibReview
-        run: python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.38"
+        run: python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.39"
 
       - name: Render bibliography
         run: bibreview --config bibreview.yml render
@@ -236,7 +238,7 @@ jobs:
         uses: actions/deploy-pages@v4
 ~~~
 
-The example above pins BibReview to **v1.6.38**. Keep an exact release tag or
+The example above pins BibReview to **v1.6.39**. Keep an exact release tag or
 commit pin for reproducibility, and update it deliberately when adopting a newer
 BibReview release.
 
@@ -250,7 +252,7 @@ deployment workflow.
 
 If the arXiv module is enabled, it can be refreshed automatically because it is
 display-only and independent from the curated canonical bibliography. Since
-v1.6.38, a successful refresh whose paper payload is unchanged preserves the
+v1.6.39, a successful refresh whose paper payload is unchanged preserves the
 existing cache bytes and `generated_at`, so timestamp-only scheduled churn does
 not create a commit.
 
@@ -286,21 +288,21 @@ jobs:
           python-version: "3.12"
 
       - name: Install pinned BibReview
-        run: python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.38"
+        run: python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.39"
 
       - name: Refresh arXiv cache
         run: bibreview --config bibreview.yml arxiv
 
       - name: Commit cache if changed
         run: |
-          if [ -z "$(git status --porcelain -- site/data/arxiv.json)" ]; then
+          if [ -z "$(git status --porcelain -- site/assets/data/arxiv.json)" ]; then
             echo "No arXiv cache changes."
             exit 0
           fi
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add site/data/arxiv.json
+          git add site/assets/data/arxiv.json
           git commit -m "Update arXiv cache"
           git push
 ~~~

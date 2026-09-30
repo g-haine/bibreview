@@ -20,12 +20,12 @@ arxiv:
   max_results: 25
   sort_by: lastUpdatedDate
   sort_order: descending
-  output: docs/assets/data/arxiv.json
+  output: site/assets/data/arxiv.json
 
 paths:
   bibliography: data/bibliography.json
   collected: data/collected.json
-  author_mappings: data/authors.json
+  author_mappings: data/author_mappings.json
   known: data/ID.txt
   pending: data/newID.txt
   rejected: data/badID.txt
@@ -61,8 +61,8 @@ refresh:
 # Non-destructive historical audits keep their own resumable campaign state and
 # comparison report. These files are separate from collected.json staging.
 audit:
-  campaign: data/audit/campaign.json
-  report: data/audit/report.json
+  campaign: audit/campaign.json
+  report: audit/report.json
   batch_size: 50
 
 references:
@@ -121,6 +121,9 @@ site:
   implementation: jekyll
   source: site
   jekyll:
+    # Optional public snapshots generated from canonical project data.
+    # When enabled, render owns site/assets/data/bibreview/.
+    publish_data: false
     # Projects choose their own Jekyll category names explicitly.
     category_by_type:
       journal-article: articles

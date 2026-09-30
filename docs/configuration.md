@@ -58,7 +58,7 @@ Do not commit **.env**.
 paths:
   bibliography: data/bibliography.json
   collected: data/collected.json
-  author_mappings: data/authors.json
+  author_mappings: data/author_mappings.json
   known: data/ID.txt
   pending: data/newID.txt
   rejected: data/badID.txt
@@ -69,6 +69,19 @@ paths:
 ~~~
 
 See [Data and state files](data-model.md) for the role of each path.
+
+BibReview's recommended project layout deliberately separates canonical project
+state from presentation:
+
+~~~text
+data/      canonical bibliography, staging, mappings and identifier state
+bib/       tracked BibTeX source records
+audit/     audit/reference campaign evidence
+archive/   backups created by reviewed maintenance operations
+site/      static-site source and generated presentation artifacts
+~~~
+
+The site directory should not be used as canonical bibliographic storage.
 
 The configuration keys remain `known`, `pending`, `rejected`, and `review`
 for schema compatibility, but the default filenames are identifier-generic.
@@ -161,8 +174,8 @@ canonical bibliography state and collection staging:
 
 ~~~yaml
 audit:
-  campaign: data/audit/campaign.json
-  report: data/audit/report.json
+  campaign: audit/campaign.json
+  report: audit/report.json
   batch_size: 50
 ~~~
 
@@ -353,7 +366,7 @@ arxiv:
   max_results: 25
   sort_by: lastUpdatedDate
   sort_order: descending
-  output: site/data/arxiv.json
+  output: site/assets/data/arxiv.json
 ~~~
 
 The arXiv cache is display-only. It does not create canonical publications and
@@ -367,6 +380,7 @@ site:
   implementation: jekyll
   source: site
   jekyll:
+    publish_data: false
     category_by_type:
       journal-article: articles
       proceedings-article: proceedings
@@ -389,6 +403,13 @@ are therefore rendered even when this option is `false`.
 
 **bibreview render** owns generated publication posts, author pages and year
 pages. It does not own your Jekyll theme, layouts, CSS, deployment or analytics.
+
+When `site.jekyll.publish_data: true`, render also owns the dedicated
+`assets/data/bibreview/` subtree below the configured site source and publishes
+read-only snapshots of the canonical `bibliography.json` and
+`author_mappings.json`. These files are generated presentation artifacts, not
+canonical state. Other site data such as `assets/data/arxiv.json` remains
+outside that managed subtree.
 
 Continue with [Local workflow](workflow.md) and
 [GitHub Pages](github-pages.md).
