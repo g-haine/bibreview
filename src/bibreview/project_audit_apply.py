@@ -15,6 +15,7 @@ from .audit_resolution import (
 )
 from .bibtex_edit import BibtexEditError, bibtex_field_names, update_bibtex_fields
 from .config import BibReviewConfig
+from .identity import publication_identity_label
 from .model import Publication
 from .pipeline.audit import AuditValue, publication_audit_record
 from .project import ProjectStateError
@@ -207,7 +208,7 @@ def plan_project_audit_apply(config: BibReviewConfig) -> ProjectAuditApplyPlan:
             no_ops.append(
                 AuditApplyNoOp(
                     publication_id=candidate.publication_id,
-                    doi=publication.doi or candidate.publication_id,
+                    doi=publication_identity_label(candidate.publication_id, publication.doi),
                     title=publication.title,
                     field=field,
                     decision=decision.decision,
@@ -233,7 +234,7 @@ def plan_project_audit_apply(config: BibReviewConfig) -> ProjectAuditApplyPlan:
         raw_changes.append(
             AuditApplyChange(
                 publication_id=candidate.publication_id,
-                doi=publication.doi or candidate.publication_id,
+                doi=publication_identity_label(candidate.publication_id, publication.doi),
                 title=publication.title,
                 field=field,
                 decision=decision.decision,
