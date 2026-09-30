@@ -105,13 +105,31 @@ class ProjectCollectionTests(unittest.TestCase):
         self.assertEqual(staged[0].title, "A new publication")
         self.assertEqual(
             self.config.paths.pending.read_text(encoding="utf-8"),
-            "10.1/new\n10.1/missing\n",
+            "doi:10.1/new\ndoi:10.1/missing\n",
         )
         self.assertEqual(
             (self.config.paths.bibtex / "a-new-publication.bib").read_text(encoding="utf-8"),
             "@article{10.1/new}\n",
         )
         self.assertEqual(len(read_bibliography(self.config.paths.bibliography)), 1)
+
+    def test_non_doi_identifier_is_rejected_from_automated_queue(self):
+        write_bibliography(self.config.paths.collected, [])
+        self.config.paths.pending.write_text(
+            "isbn:9781234567890\n",
+            encoding="utf-8",
+        )
+        provider = FakeProvider({})
+        before = self.snapshot()
+
+        with self.assertRaisesRegex(
+            ProjectStateError,
+            "identifier kind 'isbn' is not allowed",
+        ):
+            plan_project_collection(self.config, provider=provider)
+
+        self.assertEqual(provider.calls, [])
+        self.assertEqual(before, self.snapshot())
 
     def test_nonempty_staging_must_be_merged_before_collection(self):
         write_bibliography(

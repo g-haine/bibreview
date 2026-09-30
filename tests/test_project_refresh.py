@@ -160,11 +160,11 @@ class ProjectRefreshTests(unittest.TestCase):
         self.assertEqual(review.stale_dois, ("10.1/stale",))
         self.assertEqual(
             self.config.paths.known.read_text(encoding="utf-8"),
-            "10.1/stale\n10.1/complete\n",
+            "doi:10.1/stale\ndoi:10.1/complete\n",
         )
         self.assertEqual(
             self.config.paths.pending.read_text(encoding="utf-8"),
-            "10.1/preexisting\n10.1/orphaned\n",
+            "doi:10.1/preexisting\ndoi:10.1/orphaned\n",
         )
 
     def test_verbose_review_shows_collateral_current_and_provider_values(self):

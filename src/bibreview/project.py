@@ -9,7 +9,16 @@ from types import MappingProxyType
 from typing import Mapping, Protocol
 
 from .config import BibReviewConfig
-from .identity import IdentityError, normalize_doi
+from .identifier_state import (
+    IdentifierStateError,
+    IdentifierToken,
+    REGISTRY_IDENTIFIER_NAMES,
+    canonical_registry_token,
+    doi_values,
+    identifier_tokens_bytes,
+    read_identifier_tokens,
+)
+from .identity import STRONG_IDENTIFIER_NAMES
 from .pipeline.authors import (
     AuthorMappingPlan,
     apply_safe_author_mappings as apply_safe_author_mapping_data,
@@ -155,32 +164,52 @@ def _optional_bibliography(path: Path) -> tuple:
     return read_bibliography(path)
 
 
-def _doi_lines(path: Path) -> tuple[str, ...]:
-    """Read a simple BibReview DOI state file, ignoring comments and blanks."""
-    if not path.exists():
-        return ()
+def _state_tokens(
+    path: Path,
+    *,
+    allowed_kinds,
+) -> tuple[IdentifierToken, ...]:
+    """Read project identifier state with transitional bare-DOI support."""
+
     try:
-        lines = path.read_text(encoding="utf-8").splitlines()
-    except OSError:
-        raise
-    values: list[str] = []
-    seen: set[str] = set()
-    for number, raw in enumerate(lines, 1):
-        value = raw.strip()
-        if not value or value.startswith("#"):
-            continue
-        try:
-            doi = normalize_doi(value)
-        except IdentityError as error:
-            raise ProjectStateError(f"{path}: line {number}: {error}") from error
-        if doi not in seen:
-            seen.add(doi)
-            values.append(doi)
-    return tuple(values)
+        return read_identifier_tokens(
+            path,
+            allowed_kinds=allowed_kinds,
+            allow_legacy_doi=True,
+        )
+    except IdentifierStateError as error:
+        raise ProjectStateError(str(error)) from error
 
 
-def _lines_bytes(values: tuple[str, ...] | list[str]) -> bytes:
-    return b"".join(value.encode("utf-8") + b"\n" for value in values)
+def _queue_dois(path: Path) -> tuple[str, ...]:
+    """Read the DOI-only automated acquisition queue."""
+
+    return doi_values(
+        _state_tokens(path, allowed_kinds=STRONG_IDENTIFIER_NAMES)
+    )
+
+
+def _registry_tokens(path: Path) -> tuple[IdentifierToken, ...]:
+    """Read canonical registry state."""
+
+    return _state_tokens(path, allowed_kinds=REGISTRY_IDENTIFIER_NAMES)
+
+
+def _registry_dois(path: Path) -> tuple[str, ...]:
+    return doi_values(_registry_tokens(path))
+
+
+def _doi_tokens_bytes(values: tuple[str, ...] | list[str]) -> bytes:
+    return identifier_tokens_bytes(
+        IdentifierToken("doi", value) for value in values
+    )
+
+
+def _canonical_registry_tokens(publications) -> tuple[IdentifierToken, ...]:
+    return tuple(
+        canonical_registry_token(publication.id, publication.doi)
+        for publication in publications
+    )
 
 
 def _append_unique(values: list[str], additions: tuple[str, ...]) -> list[str]:
@@ -229,8 +258,8 @@ def plan_project_collection(
             "merge the existing batch before collecting again"
         )
 
-    submitted = _doi_lines(paths.pending)
-    known = list(_doi_lines(paths.known))
+    submitted = _queue_dois(paths.pending)
+    known = list(_registry_dois(paths.known))
     known.extend(
         publication.doi
         for publication in existing
@@ -260,7 +289,7 @@ def plan_project_collection(
     collected_bytes = json_bytes(
         bibliography_document_data(result.publications)
     )
-    pending_bytes = _lines_bytes(list(result.candidates))
+    pending_bytes = _doi_tokens_bytes(list(result.candidates))
 
     if result.candidates or paths.collected.exists():
         _put_if_changed(outputs, paths.collected, collected_bytes)
@@ -306,10 +335,10 @@ def plan_project_discovery(
 
     paths = config.paths
     existing = _optional_bibliography(paths.bibliography)
-    known = list(_doi_lines(paths.known))
-    pending = list(_doi_lines(paths.pending))
-    rejected = list(_doi_lines(paths.rejected))
-    review = list(_doi_lines(paths.review))
+    known = list(_registry_dois(paths.known))
+    pending = list(_queue_dois(paths.pending))
+    rejected = list(_queue_dois(paths.rejected))
+    review = list(_queue_dois(paths.review))
 
     candidates = discovery_provider.discover(
         config.discovery.query,
@@ -341,14 +370,14 @@ def plan_project_discovery(
 
     outputs: dict[Path, bytes] = {}
     if result.candidates or paths.pending.exists() or paths.rejected.exists() or paths.review.exists():
-        _put_if_changed(outputs, paths.pending, _lines_bytes(pending))
-        _put_if_changed(outputs, paths.rejected, _lines_bytes(rejected))
-        _put_if_changed(outputs, paths.review, _lines_bytes(review))
+        _put_if_changed(outputs, paths.pending, _doi_tokens_bytes(pending))
+        _put_if_changed(outputs, paths.rejected, _doi_tokens_bytes(rejected))
+        _put_if_changed(outputs, paths.review, _doi_tokens_bytes(review))
 
     return ProjectDiscoveryPlan(
         result=result,
         outputs=MappingProxyType(outputs),
-        known_count=len(known),
+        known_count=len(registry),
         pending_count=len(pending),
         rejected_count=len(rejected),
         review_count=len(review),
@@ -431,10 +460,10 @@ def plan_project_merge(config: BibReviewConfig) -> ProjectMergePlan:
     )
     existing = existing_document.publications
     incoming = _optional_bibliography(paths.collected)
-    known = list(_doi_lines(paths.known))
-    pending = list(_doi_lines(paths.pending))
-    rejected = set(_doi_lines(paths.rejected))
-    review = list(_doi_lines(paths.review))
+    registry = _registry_tokens(paths.known)
+    pending = list(_queue_dois(paths.pending))
+    rejected = set(_queue_dois(paths.rejected))
+    review = list(_queue_dois(paths.review))
 
     accepted = [publication for publication in incoming if publication.doi not in rejected]
     rejected_count = len(incoming) - len(accepted)
@@ -447,21 +476,16 @@ def plan_project_merge(config: BibReviewConfig) -> ProjectMergePlan:
             backup=None,
             incoming_count=0,
             rejected_count=0,
-            known_count=len(known),
+            known_count=len(registry),
             pending_count=len(pending),
         )
 
     accepted_dois = [publication.doi for publication in accepted if publication.doi]
     processed = set(accepted_dois) | rejected
 
-    known_seen = set(known)
-    for doi in accepted_dois:
-        if doi not in known_seen:
-            known_seen.add(doi)
-            known.append(doi)
-
     pending = [doi for doi in pending if doi not in processed]
     review = [doi for doi in review if doi not in processed]
+    registry = _canonical_registry_tokens(result.publications)
 
     backup = None
     outputs: dict[Path, bytes] = {}
@@ -485,9 +509,9 @@ def plan_project_merge(config: BibReviewConfig) -> ProjectMergePlan:
     outputs[paths.collected] = json_bytes(
         bibliography_document_data(())
     )
-    outputs[paths.known] = _lines_bytes(known)
-    outputs[paths.pending] = _lines_bytes(pending)
-    outputs[paths.review] = _lines_bytes(review)
+    outputs[paths.known] = identifier_tokens_bytes(registry)
+    outputs[paths.pending] = _doi_tokens_bytes(pending)
+    outputs[paths.review] = _doi_tokens_bytes(review)
 
     return ProjectMergePlan(
         result=result,

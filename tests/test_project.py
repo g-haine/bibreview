@@ -101,15 +101,19 @@ class ProjectMergeTests(unittest.TestCase):
         self.assertEqual(read_bibliography(self.config.paths.collected), ())
         self.assertEqual(
             self.config.paths.known.read_text(encoding="utf-8"),
-            "10.1/old\n10.1/new\n",
+            (
+                "doi:10.1/old\n"
+                "doi:10.1/new\n"
+                f"id:{doi_less.id}\n"
+            ),
         )
         self.assertEqual(
             self.config.paths.pending.read_text(encoding="utf-8"),
-            "10.1/waiting\n",
+            "doi:10.1/waiting\n",
         )
         self.assertEqual(
             self.config.paths.review.read_text(encoding="utf-8"),
-            "10.1/review-later\n",
+            "doi:10.1/review-later\n",
         )
         self.assertEqual(plan.backup.read_bytes(), original_bibliography)
 
