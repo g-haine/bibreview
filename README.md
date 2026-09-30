@@ -1,628 +1,267 @@
 # BibReview
 
-**BibReview is a generic, human-reviewed bibliographic engine for reproducible
-literature databases and static scholarly websites.**
+**BibReview is a human-reviewed bibliographic engine for reproducible literature
+databases and static scholarly websites.**
 
-It discovers DOI-backed publications, collects and enriches metadata, keeps
-reviewable canonical project state, helps resolve author identities, renders
-Jekyll bibliography pages, and can optionally maintain a display-only arXiv
-feed.
+It automates repetitive bibliographic work while keeping ambiguous decisions,
+provider disagreements, and canonical changes inspectable by a human maintainer.
 
-BibReview is designed so that provider output remains inspectable and ambiguous
-decisions remain human decisions.
+Current release line: **v1.7.0**.
 
-Current stable release: **v1.6.44**.
+## What BibReview is for
 
-BibReview v1.6.44 adds a repository-level [`publication.example.yml`](publication.example.yml)
-field reference for reviewed DOI-less imports and documents the complete
-`--init` → review → dry-run → import → merge workflow. A real import must still
-start with `bibreview import --init publication.yml` so BibReview, rather than a
-copied example, allocates the persistent publication UUID.
+BibReview is designed for curated scientific bibliographies that need to remain
+maintainable over time.
 
-BibReview v1.6.43 canonicalizes reviewed DOI-less BibTeX before it becomes
-tracked project state: stable field spacing, protected `title`/`booktitle`,
-normalized page ranges, and removal of `abstract`, `month`, `url`, and
-`pdf` payload fields that belong in reviewed metadata/provenance instead.
+It provides:
 
-BibReview v1.6.42 hardens DOI-less canonical publications across ordinary
-merge, rendering and maintenance workflows. DOI-neutral operations use the
-persistent UUID normally; DOI-only audit/reference workflows classify DOI-less
-records explicitly without provider calls; backfill/refresh skip DOI-only
-lookups; and human-facing fallbacks are rendered unambiguously as `id:<UUID>`.
+- DOI discovery and relevance screening;
+- metadata collection from CrossRef with optional provider enrichment;
+- reviewed import of publications without a DOI;
+- persistent publication UUIDs independent of external identifiers;
+- explicit staging and merge boundaries;
+- reviewed author identity mappings;
+- resumable audit, reference, refresh, backfill, and hygiene workflows;
+- tracked canonical BibTeX;
+- deterministic Jekyll publication, author, and year rendering;
+- an optional display-only arXiv feed cache;
+- dry-run planning, checkpoints, and backups for mutating workflows.
 
-BibReview v1.6.41 adds the reviewed manual-import core for DOI-less
-publications. `bibreview import --init FILE` persists a stable BibReview UUID
-in a versioned YAML manifest; `bibreview --dry-run import FILE` validates the
-complete reviewed contract without writes; and `bibreview import FILE` stages
-the publication, tracked BibTeX, and durable import evidence without changing
-the canonical bibliography or `ID.txt`. DOI-bearing records remain exclusively
-on the automated DOI acquisition path.
+The central rule is simple:
 
-BibReview v1.6.40 completes the canonical/site separation introduced in v1.6.39:
-when `site.jekyll.publish_data` is enabled, render now publishes tracked BibTeX
-sources under the configured public BibTeX asset prefix in addition to the
-generated bibliography and author-mapping JSON snapshots. Canonical BibTeX can
-therefore live exclusively under `bib/` without requiring a duplicate tracked
-copy inside `site/`.
+> **Providers supply evidence; the project maintainer owns the canon.**
 
-BibReview v1.6.39 establishes the recommended project layout: canonical state in
-`data/`, tracked BibTeX in `bib/`, maintenance evidence in `audit/`, backups
-in `archive/`, and presentation in `site/`. The renderer can optionally
-publish generated read-only snapshots of canonical bibliography and author
-mappings under `site/assets/data/bibreview/` while keeping canonical state
-outside the site tree.
+BibReview never treats a provider response as an unquestionable replacement for
+reviewed project state.
 
-BibReview v1.6.38 introduces typed identifier project state for issue #28 while
-keeping DOI as the sole strong/automatable acquisition identifier. Project
-defaults now use `ID.txt`, `newID.txt`, `checkID.txt`, and `badID.txt`.
-The canonical registry contains one token per publication: `doi:<value>` when
-a DOI exists and `id:<Publication.id>` otherwise. Historical bare DOI lines
-remain readable during migration.
+## Installation
 
-BibReview v1.6.37 makes scheduled arXiv refreshes true semantic no-ops when the
-paper payload is unchanged. A later refresh timestamp alone no longer rewrites
-the cache; `generated_at` advances only when the cached papers actually change.
+BibReview requires **Python 3.12 or newer**.
 
-BibReview v1.6.36 completes issue #97 by applying the validated structured
-title/citation normalizer to **future collection**. New publication titles are
-normalized before slug generation and refused when scholarly structure cannot
-be preserved deterministically. New reference citations use the same
-conservative sanitizer with automatic fallback from DOI-formatted text to
-CrossRef citation evidence; DOI identity is retained even when no safe citation
-text survives, while unsafe DOI-less references are not canonicalized. No
-interactive hygiene queue is introduced into collection.
-
-
-BibReview v1.6.35 fixes Jekyll/MathJax delimiter rendering discovered during
-the PHRAISE T4 rollout. Publication titles in YAML front matter now parse to a
-single `\(...\)` delimiter pair instead of retaining doubled backslashes,
-while reference citations rendered through Markdown preserve those delimiters
-across Kramdown. Canonical bibliography values are unchanged by this patch.
-
-
-## What BibReview provides
-
-- OpenAlex discovery with configurable relevance rules;
-- CrossRef-backed DOI metadata collection;
-- optional publisher and abstract enrichment providers;
-- safe provider/credential diagnostics with optional live checks;
-- resumable, non-destructive audits of existing canonical metadata;
-- offline audit reclassification and corroboration-aware human-review views;
-- resumable interactive resolution of actionable audit findings;
-- conservative promotion of completed audit resolutions into reviewable staging;
-- explicit pending, review, rejected and collected states;
-- persistent publication UUIDs independent from DOI representation;
-- reviewed author-name mapping with safe and ambiguous proposals;
-- BibTeX retrieval and tracked source files;
-- human-reviewed, non-destructive refresh of selected incomplete publications;
-- human-reviewed backfill of selected missing canonical fields;
-- deterministic Jekyll publication, author and year rendering;
-- an optional arXiv feed-cache module, separate from the canonical bibliography;
-- dry-run planning for mutating workflows;
-- atomic-per-file persistence and explicit backups.
-
-## Quick start
-
-BibReview currently requires **Python 3.12 or newer**.
+For reproducible use, install an exact release tag:
 
 ~~~bash
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.44"
+python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.7.0"
 
 bibreview --version
 ~~~
 
-On Windows PowerShell, activate the environment with:
+On Windows PowerShell:
 
 ~~~powershell
-.\.venv\Scripts\Activate.ps1
+.\\.venv\\Scripts\\Activate.ps1
 ~~~
 
-Start a project from
-[bibreview.example.yml](bibreview.example.yml), then validate it:
+See [Installation](docs/installation.md) for the complete platform-specific
+setup.
+
+## Start a project
+
+Use [`bibreview.example.yml`](bibreview.example.yml) as the configuration
+reference, then validate the project:
 
 ~~~bash
-bibreview --config bibreview.yml validate
-bibreview --config bibreview.yml status
+bibreview validate
+bibreview status
 ~~~
 
-See the complete [installation guide](docs/installation.md) for Linux, macOS and
-Windows.
+BibReview uses `bibreview.yml` in the current directory by default.
 
-## Typical maintenance cycle
+A typical project separates canonical data, tracked BibTeX, maintenance state,
+backups, and presentation:
+
+~~~text
+data/
+  bibliography.json
+  collected.json
+  author_mappings.json
+  ID.txt
+  newID.txt
+  checkID.txt
+  badID.txt
+  imports/
+
+bib/
+audit/
+archive/
+site/
+bibreview.yml
+~~~
+
+See [Data and state files](docs/data-model.md) for the exact semantics.
+
+## Add DOI-backed publications
+
+The ordinary automated acquisition path remains DOI-only:
 
 ~~~text
 discover
    ↓
-human review of uncertain DOI candidates
+newID.txt / checkID.txt / badID.txt
    ↓
-refresh existing incomplete records
+human review when needed
    ↓
-review/resolve refresh proposals
+collect
    ↓
-apply reviewed refresh fills
-   ↓
-merge
-   ↓
-collect new pending DOI values
-   ↓
-inspect/correct staging + BibTeX
+inspect collected.json + BibTeX
    ↓
 merge
    ↓
 authors
    ↓
-human resolution of ambiguous identities
-   ↓
 render
 ~~~
 
-The optional arXiv feed runs independently:
+Typical commands:
 
-~~~text
-arxiv → display-only JSON cache
+~~~bash
+bibreview discover
+
+# Review data/checkID.txt when required.
+
+bibreview collect
+bibreview --dry-run merge
+bibreview merge
+
+bibreview authors
+bibreview authors --apply-safe
+
+bibreview render
 ~~~
 
-A curated project should inspect staged metadata and BibTeX before merging.
+`merge` is the explicit promotion boundary into the canonical bibliography.
 
-## Commands
+## Add a publication without a DOI
 
-| Command | Purpose |
+DOI-less publications are first-class canonical records, but they do **not**
+create a second automated acquisition pipeline.
+
+Initialize a reviewed import manifest:
+
+~~~bash
+bibreview import --init publication.yml
+~~~
+
+Complete it using [`publication.example.yml`](publication.example.yml) as a
+field reference. Do not copy the example UUID into a real import: `--init`
+allocates the persistent BibReview UUID for the publication.
+
+Then validate and stage it:
+
+~~~bash
+bibreview --dry-run import publication.yml
+bibreview import publication.yml
+
+bibreview --dry-run merge
+bibreview merge
+~~~
+
+Auxiliary identifiers such as PMLR, ISBN, arXiv, or PMID can be retained as
+metadata, but DOI remains the sole current **strong/automatable identifier**.
+
+## Maintain an existing bibliography
+
+Routine maintenance is split into focused workflows rather than one destructive
+"update everything" command.
+
+| Workflow | Purpose |
 |---|---|
-| **validate** | Validate project configuration. |
-| **status** | Show the resolved project configuration summary. |
-| **providers** | Inspect credential provenance and optionally live-check providers. |
-| **hygiene** | Read-only metadata hygiene inventories plus reviewed canonical abstract migration. |
-| **audit** | Incrementally audit new/retryable canonical publications; use `--full` for a complete pass. |
-| **references** | Rebuild and compare one resumable batch of canonical reference lists from current CrossRef parent-work metadata. |
-| **discover** | Discover and screen new DOI candidates. |
-| **collect** | Collect pending DOI metadata into canonical staging. |
-| **backfill** | Propose missing-field enrichment, resolve it interactively, then stage accepted values. |
-| **refresh** | Detect stale incomplete records, review safe fills, and stage only human-approved changes. |
-| **merge** | Merge reviewed staging into the canonical bibliography. |
-| **authors** | Analyze and safely extend author identity mappings. |
-| **render** | Reconcile generated Jekyll bibliography artifacts. |
-| **arxiv** | Refresh the optional display-only arXiv cache. |
+| `providers` | Inspect configured credentials and optionally live-check providers. |
+| `audit` | Compare canonical records with current provider evidence in resumable batches. |
+| `references` | Rebuild and review reference-list evidence without silent canonical replacement. |
+| `refresh` | Review safe fills for configured incomplete/stale records. |
+| `backfill` | Propose enrichment for a specific missing canonical field. |
+| `hygiene` | Inspect and review structured-text/title/citation cleanup. |
+| `authors` | Resolve contributor identity mappings. |
+| `render` | Reconcile generated Jekyll bibliography artifacts. |
+| `arxiv` | Refresh the optional display-only arXiv cache. |
 
-Use **--dry-run** with mutating workflows when you want to inspect the plan
-without writing project files.
-
-Full details: [command reference](docs/commands.md).
-
-### Reference refresh inventory
-
-BibReview v1.6.32 adds the missing **second citation round** to the read-only
-`bibreview references` workflow. Parent CrossRef records still define the
-ordered reference structure. BibReview then collects every cited DOI across the
-whole campaign batch, de-duplicates them, retrieves their CrossRef metadata in
-exact DOI batches, renders the historical Springer citation style locally with
-CSL, and reinjects only the resulting citation strings into the original
-reference slots. Round 2 never creates or persists a second bibliographic
-notice.
-
-The local renderer uses `citeproc-py` plus the single bundled
-`springer-basic-author-date-no-et-al-with-issue` CSL file. The style retains
-its upstream provenance/license notice under `bibreview/data/styles/`; the
-full multi-style package is not required.
-
-Because v1.6.32 changes reference-report semantics materially, the references
-report schema is bumped to **v2**. A v1.6.28 pilot campaign/report is refused
-rather than silently mixed with two-round results; archive both files and start
-a fresh campaign.
-
-BibReview v1.6.28 refines the read-only `bibreview references` workflow after
-the first PHRAISE batch showed that parent CrossRef references often expose a
-DOI without citation text. When that DOI exactly matches the canonical DOI at
-the same position, BibReview now reuses the canonical citation as evidence,
-runs it through the current conservative sanitizer, and avoids proposing an
-empty citation. Non-DOI entries, reordered references, and identifier drift
-never use this fallback.
-
-Default reference campaign state now lives under:
+All reviewed correction workflows preserve the same principle:
 
 ~~~text
-audit/references/campaign.json
-audit/references/report.json
+evidence
+   ↓
+review / resolution
+   ↓
+collected.json staging
+   ↓
+explicit merge
+   ↓
+canonical bibliography
 ~~~
 
-BibReview v1.6.27 introduced the first read-only `bibreview references`
-workflow. It rebuilds reference lists from the current **parent CrossRef work
-records**, runs reconstructed citation strings through the v1.6.26 conservative
-normalizer, and compares them with canonical references without changing
-`bibliography.json` or `collected.json`.
+For the operational sequence, see [Local workflow](docs/workflow.md). For every
+CLI option, see [Command reference](docs/commands.md).
 
-~~~bash
-bibreview --dry-run references
-bibreview references
-bibreview references --review
-bibreview -v references --review
-bibreview --dry-run references --apply-safe
-bibreview references --apply-safe
-bibreview references --resolve
-bibreview --dry-run references --apply
-bibreview references --apply
-bibreview --dry-run references --reconcile-applied
-~~~
+## Identity and state
 
-The campaign is resumable and checkpointed publication-by-publication.
-`safe-update` remains intentionally narrow at refresh-classification time:
-reference count, order, and identifiers must remain identical, and every
-citation change must be exactly explained by the deterministic T2 sanitizer.
+Every canonical publication has a persistent opaque `Publication.id` UUID.
 
-The offline `references --apply-safe` step goes further without weakening the
-canonical boundary. It stages only atomic changes for which BibReview has
-deterministic evidence: strict safe updates, conservative DOI-typography and
-citation-format cleanup, and non-destructive provider-only insertions whose
-alignment is established. Existing canonical references are preserved during
-expansion, while substantive same-DOI citation changes, metadata enrichment,
-provider-added identifiers, and ambiguous structural drift remain unapplied.
-The command refuses stale report fingerprints or occupied staging and writes
-only `collected.json`; canonical promotion still requires an explicit
-`bibreview merge`.
+External identifiers live separately in `Publication.identifiers`. At present,
+DOI is the only identifier used by the automated acquisition chain.
 
-Every deterministic `references --apply-safe` outcome is now recorded in the
-same cumulative reference ledger with its exact resolved fingerprint. A later
-pass therefore recognizes already-merged maintenance instead of treating the
-older report fingerprint as stale. Genuinely ambiguous publications use the
-separate explicit human workflow: `references --resolve` persists
-`keep-canonical`, `use-provider`, custom JSON reference-list, or deferred
-decisions, and `references --apply` stages only completed human decisions.
-
-Projects that merged an older reviewed reference batch before ledger support can
-bootstrap that history explicitly with `references --reconcile-applied`; the
-command adopts current canonical fingerprints into the ledger but never changes
-the canonical bibliography itself. Any later canonical fingerprint that matches
-neither source nor resolved state is rejected as stale.
-
-### Canonical abstract hygiene inventory
-
-Historical bibliographies can contain provider HTML/JATS/MathML payloads inside
-otherwise reviewed canonical abstracts. Inspect them without network access or
-project-state mutation with:
-
-~~~bash
-bibreview hygiene
-bibreview -v hygiene
-bibreview hygiene --json
-~~~
-
-The compact view reports counts by contamination family. Verbose output adds
-the affected DOI/title, a short context excerpt and a normalization hint; JSON
-contains the complete inventory. A deterministic-candidate label means only
-that the observed markup has an apparently lossless cleanup path. For inline
-formulas, BibReview accepts explicit `application/x-tex` annotations or
-`<tex-math notation="LaTeX">…</tex-math>` payloads only when **every**
-`inline-formula` has a non-empty representation. Embedded graphics such as
-JATS `inline-graphic` are instead review-required because removing the tag
-could discard mathematical content. Subscript/superscript markup such as IEEE
-`<inf>` and ordinary `<sub>` / `<sup>` is also review-required because plain
-unwrapping would lose mathematical position semantics. **Phase 1 never rewrites
-canonical metadata.**
-
-BibReview v1.6.19 introduced the library-level
-`bibreview.structured_abstract.normalize_structured_abstract()` primitive for
-lossless structured normalization.
-
-BibReview v1.6.20 routes incoming provider abstracts through that conservative
-primitive before canonical collection/enrichment. Safe structural markup is
-normalized; refused structured payloads are not flattened into misleading text.
-Collection can fall through from an unsafe publisher/CrossRef abstract to another
-safe provider, and optional fallback providers skip unsafe candidates with an
-explicit warning. Publisher adapters preserve their raw abstract markup until
-this central policy boundary. **Collect remains fully automatic:** refused
-abstract evidence is not persisted by the collection workflow; if no safe source
-exists, the collected publication simply has no abstract and a later reviewed
-backfill/refresh can revisit the missing field. Discovery remains non-canonical:
-refused provider text may still participate transiently in relevance matching so
-useful search evidence is not discarded.
-
-BibReview v1.6.26 adds the conservative T2 title/reference normalizer while
-keeping the workflow read-only at project level. `hygiene --titles` now assesses
-each finding with the real normalizer rather than the earlier T1 heuristic.
-Entity decoding is iterative and followed by rescanning, explicit TeX is
-preserved, the small semantic MathML subset observed in PHRAISE can be converted
-losslessly to inline TeX, and script markup / malformed structures / replacement
-characters remain review-required. No canonical title or citation is migrated
-automatically in v1.6.26.
-
-BibReview v1.6.32 adds the reviewed T3 migration for **publication titles**
-without changing the title/reference inventory behavior:
-
-~~~bash
-bibreview hygiene --titles --review
-bibreview -v hygiene --titles --review
-bibreview hygiene --titles --resolve
-bibreview --dry-run hygiene --titles --apply
-bibreview hygiene --titles --apply
-bibreview merge
-~~~
-
-Only title findings that require a decision enter the migration review:
-deterministic normalizations that actually change the title, plus values refused
-by the normalizer. Existing valid TeX and other deterministic no-op findings
-remain visible in the inventory but are not turned into migration decisions.
-Title decisions are persisted separately in
-`title-hygiene-resolutions.json`, so they cannot collide with the historical
-abstract ledger. Accepted/custom changes are staged through `collected.json`
-and **preserve the existing publication UUID and permalink exactly**. Reference
-citation migration remains out of scope for T3 and follows later as T4.
-
-BibReview v1.6.34 implements T4 for residual **reference-citation**
-hygiene after provider-driven reference refresh and title migration:
-
-~~~bash
-bibreview hygiene --citations --review
-bibreview -v hygiene --citations --review
-bibreview --dry-run hygiene --citations --apply-safe
-bibreview hygiene --citations --apply-safe
-bibreview merge
-~~~
-
-The safe pass stages only deterministic, lossless transformations of complete
-`Reference.citation` strings. Existing identifiers, reference order,
-publication UUIDs, titles and permalinks are preserved. Deterministic no-op
-findings such as already-valid TeX stay visible in the inventory but are not
-staged. Inline formatting whose removal would require guessing a missing word
-boundary is now refused for citations as `ambiguous-inline-boundary`.
-
-After merging the deterministic pass, rerun the review. Residual ambiguous
-citations use a separate resumable human workflow:
-
-~~~bash
-bibreview hygiene --citations --resolve
-bibreview --dry-run hygiene --citations --apply
-bibreview hygiene --citations --apply
-bibreview merge
-~~~
-
-Human citation decisions are stored in
-`citation-hygiene-resolutions.json`. Reference identity prefers DOI and
-otherwise uses the stable citation fingerprint already exposed by the hygiene
-inventory. T4 always operates on the **complete citation string** and never
-extracts or rewrites an inferred reference title heuristically.
-
-BibReview v1.6.25 starts the separate title/reference hygiene campaign with a
-strictly read-only T1 inventory:
-
-~~~bash
-bibreview hygiene --titles
-bibreview -v hygiene --titles
-bibreview hygiene --titles --json
-~~~
-
-This scans canonical publication titles and complete stored `Reference.citation`
-strings separately. It reports structural/encoding families such as HTML/XML,
-small-caps markup, entities, TeX/math fragments, MathML/JATS, script markup,
-escaped markup, and selected Unicode/control signals. Reference findings use
-their DOI when available; otherwise BibReview reports a SHA-256 fingerprint of
-the complete original citation, adding an ordinal only for duplicates within
-the same publication. Plain TeX is inventoried but marked `preserve-tex`, not
-as an automatic cleanup candidate. **No title/citation normalizer or migration
-is introduced in v1.6.25.**
-
-BibReview v1.6.24 completes the historical abstract migration workflow:
-
-~~~bash
-bibreview hygiene --review
-bibreview -v hygiene --review
-bibreview hygiene --resolve
-bibreview --dry-run hygiene --apply
-bibreview hygiene --apply
-bibreview merge
-~~~
-
-Migration proposals are always recomputed read-only from the current canonical
-bibliography; only `hygiene-resolutions.json` persists human decisions. The
-decision fingerprint includes the exact canonical abstract plus the normalizer
-result/reason, so canonical changes invalidate stale decisions. Deterministic
-proposals may be accepted, rejected, customized or deferred. Refused cases are
-`review-required` and cannot be accepted directly: they require an explicit
-custom abstract, rejection, or defer. `hygiene --apply` writes accepted/custom
-changes only to `collected.json`; the ordinary explicit `merge` command remains
-the sole canonical promotion boundary.
-
-### Non-destructive reviewed refresh
-
-`refresh` uses the remote DOI BibTeX only as a staleness detector. A stale
-record is recollected in memory and compared field-by-field with canonical
-metadata. Configured fields that are semantically missing become safe proposals;
-for abstracts, the historical `Not Available` placeholder is treated as missing
-case- and whitespace-insensitively. Differences affecting already-reviewed
-meaningful fields are retained as
-**collateral evidence** and are never auto-applied.
-
-~~~bash
-bibreview refresh
-bibreview -v refresh --review
-bibreview refresh --resolve
-bibreview --dry-run refresh --apply
-bibreview refresh --apply
-~~~
-
-The resolver reuses the same resumable human decision model as backfill.
-Since v1.6.22, a refused provider abstract is retained in `refresh.json` as
-inspectable evidence when the canonical abstract is missing. If a safe provider
-abstract also exists, it remains the normal proposal and the refused alternatives
-stay attached as evidence. If no safe abstract exists, refresh creates a
-`review-required` proposal: direct accept is disabled and the reviewer must
-provide an explicit custom value, reject the evidence, or defer it.
-
-`refresh --apply` can fill only the reviewed missing-field proposals. It
-refuses stale proposals when a field has since become non-empty. Tracked BibTeX
-is edited only for accepted/custom fields, with backup; the remote BibTeX
-response is never copied wholesale. `bibreview merge` remains the only
-canonical promotion boundary.
-
-### Human-reviewed missing-field backfill
-
-When an existing canonical record is intentionally incomplete, `backfill`
-can ask the configured metadata/enrichment chain for a candidate value without
-recollecting or replacing the rest of the reviewed record:
-
-~~~bash
-bibreview backfill --field abstract
-bibreview backfill --resolve
-bibreview --dry-run backfill --apply
-bibreview backfill --apply
-~~~
-
-Proposal generation writes only local review state beside the audit files.
-For network efficiency, backfill batches exact multi-DOI lookups when the
-configured provider supports them: CrossRef work metadata is fetched in groups
-of up to 25 DOI values, OpenAlex fallback abstracts in groups of up to 100, and
-Semantic Scholar fallback abstracts in groups of up to 500. Publisher enrichment
-and Mendeley remain per DOI. Batch transport changes neither proposal ordering
-nor the human-review boundary.
-
-`backfill --resolve` uses the same resumable human decision model as audit
-resolution: accept, reject, choose a custom value, defer, or quit. Only
-accepted/custom values can reach `collected.json`, and a stale proposal is
-rejected if the canonical field has gained a meaningful value meanwhile. For
-abstracts, historical `Not Available` values are eligible for replacement and
-provider/fallback placeholders are never proposed as real abstracts.
-
-Since v1.6.21, an abstract rejected by the structured normalizer is **retained as
-provider evidence instead of becoming `no_value`**. The local backfill review
-records the provider source, refusal reason and raw payload. If no safe abstract
-exists, the field is marked `review-required`: direct accept is disabled and
-the reviewer must provide an explicit custom value, reject the evidence, or
-defer it. If another provider supplies a safe abstract, that value remains the
-normal proposal while refused alternatives stay attached as inspectable
-evidence. Evidence participates in the review fingerprint, so changed provider
-payloads stale existing resolutions.
-
-The ordinary `bibreview merge` command remains the only canonical promotion
-boundary.
-
-### Incremental audit history
-
-Normal `bibreview audit` runs remember completed publication UUIDs in the local
-audit state, append newly added canonical publications automatically, and avoid
-repeating already visited records. Use `bibreview audit --full` only when you
-deliberately want fresh provider evidence for the entire current bibliography.
-
-### Conservative audit review
-
-`bibreview audit --review` is a read-only view derived from persisted audit
-evidence. A provider-only difference remains informational by default. A
-canonical-missing or substantive alternative becomes actionable only when the
-same candidate value is corroborated by at least two independent providers
-after review-equivalent representations are grouped.
-
-One-day `created_date` offsets, obvious provider truncations of a fuller
-canonical abstract, contributor-role disagreements, and isolated contributor
-anomalies remain informational evidence rather than automatic corrections. The
-raw audit comparisons are preserved separately from this review interpretation.
-
-Since v1.6.23, an audit provider abstract whose structured markup cannot be
-normalized losslessly is preserved verbatim in `audit-report.json` and
-classified as `provider-review-required`. Such evidence remains visible to
-human review but is never counted as an ordinary provider disagreement and is
-never actionable through `audit --resolve`. Safe/lossless structured abstracts
-continue to be normalized before comparison.
-
-Once an audit is complete, `bibreview audit --resolve` walks through actionable
-findings one by one and records explicit human decisions without changing the
-canonical bibliography. Exact common provider values may be accepted directly;
-ambiguous representations require an explicit custom value. Rejected and
-deferred findings remain distinguishable, and the session can be stopped and
-resumed safely.
-
-After every actionable finding has a final decision, `bibreview audit --apply`
-promotes accepted/custom resolutions into the normal reviewable
-`collected.json` staging while synchronizing applicable tracked BibTeX fields.
-Changed BibTeX files are backed up first. The command refuses non-empty staging,
-stale canonical values, incomplete resolutions, or unsafe BibTeX edits. Use
-`bibreview --dry-run audit --apply` before applying, inspect JSON/BibTeX diffs,
-then use the ordinary explicit `bibreview merge` step.
-
-By default, `bibreview audit --review` prints only the aggregate review summary
-so long-running campaigns remain readable. Use the existing global verbose form,
-`bibreview -v audit --review`, for the complete publication-by-publication
-human-readable findings; `--json` remains complete regardless of verbosity.
-
-During networked audit runs, BibReview batches DOI lookups whenever the provider
-supports an exact multi-DOI API. CrossRef uses repeated exact DOI filters in
-bounded groups of 25, OpenAlex uses bounded OR-filter requests up to 100 DOI
-values, and Semantic Scholar uses its paper batch endpoint up to 500 DOI values.
-Batching changes transport efficiency only; comparison semantics,
-per-publication checkpointing, and canonical data remain unchanged.
-
-## Project state is explicit
-
-BibReview keeps canonical and intermediate state visible in ordinary files:
+The canonical registry `data/ID.txt` contains exactly one token per canonical
+publication:
 
 ~~~text
-bibliography.json    canonical reviewed bibliography
-collected.json       current collect/refresh-apply/audit-apply/backfill-apply staging batch
-known.txt            accepted DOI state
-pending.txt          DOI values waiting for collection
-review.txt           DOI values requiring human relevance review
-rejected.txt         deliberately excluded DOI values
-authors.json         reviewed author-name mappings
-bib/                 tracked BibTeX sources
-archive/             backups created by refresh/audit-apply/merge
+doi:10.1234/example
+id:550e8400-e29b-41d4-a716-446655440000
 ~~~
 
-The canonical bibliography is a versioned JSON document with global metadata,
-including the bibliography update date.
+A DOI-backed publication projects to `doi:<DOI>`; a DOI-less publication
+projects to `id:<UUID>`.
 
-See [Data and state files](docs/data-model.md).
+This separation allows metadata and external identifiers to evolve without
+changing canonical publication identity.
 
-## Provider output can be corrected
+## Providers
 
-Provider metadata is not treated as infallible.
+BibReview can use several external services, depending on project configuration:
 
-BibReview supports a review-first workflow where you can correct staged JSON or
-BibTeX before merge. Missing or invalid BibTeX is treated as missing data rather
-than replaced by a fake placeholder.
+- CrossRef;
+- OpenAlex;
+- Elsevier / Scopus;
+- Springer Nature;
+- IEEE Xplore;
+- Semantic Scholar;
+- Mendeley.
 
-For recovery procedures, persistent provider errors, manual corrections and
-post-merge repairs, see
-[Manual corrections and provider errors](docs/corrections.md).
-
-## Ambiguous authors stay human-reviewed
-
-BibReview can automatically apply only unambiguous author mappings:
+Credentials remain project-local and can be supplied through environment
+variables or the configured dotenv file. Inspect the effective configuration
+without exposing secrets:
 
 ~~~bash
-bibreview --config bibreview.yml authors --apply-safe
+bibreview providers
+bibreview providers --check
 ~~~
 
-Possible identity collisions remain under manual review.
+Provider failures are reported as evidence/availability problems, not silently
+converted into bibliographic rejection.
 
-See [Author identities and ambiguous names](docs/authors.md).
+## Static-site rendering
 
-## Static sites and GitHub Pages
+BibReview can render bibliography content into an existing Jekyll project.
+Themes, layouts, CSS, navigation, analytics, and deployment remain project-owned.
 
-BibReview renders bibliographic content into an existing Jekyll site; themes,
-layouts, CSS and deployment remain project-owned.
+BibReview can generate:
 
-The documentation includes a complete guide for:
-
-- local Jekyll preview;
-- GitHub Pages deployment with GitHub Actions;
-- a pinned BibReview installation in CI;
-- scheduled arXiv refresh;
-- optional scheduled discovery;
-- choosing whether generated artifacts are committed or CI-only.
+- publication posts;
+- author pages;
+- year pages;
+- canonical metadata snapshots for the site;
+- public copies of tracked canonical BibTeX.
 
 See [GitHub Pages with BibReview and Jekyll](docs/github-pages.md).
 
-## Optional GoatCounter analytics
-
-For public bibliography sites, BibReview recommends considering
-[GoatCounter](https://www.goatcounter.com/) as an optional lightweight,
-privacy-friendly analytics solution. BibReview does not inject analytics or make
-GoatCounter a dependency.
-
-See [GoatCounter analytics](docs/goatcounter.md).
-
 ## Documentation
 
-- [Documentation index](docs/README.md)
+Start with the [documentation index](docs/README.md).
+
+The main guides are:
+
 - [Installation](docs/installation.md)
 - [Configuration](docs/configuration.md)
 - [Local workflow](docs/workflow.md)
@@ -631,14 +270,33 @@ See [GoatCounter analytics](docs/goatcounter.md).
 - [Manual corrections](docs/corrections.md)
 - [Author identities](docs/authors.md)
 - [GitHub Pages](docs/github-pages.md)
-- [GoatCounter](docs/goatcounter.md)
+- [Roadmap](docs/roadmap.md)
 - [Changelog](CHANGELOG.md)
-- [Release checklist](docs/releasing.md)
+
+Historical release details belong in the changelog rather than this README.
+
+## Project status
+
+The v1.7 line marks the stabilization of the current core architecture:
+
+- reviewed DOI and DOI-less ingestion are both validated end to end;
+- canonical identity is UUID-based;
+- project-facing identifier state is typed and generic;
+- historical audit/reference/hygiene campaigns have been exercised on PHRAISE;
+- tracked BibTeX and generated site state reconcile deterministically;
+- PHRAISE serves as the primary real-world integration demonstrator.
+
+The next development priorities are onboarding new bibliographies, filling the
+remaining manual-maintenance gaps, and reducing unnecessary provider traffic
+without weakening review boundaries.
+
+See [Roadmap](docs/roadmap.md).
 
 ## Showcase
 
-[PHRAISE](https://github.com/g-haine/phraise) is a public site powered by
-BibReview and serves as a concrete integration showcase.
+[PHRAISE](https://github.com/g-haine/phraise) is a public bibliography of
+port-Hamiltonian research powered by BibReview and is used as the primary
+end-to-end integration demonstrator.
 
 ## Development
 

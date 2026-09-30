@@ -1,304 +1,332 @@
 # Local workflow
 
-This is the recommended human-reviewed maintenance cycle.
+This guide describes the normal human-reviewed operating cycle for an existing
+BibReview project.
+
+BibReview intentionally separates provider evidence, review state, staging, and
+canonical state. Do not skip the explicit `merge` boundary.
 
 ## 1. Validate the project
 
-~~~bash
-bibreview --config bibreview.yml validate
-bibreview --config bibreview.yml status
-~~~
-
-Commit a clean baseline before a substantial update.
-
-## Optional: audit historical canonical metadata
-
-A historical/data-quality audit is separate from the normal update cycle. Start
-with a pilot batch when introducing audit to an established project:
+Before substantial maintenance:
 
 ~~~bash
-bibreview --config bibreview.yml --dry-run audit --batch-size 25
-bibreview --config bibreview.yml audit --batch-size 25
+bibreview validate
+bibreview status
 ~~~
 
-Inspect the configured audit report after each invocation. Provider differences
-are hypotheses to review, not automatic corrections. Apply any justified
-canonical/BibTeX/identity correction explicitly through the normal reviewed
-project workflow.
-
-Each later invocation processes the next batch. Omitting `--batch-size`
-returns to the configured default (50 in the example configuration):
+For provider credentials and availability:
 
 ~~~bash
-bibreview --config bibreview.yml audit
+bibreview providers
+bibreview providers --check
 ~~~
 
-The audit directory acts as persistent local history: completed publication
-UUIDs are not revisited by default, while publications added to the canonical
-bibliography later are appended automatically as new pending work. If a run is
-interrupted, invoke the same command again: the open batch is resumed and
-already checkpointed publications are not repeated. Retryable provider failures
-are revisited only after never-yet-audited publications have received their
-first pass.
+Commit a clean baseline before a large campaign or migration.
 
-When you deliberately want fresh provider evidence for the whole current
-bibliography, use:
+## 2. Add DOI-backed publications
+
+Discover candidates:
 
 ~~~bash
-bibreview --config bibreview.yml audit --full
+bibreview --dry-run discover
+bibreview discover
 ~~~
 
-This requeues all current canonical publication UUIDs while preserving the
-existing audit history and attempt counters.
+BibReview writes DOI candidates into typed state files:
 
-When the campaign is complete, derive the concise review and resolve every
-actionable finding explicitly:
+- `data/newID.txt` — accepted/pending automated collection;
+- `data/checkID.txt` — requires human relevance review;
+- `data/badID.txt` — deliberately rejected.
+
+Review `checkID.txt` manually and move each `doi:` token to the
+appropriate file.
+
+Collect accepted DOI values:
 
 ~~~bash
-bibreview --config bibreview.yml audit --review
-bibreview --config bibreview.yml audit --resolve
+bibreview --dry-run collect
+bibreview collect
 ~~~
 
-Then promote the completed human decisions through the normal staging boundary:
+Inspect:
 
-~~~bash
-bibreview --config bibreview.yml --dry-run audit --apply
-bibreview --config bibreview.yml audit --apply
-~~~
+- `data/collected.json`;
+- newly written or updated tracked BibTeX in `bib/`.
 
-The apply step requires empty **collected.json**, refuses stale canonical values,
-stages only accepted/custom corrections, updates applicable tracked BibTeX with
-backups, and leaves rejected decisions unchanged. Inspect the staging JSON and
-BibTeX diff before merging:
-
-~~~bash
-bibreview --config bibreview.yml --dry-run merge
-bibreview --config bibreview.yml merge
-~~~
-
-Do not start a collect/refresh/backfill batch while audit corrections remain staged.
-
-## 2. Discover candidate publications
-
-Preview:
-
-~~~bash
-bibreview --config bibreview.yml --dry-run discover
-~~~
-
-Apply:
-
-~~~bash
-bibreview --config bibreview.yml discover
-~~~
-
-Discovery updates the pending, review and rejected DOI queues according to the
-configured relevance policy.
-
-## 3. Review uncertain DOI candidates
-
-Open the configured review file. For each DOI:
-
-- move it to the pending file if it belongs in the bibliography;
-- move it to the rejected file if it does not;
-- remove it from the review file once decided.
-
-This is intentionally a human decision.
-
-## 4. Refresh existing incomplete records
-
-Refresh is now explicitly review-first. Start with a dry run if desired, then
-persist the provider comparison:
-
-~~~bash
-bibreview --config bibreview.yml --dry-run refresh
-bibreview --config bibreview.yml refresh
-~~~
-
-At this stage **nothing is staged and no tracked BibTeX is replaced**. Inspect
-the review, especially collateral changes on already-populated canonical fields:
-
-~~~bash
-bibreview --config bibreview.yml refresh --review
-bibreview --config bibreview.yml -v refresh --review
-~~~
-
-Resolve only the safe missing-field proposals:
-
-~~~bash
-bibreview --config bibreview.yml refresh --resolve
-~~~
-
-Then preview and apply the reviewed decisions:
-
-~~~bash
-bibreview --config bibreview.yml --dry-run refresh --apply
-bibreview --config bibreview.yml refresh --apply
-~~~
-
-Only accepted/custom fills are written to `collected.json`. Applicable tracked
-BibTeX fields are edited individually with backups; the remote BibTeX is never
-copied wholesale. Collateral provider differences can never be promoted by
-refresh.
-
-Inspect staging and BibTeX changes before merging:
-
-~~~bash
-bibreview --config bibreview.yml --dry-run merge
-bibreview --config bibreview.yml merge
-~~~
-
-## Optional: backfill missing canonical fields
-
-For an existing record that is otherwise reviewed but lacks a field such as an
-abstract, use the human-reviewed backfill workflow instead of recollecting the
-entire publication:
-
-~~~bash
-bibreview --config bibreview.yml backfill --field abstract
-bibreview --config bibreview.yml backfill --resolve
-bibreview --config bibreview.yml --dry-run backfill --apply
-bibreview --config bibreview.yml backfill --apply
-~~~
-
-Proposal generation does not touch canonical or staging data. Resolve every
-proposal explicitly; only accepted/custom decisions are staged. Inspect
-`collected.json`, then promote with the ordinary merge boundary:
-
-~~~bash
-bibreview --config bibreview.yml --dry-run merge
-bibreview --config bibreview.yml merge
-~~~
-
-Backfill never replaces a non-empty canonical value and refuses stale proposals
-when the field was filled after proposal generation.
-
-## 5. Collect new pending DOI values
-
-Collection is intentionally non-interactive. Titles and reference citations
-are normalized only when BibReview can preserve their scholarly semantics
-deterministically. Unsafe titles stop that incoming publication before slug
-generation; unsafe reference text falls back to safer provider evidence, DOI
-identity only, or omission for an unidentifiable DOI-less reference.
-
-~~~bash
-bibreview --config bibreview.yml --dry-run collect
-bibreview --config bibreview.yml collect
-~~~
-
-Inspect the staged JSON and BibTeX before accepting it.
-
-A publication can be collected even when its provider BibTeX is unavailable; in
-that case no fake BibTeX file is created. Add a correct BibTeX manually before
-rendering the site.
-
-Then merge:
-
-~~~bash
-bibreview --config bibreview.yml --dry-run merge
-bibreview --config bibreview.yml merge
-~~~
-
-## 6. Import a reviewed DOI-less publication when needed
-
-DOI remains BibReview's sole automated acquisition identifier. A publication
-that genuinely has no DOI uses the separate reviewed import path.
-
-Create the real manifest first so BibReview allocates its persistent UUID:
-
-~~~bash
-bibreview import --init publication.yml
-~~~
-
-Use [`publication.example.yml`](../publication.example.yml) only as a field
-reference while completing that generated file. Do not copy the example itself
-to start an import: its UUID is illustrative and `--init` refuses to overwrite
-an existing manifest.
-
-Review the metadata, provenance, auxiliary identifiers and BibTeX, then validate
-without writing project state:
-
-~~~bash
-bibreview --dry-run import publication.yml
-~~~
-
-Stage the reviewed publication:
-
-~~~bash
-bibreview import publication.yml
-~~~
-
-Inspect `collected.json`, the new `bib/<permalink>.bib`, and the durable
-`data/imports/<UUID>.yml` evidence. The import does not change
-`bibliography.json` or `ID.txt` directly. Promote it through the ordinary
-merge boundary:
+Then promote explicitly:
 
 ~~~bash
 bibreview --dry-run merge
 bibreview merge
 ~~~
 
-After merge, continue with the same author-review and render steps as for
-DOI-backed publications.
+Collection never makes provider metadata canonical by itself.
 
-## 7. Resolve author identities
+## 3. Add a DOI-less publication
 
-~~~bash
-bibreview --config bibreview.yml authors
-bibreview --config bibreview.yml authors --apply-safe
-bibreview --config bibreview.yml authors
-~~~
+DOI-less publications use the reviewed manual import path.
 
-The final command should leave only genuinely ambiguous cases. Resolve those by
-editing the author mapping file manually. See [Author identities](authors.md).
-
-## 8. Render the site
-
-Preview the reconciliation plan:
+Create the real manifest first:
 
 ~~~bash
-bibreview --config bibreview.yml --dry-run render
+bibreview import --init publication.yml
 ~~~
 
-Apply:
+Use [`publication.example.yml`](../publication.example.yml) only as a
+field reference. Do not copy its illustrative UUID.
+
+Complete and review the manifest, including:
+
+- publication metadata;
+- authors/editors;
+- optional auxiliary identifiers;
+- provenance;
+- reviewed citation/BibTeX.
+
+Then validate without writing project state:
 
 ~~~bash
-bibreview --config bibreview.yml render
+bibreview --dry-run import publication.yml
 ~~~
 
-Inspect **git diff**. Rendering should only touch BibReview-managed generated
-site artifacts.
+Stage the import:
 
-## 9. Refresh optional arXiv links
+~~~bash
+bibreview import publication.yml
+~~~
+
+Inspect `collected.json`, the tracked BibTeX, and the durable
+`data/imports/<UUID>.yml` evidence. Promote through the same ordinary
+boundary:
+
+~~~bash
+bibreview --dry-run merge
+bibreview merge
+~~~
+
+A DOI in a manual import is refused because DOI remains the sole current
+strong/automatable identifier.
+
+## 4. Resolve contributor identities
+
+After canonical additions or contributor changes:
+
+~~~bash
+bibreview authors
+bibreview authors --apply-safe
+bibreview authors
+~~~
+
+Safe mappings may be applied automatically. Remaining ambiguous identities are
+human decisions; edit `data/author_mappings.json` as needed.
+
+See [Author identities](authors.md).
+
+## 5. Render the site
+
+Preview the reconciliation:
+
+~~~bash
+bibreview --dry-run render
+~~~
+
+Apply it:
+
+~~~bash
+bibreview render
+~~~
+
+Inspect the Git diff. Rendering should only reconcile BibReview-managed
+generated artifacts.
+
+## Maintenance workflows
+
+The following workflows are not required for every ordinary update. Use them
+when the canonical bibliography needs review or enrichment.
+
+### Audit historical metadata
+
+`audit` compares canonical records with current provider evidence in a
+resumable campaign without changing canonical state.
+
+Start with a small batch when appropriate:
+
+~~~bash
+bibreview --dry-run audit --batch-size 25
+bibreview audit --batch-size 25
+~~~
+
+Continue the campaign:
+
+~~~bash
+bibreview audit
+~~~
+
+Review:
+
+~~~bash
+bibreview audit --review
+bibreview -v audit --review
+~~~
+
+Resolve actionable findings:
+
+~~~bash
+bibreview audit --resolve
+~~~
+
+Stage completed decisions:
+
+~~~bash
+bibreview --dry-run audit --apply
+bibreview audit --apply
+~~~
+
+Then inspect and merge:
+
+~~~bash
+bibreview --dry-run merge
+bibreview merge
+~~~
+
+Use `audit --full` only when you deliberately want fresh provider
+evidence for the complete current bibliography.
+
+### Refresh incomplete/stale records
+
+`refresh` is review-first. Its scan does not stage changes.
+
+~~~bash
+bibreview --dry-run refresh
+bibreview refresh
+
+bibreview refresh --review
+bibreview -v refresh --review
+bibreview refresh --resolve
+
+bibreview --dry-run refresh --apply
+bibreview refresh --apply
+~~~
+
+Only accepted/custom fills reach `collected.json`. Inspect the staging and
+tracked BibTeX changes, then merge.
+
+### Backfill a missing field
+
+For a known missing canonical field such as an abstract:
+
+~~~bash
+bibreview backfill --field abstract
+bibreview backfill --resolve
+bibreview --dry-run backfill --apply
+bibreview backfill --apply
+~~~
+
+Then inspect and merge normally.
+
+Provider values are proposals, not canonical authority. Backfill never replaces a
+meaningful non-empty canonical value.
+
+### Review reference lists
+
+`references` rebuilds reference-list evidence from current provider data
+through a resumable campaign.
+
+Typical sequence:
+
+~~~bash
+bibreview --dry-run references
+bibreview references
+bibreview references --review
+bibreview -v references --review
+~~~
+
+Apply deterministic safe outcomes when available:
+
+~~~bash
+bibreview --dry-run references --apply-safe
+bibreview references --apply-safe
+~~~
+
+For residual human decisions:
+
+~~~bash
+bibreview references --resolve
+bibreview --dry-run references --apply
+bibreview references --apply
+~~~
+
+Any staged changes still require `bibreview merge`.
+
+### Hygiene campaigns
+
+Use `hygiene` to inspect structured-text contamination and historical
+title/reference-citation artifacts.
+
+Examples:
+
+~~~bash
+bibreview hygiene
+bibreview hygiene --titles
+bibreview hygiene --citations
+~~~
+
+Reviewed migrations use the corresponding `--review`, `--resolve`,
+`--apply-safe`, and `--apply` surfaces. See
+[Command reference](commands.md) for the exact command-specific options.
+
+Hygiene never bypasses staging and merge.
+
+## Optional arXiv cache
 
 If enabled:
 
 ~~~bash
-bibreview --config bibreview.yml arxiv
+bibreview arxiv
 ~~~
 
-This cache is separate from the canonical bibliography.
+The arXiv cache is display-only. It does not create canonical publications and
+does not change canonical bibliography metadata merely because the cache refresh
+time changes.
 
-## 10. Preview Jekyll
+## Recommended routine
 
-From the site source directory:
+For a normal incremental update:
 
-~~~bash
-bundle install
-bundle exec jekyll serve
+~~~text
+validate
+   ↓
+discover
+   ↓
+human relevance review if needed
+   ↓
+collect
+   ↓
+inspect staging + BibTeX
+   ↓
+merge
+   ↓
+authors
+   ↓
+render
+   ↓
+review Git diff / open project PR
 ~~~
 
-Check generated publication pages, author indexes, year indexes, links and
-search behavior.
+Use audit, references, refresh, backfill, and hygiene only when their specific
+maintenance purpose applies.
 
-## 10. Commit
+## Safety checklist
 
-Before committing:
+Before every canonical merge:
 
-~~~bash
-git status
-git diff
-~~~
+- `data/collected.json` contains only changes you intend to promote;
+- tracked BibTeX changes are understood;
+- duplicate/permalink/identity warnings have been resolved;
+- review decisions are complete for the workflow that produced staging;
+- `bibreview --dry-run merge` reports the expected additions/updates;
+- the final Git diff contains no unrelated generated or canonical changes.
 
-A useful maintenance commit contains canonical state, reviewed mapping changes,
-correct BibTeX and deterministic rendered artifacts together.
+For recovery and manual repair procedures, see
+[Manual corrections](corrections.md).

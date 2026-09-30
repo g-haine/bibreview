@@ -44,10 +44,12 @@ BibReview:
 - `README.md`:
   - current stable release;
   - installation command/tag;
-  - concise description of important user-visible behavior changes;
+  - concise current capabilities and onboarding guidance;
+  - **do not append cumulative per-release history**; release-specific details
+    belong in `CHANGELOG.md`;
 - `CHANGELOG.md`:
   - dated release entry;
-  - notable behavior, compatibility, and validation changes;
+  - notable behavior, compatibility, migration, and validation changes;
 - `docs/installation.md`:
   - release number;
   - pinned installation commands;
