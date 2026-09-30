@@ -2,6 +2,31 @@
 
 All notable BibReview releases are documented here.
 
+## 1.7.0 — 2026-09-30
+
+### Stable reviewed-ingestion contract
+
+- promote the reviewed DOI-less import workflow, typed identifier state, and
+  UUID-based canonical identity model to the v1.7 stable public contract after
+  end-to-end validation on the two real PHRAISE DOI-less publications;
+- retain DOI as the sole current strong/automatable acquisition identifier;
+- keep DOI-backed and DOI-less ingestion converging on the same explicit
+  staging/merge boundary;
+- retain the v1.6.44 runtime behavior unchanged.
+
+### Documentation reset
+
+- rewrite the repository README as a concise product/onboarding entry point
+  instead of a cumulative release-history document;
+- reorganize the documentation index by user task;
+- rewrite the local workflow around ordinary DOI, DOI-less, maintenance, author,
+  render, and safety flows;
+- add a dedicated project roadmap that separates near-term onboarding and
+  maintenance work from performance, optional PDF assistance, and long-term
+  corpus/AI ideas;
+- refresh installation and GitHub Pages examples for v1.7.0 and current generic
+  project-state filenames.
+
 ## 1.6.44 — 2026-09-30
 
 ### Reviewed import example and workflow documentation
