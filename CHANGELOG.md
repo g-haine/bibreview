@@ -2,6 +2,26 @@
 
 All notable BibReview releases are documented here.
 
+## 1.6.41 — 2026-09-30
+
+### Reviewed manual import core
+
+- add `bibreview import --init FILE` to create a versioned human-editable
+  import manifest with one persistent opaque BibReview UUID;
+- add `bibreview [--dry-run] import FILE` for reviewed DOI-less staging with
+  no provider requests;
+- reject DOI-bearing manual imports so DOI remains the sole strong/automatable
+  acquisition identifier;
+- preserve auxiliary external identifiers without promoting them to automatic
+  merge keys;
+- require explicit provenance and reviewed BibTeX content;
+- retain normalized import evidence under `data/imports/<UUID>.yml` by default;
+- stage only through `collected.json` and tracked `bib/<permalink>.bib`,
+  leaving `bibliography.json` and `ID.txt` untouched until ordinary merge;
+- reject UUID/permalink collisions and non-empty staging, and report auxiliary
+  identifier or normalized title/year duplicate risks as warnings;
+- add configurable `paths.imports` with default `data/imports`.
+
 ## 1.6.40 — 2026-09-30
 
 ### Generated public BibTeX assets
