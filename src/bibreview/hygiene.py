@@ -8,6 +8,7 @@ from hashlib import sha256
 import re
 from typing import Iterable
 
+from .identity import publication_identity_label
 from .model import Publication
 from .structured_title import (
     normalize_structured_citation,
@@ -687,7 +688,7 @@ def format_title_reference_hygiene_report(
     if report.title_findings:
         details.extend(("", "Title findings:"))
         for index, finding in enumerate(report.title_findings, 1):
-            identity = finding.doi or finding.publication_id
+            identity = publication_identity_label(finding.publication_id, finding.doi)
             details.extend(
                 (
                     f"[{index}/{len(report.title_findings)}] {identity}",
@@ -700,7 +701,7 @@ def format_title_reference_hygiene_report(
     if report.citation_findings:
         details.extend(("", "Reference citation findings:"))
         for index, finding in enumerate(report.citation_findings, 1):
-            identity = finding.doi or finding.publication_id
+            identity = publication_identity_label(finding.publication_id, finding.doi)
             details.extend(
                 (
                     f"[{index}/{len(report.citation_findings)}] "
@@ -726,7 +727,7 @@ def format_abstract_hygiene_report(
 
     details = [text, "", "Findings:"]
     for index, finding in enumerate(report.findings, 1):
-        identity = finding.doi or finding.publication_id
+        identity = publication_identity_label(finding.publication_id, finding.doi)
         details.extend(
             [
                 f"[{index}/{len(report.findings)}] {identity}: {finding.title}",
