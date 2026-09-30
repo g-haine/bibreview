@@ -203,6 +203,7 @@ class PathsConfig:
     rejected: Path
     review: Path
     bibtex: Path
+    imports: Path
     archive: Path
     site: Path
 
@@ -425,6 +426,7 @@ def load_config(path: str | Path = "bibreview.yml") -> BibReviewConfig:
         rejected=_path(base, paths_raw.get("rejected"), "data/badID.txt", "paths.rejected"),
         review=_path(base, paths_raw.get("review"), "data/checkID.txt", "paths.review"),
         bibtex=_path(base, paths_raw.get("bibtex"), "bib", "paths.bibtex"),
+        imports=_path(base, paths_raw.get("imports"), "data/imports", "paths.imports"),
         archive=_path(base, paths_raw.get("archive"), "archive", "paths.archive"),
         site=_path(base, paths_raw.get("site"), "site", "paths.site"),
     )
