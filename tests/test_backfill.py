@@ -439,6 +439,33 @@ class BackfillPipelineTests(unittest.TestCase):
         )
         self.assertEqual(len(result.candidates), 2)
 
+    def test_doi_less_publication_is_skipped_without_provider_call(self):
+        publication = Publication(
+            id=new_publication_id(),
+            identifiers={},
+            type="journal-article",
+            title="Manual publication",
+            authors=(Author(literal="Manual Author"),),
+            abstract="",
+            container_title="Journal",
+            publication_year="2026",
+            permalink="manual-publication",
+        )
+        provider = FakeProvider({})
+
+        result = backfill(
+            [publication],
+            provider=provider,
+            fields=("abstract",),
+        )
+
+        self.assertEqual(result.scanned_count, 1)
+        self.assertEqual(result.eligible_count, 0)
+        self.assertEqual(result.candidates, ())
+        self.assertEqual(result.unavailable, ())
+        self.assertEqual(result.no_value, ())
+        self.assertEqual(provider.calls, [])
+
     def test_nonempty_field_is_never_proposed_for_replacement(self):
         publication = self.publication(abstract="Canonical abstract")
         provider = FakeProvider({publication.doi: message()})
