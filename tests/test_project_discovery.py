@@ -135,20 +135,41 @@ class ProjectDiscoveryTests(unittest.TestCase):
 
         self.assertEqual(
             self.config.paths.pending.read_text(encoding="utf-8"),
-            "10.1/already-pending\n10.1/relevant\n",
+            "doi:10.1/already-pending\ndoi:10.1/relevant\n",
         )
         self.assertEqual(
             self.config.paths.review.read_text(encoding="utf-8"),
-            "10.1/already-review\n10.1/review\n",
+            "doi:10.1/already-review\ndoi:10.1/review\n",
         )
         self.assertEqual(
             self.config.paths.rejected.read_text(encoding="utf-8"),
-            "10.1/already-rejected\n10.1/unsupported\n",
+            "doi:10.1/already-rejected\ndoi:10.1/unsupported\n",
         )
         self.assertEqual(
             self.config.paths.bibliography.read_bytes(),
             before["data/bibliography.json"],
         )
+
+    def test_non_doi_identifier_is_rejected_from_discovery_queue(self):
+        self.config.paths.review.write_text(
+            "id:550e8400-e29b-41d4-a716-446655440000\n",
+            encoding="utf-8",
+        )
+        discovery = FakeDiscoveryProvider([])
+        before = self.snapshot()
+
+        with self.assertRaisesRegex(
+            ProjectStateError,
+            "identifier kind 'id' is not allowed",
+        ):
+            plan_project_discovery(
+                self.config,
+                discovery_provider=discovery,
+                provider=FakeWorkProvider({}),
+            )
+
+        self.assertEqual(discovery.calls, [])
+        self.assertEqual(before, self.snapshot())
 
     def test_no_candidates_is_a_noop_when_queue_files_do_not_exist(self):
         discovery = FakeDiscoveryProvider([])

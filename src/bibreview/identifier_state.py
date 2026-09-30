@@ -13,6 +13,7 @@ from .identity import IdentityError, normalize_doi, validate_publication_id
 _IDENTIFIER_KIND = re.compile(r"^[A-Za-z][A-Za-z0-9._-]*$")
 CANONICAL_ID_KIND = "id"
 DOI_KIND = "doi"
+REGISTRY_IDENTIFIER_NAMES = frozenset({CANONICAL_ID_KIND, DOI_KIND})
 
 
 class IdentifierStateError(ValueError):
@@ -185,3 +186,20 @@ def identifier_tokens_bytes(tokens: Iterable[IdentifierToken]) -> bytes:
             )
         lines.append(str(token).encode("utf-8") + b"\n")
     return b"".join(lines)
+
+
+def canonical_registry_token(
+    publication_id: str,
+    doi: str | None,
+) -> IdentifierToken:
+    """Return the canonical registry token for one publication."""
+
+    if doi is not None:
+        return IdentifierToken(DOI_KIND, doi)
+    return IdentifierToken(CANONICAL_ID_KIND, publication_id)
+
+
+def doi_values(tokens: Iterable[IdentifierToken]) -> tuple[str, ...]:
+    """Return DOI values from typed tokens in stable order."""
+
+    return tuple(token.value for token in tokens if token.kind == DOI_KIND)

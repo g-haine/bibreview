@@ -208,9 +208,18 @@ class CliTests(unittest.TestCase):
             code = main(["--config", str(self.config_path), "discover"])
         self.assertEqual(code, 0, stderr.getvalue())
         self.assertIn("queued: 1", stdout.getvalue())
-        self.assertEqual(self.config.paths.pending.read_text(encoding="utf-8"), "10.1/relevant\n")
-        self.assertEqual(self.config.paths.review.read_text(encoding="utf-8"), "10.1/review\n")
-        self.assertEqual(self.config.paths.rejected.read_text(encoding="utf-8"), "10.1/unsupported\n")
+        self.assertEqual(
+            self.config.paths.pending.read_text(encoding="utf-8"),
+            "doi:10.1/relevant\n",
+        )
+        self.assertEqual(
+            self.config.paths.review.read_text(encoding="utf-8"),
+            "doi:10.1/review\n",
+        )
+        self.assertEqual(
+            self.config.paths.rejected.read_text(encoding="utf-8"),
+            "doi:10.1/unsupported\n",
+        )
 
     def test_discover_errors_are_reported_without_traceback(self):
         services = SimpleNamespace(
@@ -272,7 +281,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual(staged[0].doi, "10.1/new")
         self.assertEqual(
             self.config.paths.pending.read_text(encoding="utf-8"),
-            "10.1/new\n10.1/missing\n",
+            "doi:10.1/new\ndoi:10.1/missing\n",
         )
         self.assertEqual(
             (self.config.paths.bibtex / "new-publication.bib").read_text(encoding="utf-8"),

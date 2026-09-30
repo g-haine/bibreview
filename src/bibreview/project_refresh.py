@@ -11,7 +11,16 @@ from types import MappingProxyType
 from typing import Any, Mapping
 
 from .config import BibReviewConfig
-from .identity import IdentityError, normalize_doi
+from .identifier_state import (
+    IdentifierStateError,
+    IdentifierToken,
+    REGISTRY_IDENTIFIER_NAMES,
+    canonical_registry_token,
+    doi_values,
+    identifier_tokens_bytes,
+    read_identifier_tokens,
+)
+from .identity import STRONG_IDENTIFIER_NAMES
 from .pipeline.audit import AuditValue
 from .pipeline.backfill import BackfillCandidate
 from .providers.base import AbstractEvidence
@@ -323,27 +332,42 @@ def _optional_bibliography(path: Path) -> tuple:
     return read_bibliography(path) if path.exists() else ()
 
 
-def _doi_lines(path: Path) -> tuple[str, ...]:
-    if not path.exists():
-        return ()
-    values: list[str] = []
-    seen: set[str] = set()
-    for number, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
-        value = raw.strip()
-        if not value or value.startswith("#"):
-            continue
-        try:
-            doi = normalize_doi(value)
-        except IdentityError as error:
-            raise ProjectStateError(f"{path}: line {number}: {error}") from error
-        if doi not in seen:
-            seen.add(doi)
-            values.append(doi)
-    return tuple(values)
+def _state_tokens(
+    path: Path,
+    *,
+    allowed_kinds,
+) -> tuple[IdentifierToken, ...]:
+    try:
+        return read_identifier_tokens(
+            path,
+            allowed_kinds=allowed_kinds,
+            allow_legacy_doi=True,
+        )
+    except IdentifierStateError as error:
+        raise ProjectStateError(str(error)) from error
 
 
-def _lines_bytes(values: list[str] | tuple[str, ...]) -> bytes:
-    return b"".join(value.encode("utf-8") + b"\n" for value in values)
+def _queue_dois(path: Path) -> tuple[str, ...]:
+    return doi_values(
+        _state_tokens(path, allowed_kinds=STRONG_IDENTIFIER_NAMES)
+    )
+
+
+def _registry_tokens(path: Path) -> tuple[IdentifierToken, ...]:
+    return _state_tokens(path, allowed_kinds=REGISTRY_IDENTIFIER_NAMES)
+
+
+def _doi_tokens_bytes(values: list[str] | tuple[str, ...]) -> bytes:
+    return identifier_tokens_bytes(
+        IdentifierToken("doi", value) for value in values
+    )
+
+
+def _canonical_registry_tokens(publications) -> tuple[IdentifierToken, ...]:
+    return tuple(
+        canonical_registry_token(publication.id, publication.doi)
+        for publication in publications
+    )
 
 
 def _put_if_changed(outputs: dict[Path, bytes], path: Path, content: bytes) -> None:
@@ -404,26 +428,36 @@ def plan_project_refresh(
     review_bytes = json_bytes(review.data())
     _put_if_changed(outputs, review_path, review_bytes)
 
-    known = list(_doi_lines(paths.known))
+    current_registry = _registry_tokens(paths.known)
+    expected_registry = _canonical_registry_tokens(existing)
     in_bibliography = {
         publication.doi
         for publication in existing
         if publication.doi is not None
     }
     orphaned_known = tuple(
-        sorted(doi for doi in known if doi not in in_bibliography)
+        sorted(
+            token.value
+            for token in current_registry
+            if token.kind == "doi" and token.value not in in_bibliography
+        )
     )
+
+    if current_registry != expected_registry:
+        _put_if_changed(
+            outputs,
+            paths.known,
+            identifier_tokens_bytes(expected_registry),
+        )
+
     if orphaned_known:
-        orphaned = set(orphaned_known)
-        retained_known = [doi for doi in known if doi not in orphaned]
-        pending = list(_doi_lines(paths.pending))
+        pending = list(_queue_dois(paths.pending))
         pending_seen = set(pending)
         for doi in orphaned_known:
             if doi not in pending_seen:
                 pending.append(doi)
                 pending_seen.add(doi)
-        _put_if_changed(outputs, paths.known, _lines_bytes(retained_known))
-        _put_if_changed(outputs, paths.pending, _lines_bytes(pending))
+        _put_if_changed(outputs, paths.pending, _doi_tokens_bytes(pending))
 
     return ProjectRefreshPlan(
         review=review,
