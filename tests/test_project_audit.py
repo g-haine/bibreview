@@ -875,5 +875,47 @@ class ProjectAuditTests(unittest.TestCase):
             )
 
 
+    def test_non_doi_publication_is_completed_with_unavailable_provider_evidence(self):
+        publication = Publication(
+            id=new_publication_id(),
+            identifiers={},
+            type="journal-article",
+            title="DOI-less publication",
+            authors=(Author(literal="Manual Author"),),
+            publication_year="2026",
+            permalink="doi-less-publication",
+        )
+        write_bibliography(self.config.paths.bibliography, (publication,))
+        plan = plan_project_audit_batch(self.config, batch_size=1)
+        apply_project_audit_plan(plan)
+        source = FakeAuditSource({})
+
+        execution = execute_project_audit_batch(
+            self.config,
+            batch_id=plan.batch.id,
+            sources=(source,),
+            reporter=Reporter(-1),
+        )
+
+        self.assertEqual(source.calls, [])
+        self.assertEqual(execution.completed_count, 1)
+        self.assertEqual(execution.retryable_count, 0)
+        report = audit_report_from_data(
+            read_json(self.config.audit.report, dict)
+        )
+        self.assertEqual(len(report.entries), 1)
+        result = report.entries[0].result
+        self.assertEqual(result.publication_id, publication.id)
+        self.assertEqual(result.identifiers, {})
+        self.assertEqual(len(result.provider_issues), 1)
+        self.assertEqual(result.provider_issues[0].classification, "unavailable")
+        self.assertEqual(
+            result.provider_issues[0].detail,
+            "canonical publication has no DOI",
+        )
+        review = project_audit_review(self.config)
+        self.assertEqual(review.audited_publications, 1)
+        self.assertEqual(review.provider_issues, 1)
+
 if __name__ == "__main__":
     unittest.main()
