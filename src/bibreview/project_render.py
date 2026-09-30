@@ -146,8 +146,24 @@ def plan_project_render(config: BibReviewConfig) -> ProjectRenderPlan:
         + "\n",
     )
 
+    public_data_artifacts: tuple[RenderedArtifact, ...] = ()
+    public_data_roots: tuple[str, ...] = ()
+    if config.site.jekyll.publish_data:
+        public_data_artifacts = (
+            RenderedArtifact(
+                path="assets/data/bibreview/bibliography.json",
+                content=config.paths.bibliography.read_text(encoding="utf-8"),
+            ),
+            RenderedArtifact(
+                path="assets/data/bibreview/author_mappings.json",
+                content=config.paths.author_mappings.read_text(encoding="utf-8"),
+            ),
+        )
+        public_data_roots = ("assets/data/bibreview",)
+
     artifacts = (
         metadata_artifact,
+        *public_data_artifacts,
         *render_jekyll_publication_posts(
             model,
             bibtex_by_id,
@@ -167,6 +183,7 @@ def plan_project_render(config: BibReviewConfig) -> ProjectRenderPlan:
             "authors",
             "years",
             "_data/bibreview",
+            *public_data_roots,
         ),
     )
     return ProjectRenderPlan(
