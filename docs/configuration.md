@@ -59,16 +59,38 @@ paths:
   bibliography: data/bibliography.json
   collected: data/collected.json
   author_mappings: data/authors.json
-  known: data/known.txt
-  pending: data/pending.txt
-  rejected: data/rejected.txt
-  review: data/review.txt
+  known: data/ID.txt
+  pending: data/newID.txt
+  rejected: data/badID.txt
+  review: data/checkID.txt
   bibtex: bib
   archive: archive
   site: site
 ~~~
 
 See [Data and state files](data-model.md) for the role of each path.
+
+The configuration keys remain `known`, `pending`, `rejected`, and `review`
+for schema compatibility, but the default filenames are identifier-generic.
+
+Since v1.6.38, these text files use typed tokens:
+
+~~~text
+doi:10.1234/example
+~~~
+
+The canonical registry (`paths.known`, normally `ID.txt`) may also contain:
+
+~~~text
+id:550e8400-e29b-41d4-a716-446655440000
+~~~
+
+where `id:` refers exclusively to the canonical top-level `Publication.id`
+UUID of a DOI-less publication.
+
+Historical bare DOI lines remain readable during migration, but every rewritten
+state file uses the canonical typed form. Untyped non-DOI values are rejected;
+BibReview never guesses their identifier type.
 
 ## Discovery
 

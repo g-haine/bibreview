@@ -108,22 +108,90 @@ metadata; reject and defer remain non-mutating decisions. Evidence is part of
 the backfill review fingerprint, so resolution state cannot be reused after the
 provider evidence changes.
 
-## DOI queues
+## Identifier registry and acquisition queues
 
-BibReview's current discovery and automated collection workflow is DOI-backed
-and uses plain text files with one DOI per line:
+BibReview distinguishes the canonical publication registry from automated
+acquisition queues.
 
-- **known** — accepted DOI values already represented by the canonical bibliography;
-- **pending** — DOI values waiting for collection;
-- **review** — discovered candidates requiring human relevance judgment;
-- **rejected** — DOI values deliberately excluded.
+The default project-facing files are:
 
-Comments and blank lines are ignored when queue files are read.
+~~~text
+data/ID.txt
+data/newID.txt
+data/checkID.txt
+data/badID.txt
+~~~
 
-The canonical model itself is not DOI-dependent. Future non-DOI ingestion must
-define how records are acquired and matched, which external identifiers are
-trusted, and how a real BibTeX record is obtained or reviewed. It must not
-invent a fake DOI or silently fabricate unreliable citation metadata.
+The YAML configuration keys remain `known`, `pending`, `review`, and
+`rejected` for schema compatibility.
+
+### Canonical registry: ID.txt
+
+`ID.txt` is a line-oriented projection of the canonical bibliography. It must
+contain exactly one non-empty token for every canonical publication, in canonical
+bibliography order:
+
+~~~text
+publication with DOI    -> doi:<normalized-doi>
+publication without DOI -> id:<Publication.id UUID>
+~~~
+
+Therefore:
+
+~~~text
+number of non-empty ID.txt lines
+==
+number of bibliography.json publications
+~~~
+
+The reserved `id:` token refers to the top-level canonical
+`Publication.id`. It is not an external identifier and is reserved from the
+`Publication.identifiers` namespace.
+
+A DOI-less publication still uses `id:<UUID>` in `ID.txt` even when it
+carries auxiliary metadata identifiers such as ISBN, arXiv, PMID, PMLR, or a
+publisher-specific identifier.
+
+### Automated acquisition queues
+
+`newID.txt`, `checkID.txt`, and `badID.txt` contain only identifiers
+approved for automated acquisition.
+
+BibReview defines a **strong identifier** operationally as an
+**automatable identifier**: one whose normalization, uniqueness semantics, and
+provider workflow are controlled strongly enough for the automated acquisition
+chain.
+
+Currently:
+
+~~~text
+strong identifiers = { doi }
+~~~
+
+So these acquisition files may currently contain only typed DOI tokens:
+
+~~~text
+doi:10.1234/example
+~~~
+
+Their roles are:
+
+- **pending / newID.txt** — DOI values waiting for collection;
+- **review / checkID.txt** — discovered DOI candidates requiring human relevance judgment;
+- **rejected / badID.txt** — DOI values deliberately excluded.
+
+ISBN, arXiv, PMID, PMLR, and publisher identifiers may be stored as auxiliary
+`Publication.identifiers`, but they are not automatic merge keys and cannot
+enter the automated queues unless a future feature explicitly promotes their
+identifier type to strong/automatable status.
+
+Comments and blank lines are ignored when state files are read. Historical bare
+DOI lines remain readable during migration, but rewritten files use canonical
+`doi:` syntax. Untyped non-DOI lines are rejected rather than guessed.
+
+DOI-less publications will use the reviewed manual `bibreview import`
+workflow introduced by issue #28. That workflow does not create a second
+automated acquisition chain and never invents a fake DOI.
 
 ## Author mappings
 

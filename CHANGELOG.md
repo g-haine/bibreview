@@ -2,6 +2,36 @@
 
 All notable BibReview releases are documented here.
 
+## 1.6.38 — 2026-09-30
+
+### Typed identifier project state
+
+- add the reusable typed `kind:value` state-token layer from #128;
+- reserve `id:` for canonical `Publication.id` UUID registry entries;
+- define strong identifiers operationally as automatable identifiers and keep
+  DOI as the sole current strong identifier;
+- migrate project orchestration to typed identifier state while retaining
+  transitional read support for historical bare DOI lines;
+- keep `discover` and `collect` DOI-only and reject non-strong identifier kinds
+  from automated acquisition queues before provider access;
+- rebuild the canonical registry deterministically from the complete bibliography
+  after merge, using `doi:<value>` for DOI-backed records and `id:<UUID>` for
+  DOI-less records;
+- repair registry drift during refresh without sending DOI-less publications to
+  DOI providers.
+
+### Project state migration
+
+- change default project-facing state filenames to `ID.txt`, `newID.txt`,
+  `checkID.txt`, and `badID.txt`;
+- keep configuration keys `known`, `pending`, `review`, and `rejected`
+  stable for configuration-schema compatibility;
+- document the one-line-per-canonical-publication `ID.txt` invariant;
+- document **strong identifier = automatable identifier** and the DOI-only
+  automated acquisition boundary;
+- keep legacy bare DOI input readable during migration while canonical writers
+  emit typed `doi:` tokens.
+
 ## 1.6.37 — 2026-09-29
 
 ### Stable arXiv cache no-op semantics
