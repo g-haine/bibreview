@@ -199,7 +199,49 @@ bibreview --config bibreview.yml --dry-run merge
 bibreview --config bibreview.yml merge
 ~~~
 
-## 6. Resolve author identities
+## 6. Import a reviewed DOI-less publication when needed
+
+DOI remains BibReview's sole automated acquisition identifier. A publication
+that genuinely has no DOI uses the separate reviewed import path.
+
+Create the real manifest first so BibReview allocates its persistent UUID:
+
+~~~bash
+bibreview import --init publication.yml
+~~~
+
+Use [`publication.example.yml`](../publication.example.yml) only as a field
+reference while completing that generated file. Do not copy the example itself
+to start an import: its UUID is illustrative and `--init` refuses to overwrite
+an existing manifest.
+
+Review the metadata, provenance, auxiliary identifiers and BibTeX, then validate
+without writing project state:
+
+~~~bash
+bibreview --dry-run import publication.yml
+~~~
+
+Stage the reviewed publication:
+
+~~~bash
+bibreview import publication.yml
+~~~
+
+Inspect `collected.json`, the new `bib/<permalink>.bib`, and the durable
+`data/imports/<UUID>.yml` evidence. The import does not change
+`bibliography.json` or `ID.txt` directly. Promote it through the ordinary
+merge boundary:
+
+~~~bash
+bibreview --dry-run merge
+bibreview merge
+~~~
+
+After merge, continue with the same author-review and render steps as for
+DOI-backed publications.
+
+## 7. Resolve author identities
 
 ~~~bash
 bibreview --config bibreview.yml authors
@@ -210,7 +252,7 @@ bibreview --config bibreview.yml authors
 The final command should leave only genuinely ambiguous cases. Resolve those by
 editing the author mapping file manually. See [Author identities](authors.md).
 
-## 7. Render the site
+## 8. Render the site
 
 Preview the reconciliation plan:
 
@@ -227,7 +269,7 @@ bibreview --config bibreview.yml render
 Inspect **git diff**. Rendering should only touch BibReview-managed generated
 site artifacts.
 
-## 8. Refresh optional arXiv links
+## 9. Refresh optional arXiv links
 
 If enabled:
 
