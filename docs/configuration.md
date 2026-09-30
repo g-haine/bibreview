@@ -64,6 +64,7 @@ paths:
   rejected: data/badID.txt
   review: data/checkID.txt
   bibtex: bib
+  imports: data/imports
   archive: archive
   site: site
 ~~~
@@ -74,7 +75,7 @@ BibReview's recommended project layout deliberately separates canonical project
 state from presentation:
 
 ~~~text
-data/      canonical bibliography, staging, mappings and identifier state
+data/      canonical bibliography, staging, mappings, identifier state and reviewed import evidence
 bib/       tracked BibTeX source records
 audit/     audit/reference campaign evidence
 archive/   backups created by reviewed maintenance operations
@@ -415,3 +416,13 @@ subtrees.
 
 Continue with [Local workflow](workflow.md) and
 [GitHub Pages](github-pages.md).
+
+
+### Manual import evidence
+
+`paths.imports` defaults to `data/imports`. It stores normalized, reviewed
+YAML sidecars for DOI-less publications staged through `bibreview import`.
+These files retain the persistent BibReview UUID, provenance, reviewed metadata,
+citation text when supplied, and the exact tracked BibTeX source used for the
+import. They are evidence, not canonical bibliography state: promotion still
+occurs only through `collected.json` followed by `bibreview merge`.
