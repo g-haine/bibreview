@@ -23,7 +23,7 @@ project:
   slug: example-review
 paths:
   bibliography: data/bibliography.json
-  author_mappings: data/authors.json
+  author_mappings: data/author_mappings.json
   bibtex: bib
   site: site
 site:
@@ -31,6 +31,7 @@ site:
   implementation: jekyll
   source: site
   jekyll:
+    publish_data: true
     include_authorless_year_publications: false
     author_index_extra_html: |
       <p>Project note.</p>
@@ -115,7 +116,7 @@ class ProjectRenderTests(unittest.TestCase):
         plan = plan_project_render(self.config)
 
         self.assertTrue(plan.changed)
-        self.assertEqual(plan.persistence.expected_count, 6)
+        self.assertEqual(plan.persistence.expected_count, 8)
         self.assertEqual(plan.orphan_bibtex, (orphan,))
         self.assertIn(site / "_posts/obsolete.md", plan.persistence.deletes)
 
@@ -137,13 +138,25 @@ class ProjectRenderTests(unittest.TestCase):
             ),
             '{\n  "schema_version": 2,\n  "last_update": "2026-09-11"\n}\n',
         )
+        self.assertEqual(
+            (site / "assets/data/bibreview/bibliography.json").read_text(
+                encoding="utf-8"
+            ),
+            self.config.paths.bibliography.read_text(encoding="utf-8"),
+        )
+        self.assertEqual(
+            (site / "assets/data/bibreview/author_mappings.json").read_text(
+                encoding="utf-8"
+            ),
+            self.config.paths.author_mappings.read_text(encoding="utf-8"),
+        )
         self.assertFalse((site / "_posts/obsolete.md").exists())
         self.assertEqual((site / "manual.md").read_text(), "manual")
         self.assertTrue(orphan.exists())
 
         final = plan_project_render(self.config)
         self.assertFalse(final.changed)
-        self.assertEqual(final.persistence.unchanged_count, 6)
+        self.assertEqual(final.persistence.unchanged_count, 8)
 
     def test_planning_is_read_only(self):
         before = self.snapshot()
@@ -159,6 +172,28 @@ class ProjectRenderTests(unittest.TestCase):
         with self.assertRaisesRegex(ProjectRenderError, "missing:"):
             plan_project_render(self.config)
         self.assertEqual(before, self.snapshot())
+
+    def test_public_data_export_is_opt_in_and_unmanaged_when_disabled(self):
+        site = self.config.site.source
+        assert site is not None
+        existing = site / "assets/data/bibreview/manual.json"
+        existing.parent.mkdir(parents=True, exist_ok=True)
+        existing.write_text('{"manual": true}\n', encoding="utf-8")
+
+        self.config_path.write_text(
+            CONFIG.replace("    publish_data: true\n", ""),
+            encoding="utf-8",
+        )
+        config = load_config(self.config_path)
+        plan = plan_project_render(config)
+
+        self.assertNotIn(existing, plan.persistence.deletes)
+        self.assertFalse(
+            any(
+                "assets/data/bibreview" in str(path)
+                for path in plan.persistence.writes
+            )
+        )
 
     def test_disabled_site_is_rejected(self):
         self.config_path.write_text(
