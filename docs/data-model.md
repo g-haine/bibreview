@@ -496,8 +496,8 @@ is still empty so a newer correction cannot be overwritten silently.
 The audit workflow uses two separate files by default:
 
 ~~~text
-data/audit/campaign.json
-data/audit/report.json
+audit/campaign.json
+audit/report.json
 ~~~
 
 They are created and updated together when an audit campaign starts. A partial
