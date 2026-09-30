@@ -275,6 +275,7 @@ class JekyllSiteConfig:
     date_timezone: str = "+0100"
     author_path_prefix: str = "authors"
     bibtex_asset_prefix: str = "assets/bib"
+    publish_data: bool = False
     category_by_type: Mapping[str, str] = field(
         default_factory=lambda: MappingProxyType({})
     )
@@ -418,7 +419,7 @@ def load_config(path: str | Path = "bibreview.yml") -> BibReviewConfig:
     paths = PathsConfig(
         bibliography=_path(base, paths_raw.get("bibliography"), "data/bibliography.json", "paths.bibliography"),
         collected=_path(base, paths_raw.get("collected"), "data/collected.json", "paths.collected"),
-        author_mappings=_path(base, paths_raw.get("author_mappings"), "data/authors.json", "paths.author_mappings"),
+        author_mappings=_path(base, paths_raw.get("author_mappings"), "data/author_mappings.json", "paths.author_mappings"),
         known=_path(base, paths_raw.get("known"), "data/ID.txt", "paths.known"),
         pending=_path(base, paths_raw.get("pending"), "data/newID.txt", "paths.pending"),
         rejected=_path(base, paths_raw.get("rejected"), "data/badID.txt", "paths.rejected"),
@@ -465,13 +466,13 @@ def load_config(path: str | Path = "bibreview.yml") -> BibReviewConfig:
         campaign=_path(
             base,
             audit_raw.get("campaign"),
-            "data/audit/campaign.json",
+            "audit/campaign.json",
             "audit.campaign",
         ),
         report=_path(
             base,
             audit_raw.get("report"),
-            "data/audit/report.json",
+            "audit/report.json",
             "audit.report",
         ),
         batch_size=_integer(
@@ -619,6 +620,11 @@ def load_config(path: str | Path = "bibreview.yml") -> BibReviewConfig:
                 "site.jekyll.bibtex_asset_prefix",
             )
             or "assets/bib",
+            publish_data=_boolean(
+                jekyll_raw.get("publish_data"),
+                "site.jekyll.publish_data",
+                False,
+            ),
             category_by_type=_string_mapping(
                 jekyll_raw.get("category_by_type"),
                 "site.jekyll.category_by_type",
