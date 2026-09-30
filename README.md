@@ -11,7 +11,15 @@ feed.
 BibReview is designed so that provider output remains inspectable and ambiguous
 decisions remain human decisions.
 
-Current stable release: **v1.6.40**.
+Current stable release: **v1.6.41**.
+
+BibReview v1.6.41 adds the reviewed manual-import core for DOI-less
+publications. `bibreview import --init FILE` persists a stable BibReview UUID
+in a versioned YAML manifest; `bibreview --dry-run import FILE` validates the
+complete reviewed contract without writes; and `bibreview import FILE` stages
+the publication, tracked BibTeX, and durable import evidence without changing
+the canonical bibliography or `ID.txt`. DOI-bearing records remain exclusively
+on the automated DOI acquisition path.
 
 BibReview v1.6.40 completes the canonical/site separation introduced in v1.6.39:
 when `site.jekyll.publish_data` is enabled, render now publishes tracked BibTeX
@@ -84,7 +92,7 @@ BibReview currently requires **Python 3.12 or newer**.
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.40"
+python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.41"
 
 bibreview --version
 ~~~

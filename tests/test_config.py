@@ -49,6 +49,7 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(config.paths.pending, root / "data/newID.txt")
         self.assertEqual(config.paths.rejected, root / "data/badID.txt")
         self.assertEqual(config.paths.review, root / "data/checkID.txt")
+        self.assertEqual(config.paths.imports, root / "data/imports")
         self.assertEqual(config.audit.campaign, root / "audit/campaign.json")
         self.assertEqual(config.audit.report, root / "audit/report.json")
         self.assertEqual(config.audit.batch_size, 50)
