@@ -37,6 +37,14 @@ def new_publication_id() -> str:
     return str(uuid.uuid4())
 
 
+def publication_identity_label(publication_id: str, doi: str | None = None) -> str:
+    """Return a human-facing strong identifier or explicit canonical UUID token."""
+
+    if doi is not None:
+        return normalize_doi(doi)
+    return f"id:{validate_publication_id(publication_id)}"
+
+
 def validate_publication_id(value: str) -> str:
     """Validate and canonicalize a persisted publication UUID."""
     if not isinstance(value, str):
