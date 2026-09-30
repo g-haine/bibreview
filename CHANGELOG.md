@@ -2,7 +2,7 @@
 
 All notable BibReview releases are documented here.
 
-## 1.6.43 — 2026-09-30
+## 1.6.44 — 2026-09-30\n\n### Reviewed import example and workflow documentation\n\n- add a root `publication.example.yml` as a complete field reference for\n  reviewed DOI-less imports;\n- keep the example syntactically valid and covered by the import parser tests;\n- document that real imports must begin with `bibreview import --init FILE` so\n  the persistent publication UUID is generated once rather than copied from the\n  example;\n- document the complete DOI-less maintenance path from manifest initialization\n  through dry-run, staging, ordinary merge, author review and rendering.\n\n## 1.6.43 — 2026-09-30
 
 ### Canonical reviewed-import BibTeX
 
