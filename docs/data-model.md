@@ -221,6 +221,35 @@ Manual import rejects DOI-bearing records because DOI is the sole current
 strong/automatable identifier. Auxiliary identifiers are retained as metadata
 and may produce duplicate warnings, but they never trigger automatic merging.
 
+### DOI-less canonical maintenance behavior
+
+Once a reviewed DOI-less publication has crossed the ordinary merge boundary,
+it is an ordinary canonical publication whose persistent identity is its
+`Publication.id` UUID.
+
+DOI-neutral workflows continue normally:
+
+- `merge` preserves UUID identity and projects the registry as `id:<UUID>`;
+- author/editor mappings, hygiene, year/category indexes and search use canonical
+  publication identity rather than requiring a DOI;
+- `render` uses the tracked BibTeX named by permalink and emits no DOI link when
+  no DOI exists.
+
+DOI-only maintenance workflows never synthesize an identifier or call a DOI
+provider for such a publication:
+
+- `audit` completes the campaign item with explicit provider-unavailable
+  evidence (`canonical publication has no DOI`);
+- `references` completes it as `unavailable` with reason
+  `canonical-publication-without-doi`;
+- automatic `backfill` skips it;
+- `refresh` skips DOI/BibTeX-provider access for it.
+
+Human-facing diagnostics display the normalized DOI value when one exists and
+otherwise use the explicit canonical fallback `id:<UUID>`. This display label
+does not change persisted UUID identity or promote `id:` into the external
+identifier namespace.
+
 ## Author mappings
 
 The author mapping file is JSON:
