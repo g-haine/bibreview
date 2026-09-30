@@ -11,7 +11,14 @@ feed.
 BibReview is designed so that provider output remains inspectable and ambiguous
 decisions remain human decisions.
 
-Current stable release: **v1.6.37**.
+Current stable release: **v1.6.38**.
+
+BibReview v1.6.38 introduces typed identifier project state for issue #28 while
+keeping DOI as the sole strong/automatable acquisition identifier. Project
+defaults now use `ID.txt`, `newID.txt`, `checkID.txt`, and `badID.txt`.
+The canonical registry contains one token per publication: `doi:<value>` when
+a DOI exists and `id:<Publication.id>` otherwise. Historical bare DOI lines
+remain readable during migration.
 
 BibReview v1.6.37 makes scheduled arXiv refreshes true semantic no-ops when the
 paper payload is unchanged. A later refresh timestamp alone no longer rewrites
@@ -63,7 +70,7 @@ BibReview currently requires **Python 3.12 or newer**.
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.37"
+python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.38"
 
 bibreview --version
 ~~~
