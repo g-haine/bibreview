@@ -862,6 +862,102 @@ bibreview --config bibreview.yml collect
 
 Collection refuses to overwrite a non-empty staging bibliography.
 
+## import
+
+Stage one reviewed publication that cannot use the DOI acquisition chain.
+
+First create a human-editable manifest with a persistent BibReview UUID:
+
+~~~bash
+bibreview import --init publication.yml
+~~~
+
+Initialization is intentionally a real write and cannot be combined with
+`--dry-run`: the generated UUID is persisted immediately so later metadata
+edits, dry-runs and retries cannot change canonical identity.
+
+Edit the manifest, then validate the complete import without writing project
+state:
+
+~~~bash
+bibreview --dry-run import publication.yml
+~~~
+
+Stage the reviewed publication:
+
+~~~bash
+bibreview import publication.yml
+~~~
+
+The command:
+
+- accepts DOI-less publications only;
+- refuses a `doi` identifier and redirects that case conceptually to the
+  existing DOI discovery/collection workflow;
+- accepts auxiliary identifiers such as ISBN, arXiv, PMID, PMLR or
+  publisher-specific identifiers without promoting them to strong identity keys;
+- requires explicit provenance (`manual`, `official-import`, or `provider`);
+- requires reviewed BibTeX content and never fabricates it;
+- generates a permalink from the title when the manifest leaves it empty;
+- refuses canonical UUID/permalink collisions;
+- reports matching auxiliary identifiers and matching normalized title/year as
+  possible-duplicate warnings without auto-merging;
+- refuses non-empty `collected.json` staging;
+- writes only `collected.json`, the tracked `bib/<permalink>.bib`, and the
+  normalized evidence sidecar under `data/imports/<UUID>.yml`.
+
+It does **not** modify `bibliography.json` or `ID.txt`. Review the staged
+diff, then use the ordinary promotion boundary:
+
+~~~bash
+bibreview --dry-run merge
+bibreview merge
+~~~
+
+The v1 import manifest has this shape:
+
+~~~yaml
+schema_version: 1
+id: 550e8400-e29b-41d4-a716-446655440000
+
+provenance:
+  kind: official-import
+  source: https://example.org/official-record
+  note: Reviewed against the official proceedings page.
+
+citation: "Optional human-readable citation"
+
+publication:
+  identifiers:
+    pmlr: "331:example"
+  type: proceedings-article
+  title: Example DOI-less publication
+  authors:
+    - given: Ada
+      family: Lovelace
+  editors: []
+  abstract: ""
+  container_title: Example Proceedings
+  publication_year: "2026"
+  volume: "331"
+  issue: ""
+  pages: "1--10"
+  publisher: ""
+  event: ""
+  keywords: []
+  created_date: null
+  permalink: ""
+  references: []
+
+bibtex: |
+  @inproceedings{example,
+    title = {Example DOI-less publication}
+  }
+~~~
+
+For `official-import` and `provider` provenance, `provenance.source` is
+required. Manual provenance may leave it empty.
+
 ## backfill
 
 Propose values for selected fields that are semantically missing in existing
