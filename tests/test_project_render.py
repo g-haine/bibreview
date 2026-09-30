@@ -113,16 +113,20 @@ class ProjectRenderTests(unittest.TestCase):
         obsolete_public = site / "assets/data/bibreview/obsolete.json"
         obsolete_public.parent.mkdir(parents=True, exist_ok=True)
         obsolete_public.write_text("{}\n", encoding="utf-8")
+        obsolete_public_bibtex = site / "assets/bib/obsolete.bib"
+        obsolete_public_bibtex.parent.mkdir(parents=True, exist_ok=True)
+        obsolete_public_bibtex.write_text("@misc{obsolete}\n", encoding="utf-8")
         orphan = self.config.paths.bibtex / "unused.bib"
         orphan.write_text("@misc{unused}\n", encoding="utf-8")
 
         plan = plan_project_render(self.config)
 
         self.assertTrue(plan.changed)
-        self.assertEqual(plan.persistence.expected_count, 8)
+        self.assertEqual(plan.persistence.expected_count, 9)
         self.assertEqual(plan.orphan_bibtex, (orphan,))
         self.assertIn(site / "_posts/obsolete.md", plan.persistence.deletes)
         self.assertIn(obsolete_public, plan.persistence.deletes)
+        self.assertIn(obsolete_public_bibtex, plan.persistence.deletes)
 
         apply_project_render(plan)
 
@@ -154,14 +158,21 @@ class ProjectRenderTests(unittest.TestCase):
             ),
             self.config.paths.author_mappings.read_text(encoding="utf-8"),
         )
+        self.assertEqual(
+            (site / "assets/bib/fluid-structure-example.bib").read_text(
+                encoding="utf-8"
+            ),
+            "@article{example}\n",
+        )
         self.assertFalse((site / "_posts/obsolete.md").exists())
         self.assertFalse(obsolete_public.exists())
+        self.assertFalse(obsolete_public_bibtex.exists())
         self.assertEqual((site / "manual.md").read_text(), "manual")
         self.assertTrue(orphan.exists())
 
         final = plan_project_render(self.config)
         self.assertFalse(final.changed)
-        self.assertEqual(final.persistence.unchanged_count, 8)
+        self.assertEqual(final.persistence.unchanged_count, 9)
 
     def test_planning_is_read_only(self):
         before = self.snapshot()
@@ -184,6 +195,9 @@ class ProjectRenderTests(unittest.TestCase):
         existing = site / "assets/data/bibreview/manual.json"
         existing.parent.mkdir(parents=True, exist_ok=True)
         existing.write_text('{"manual": true}\n', encoding="utf-8")
+        existing_bibtex = site / "assets/bib/manual.bib"
+        existing_bibtex.parent.mkdir(parents=True, exist_ok=True)
+        existing_bibtex.write_text("@misc{manual}\n", encoding="utf-8")
 
         self.config_path.write_text(
             CONFIG.replace("    publish_data: true\n", ""),
@@ -193,9 +207,11 @@ class ProjectRenderTests(unittest.TestCase):
         plan = plan_project_render(config)
 
         self.assertNotIn(existing, plan.persistence.deletes)
+        self.assertNotIn(existing_bibtex, plan.persistence.deletes)
         self.assertFalse(
             any(
                 "assets/data/bibreview" in str(path)
+                or "assets/bib" in str(path)
                 for path in plan.persistence.writes
             )
         )
