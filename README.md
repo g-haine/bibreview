@@ -11,7 +11,14 @@ feed.
 BibReview is designed so that provider output remains inspectable and ambiguous
 decisions remain human decisions.
 
-Current stable release: **v1.6.39**.
+Current stable release: **v1.6.40**.
+
+BibReview v1.6.40 completes the canonical/site separation introduced in v1.6.39:
+when `site.jekyll.publish_data` is enabled, render now publishes tracked BibTeX
+sources under the configured public BibTeX asset prefix in addition to the
+generated bibliography and author-mapping JSON snapshots. Canonical BibTeX can
+therefore live exclusively under `bib/` without requiring a duplicate tracked
+copy inside `site/`.
 
 BibReview v1.6.39 establishes the recommended project layout: canonical state in
 `data/`, tracked BibTeX in `bib/`, maintenance evidence in `audit/`, backups
@@ -77,7 +84,7 @@ BibReview currently requires **Python 3.12 or newer**.
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.39"
+python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.40"
 
 bibreview --version
 ~~~
