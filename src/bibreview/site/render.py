@@ -16,6 +16,7 @@ from typing import Mapping
 
 from unidecode import unidecode
 
+from ..identity import publication_identity_label
 from .transform import SiteModel, SitePublication
 
 
@@ -228,7 +229,7 @@ def _publication_category(
             return category
     category = options.category_by_type.get(publication.type)
     if category is None:
-        identity = publication.identifiers.get("doi", publication.id)
+        identity = publication_identity_label(publication.id, publication.identifiers.get("doi"))
         raise SiteRenderError(
             f"no Jekyll category configured for publication type "
             f"{publication.type!r} ({identity})"

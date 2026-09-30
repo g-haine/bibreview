@@ -309,6 +309,41 @@ class RefreshTests(unittest.TestCase):
         self.assertEqual(result.unavailable, ("10.1/unavailable",))
         self.assertEqual(result.items, ())
 
+    def test_doi_less_publication_never_reaches_bibtex_or_metadata_providers(self):
+        item = Publication(
+            id=new_publication_id(),
+            identifiers={},
+            type="journal-article",
+            title="Manual publication",
+            authors=(Author(literal="Manual Author"),),
+            abstract="",
+            container_title="Journal",
+            publication_year="2026",
+            created_date=date(2026, 1, 1),
+            permalink="manual-publication",
+        )
+        provider = FakeProvider({})
+
+        result = refresh(
+            [item],
+            provider=provider,
+            stored_bibtex_lookup=lambda publication: self.fail(
+                "stored BibTeX should not be read for DOI-less publications"
+            ),
+            bibtex_lookup=lambda doi: self.fail(
+                "remote BibTeX should not be read for DOI-less publications"
+            ),
+            types=("journal-article",),
+            when_missing_any=("abstract",),
+        )
+
+        self.assertEqual(result.scanned_count, 1)
+        self.assertEqual(result.eligible_count, 1)
+        self.assertEqual(result.candidates, ())
+        self.assertEqual(result.items, ())
+        self.assertEqual(result.unavailable, ())
+        self.assertEqual(provider.calls, [])
+
     def test_disabled_policy_performs_no_provider_or_bibtex_access(self):
         item = publication("10.1/disabled")
         provider = FakeProvider({"10.1/disabled": message()})

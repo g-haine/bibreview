@@ -12,6 +12,7 @@ from datetime import date
 from types import MappingProxyType
 from typing import Any, Iterable, Mapping
 
+from ..identity import publication_identity_label
 from ..model import Editor, Publication
 from ..pipeline.authors import (
     AuthorMappingError,
@@ -174,7 +175,7 @@ def build_site_model(
             permalink = safe_component(publication.permalink)
         except ValueError as error:
             raise SiteTransformError(
-                f"{publication.doi or publication.id}: {error}"
+                f"{publication_identity_label(publication.id, publication.doi)}: {error}"
             ) from error
         previous = permalink_owner.get(permalink)
         if previous is not None:
@@ -195,12 +196,12 @@ def build_site_model(
     for publication in source:
         if publication.created_date is None:
             raise SiteTransformError(
-                f"{publication.doi or publication.id}: site rendering requires created_date"
+                f"{publication_identity_label(publication.id, publication.doi)}: site rendering requires created_date"
             )
         year = publication.publication_year.strip()
         if not year or not year.isdecimal():
             raise SiteTransformError(
-                f"{publication.doi or publication.id}: invalid publication year {publication.publication_year!r}"
+                f"{publication_identity_label(publication.id, publication.doi)}: invalid publication year {publication.publication_year!r}"
             )
 
         site_authors: list[SitePublicationAuthor] = []
@@ -209,12 +210,12 @@ def build_site_model(
                 name = author_name(author)
             except AuthorMappingError as error:
                 raise SiteTransformError(
-                    f"{publication.doi or publication.id}: {error}"
+                    f"{publication_identity_label(publication.id, publication.doi)}: {error}"
                 ) from error
             slug = reverse_authors.get(name)
             if slug is None:
                 raise SiteTransformError(
-                    f"{publication.doi or publication.id}: unmapped author {name!r}"
+                    f"{publication_identity_label(publication.id, publication.doi)}: unmapped author {name!r}"
                 )
             site_authors.append(SitePublicationAuthor(slug=slug, name=name))
 

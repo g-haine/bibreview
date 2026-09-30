@@ -10,12 +10,15 @@ from bibreview.model import Author, Publication
 from bibreview.pipeline.audit import (
     AuditComparison,
     AuditResult,
+    AuditReviewFinding,
     ProviderEvidence,
     compare_audit_record,
     publication_audit_record,
 )
 from bibreview.project import ProjectStateError
 from bibreview.project_audit import (
+    AuditPublicationReview,
+    ProjectAuditReview,
     apply_project_audit_plan,
     audit_report_from_data,
     execute_project_audit_batch,
@@ -874,6 +877,82 @@ class ProjectAuditTests(unittest.TestCase):
                 state="completed",
             )
 
+
+    def test_human_audit_report_marks_uuid_fallback_explicitly(self):
+        publication_id = new_publication_id()
+        finding = AuditReviewFinding(
+            field="title",
+            classification="substantive",
+            providers=("provider",),
+            canonical_value="Canonical",
+            provider_values=(("provider", "Provider"),),
+            actionable=True,
+        )
+        review = ProjectAuditReview(
+            audited_publications=1,
+            flagged_publications=1,
+            actionable_findings=1,
+            informational_findings=0,
+            provider_issues=0,
+            items=(
+                AuditPublicationReview(
+                    publication_id=publication_id,
+                    identifiers={},
+                    permalink="manual-publication",
+                    title="Manual publication",
+                    findings=(finding,),
+                ),
+            ),
+        )
+
+        rendered = format_project_audit_review(review)
+
+        self.assertIn(
+            f"id:{publication_id} — Manual publication",
+            rendered,
+        )
+
+    def test_non_doi_publication_is_completed_with_unavailable_provider_evidence(self):
+        publication = Publication(
+            id=new_publication_id(),
+            identifiers={},
+            type="journal-article",
+            title="DOI-less publication",
+            authors=(Author(literal="Manual Author"),),
+            publication_year="2026",
+            permalink="doi-less-publication",
+        )
+        write_bibliography(self.config.paths.bibliography, (publication,))
+        plan = plan_project_audit_batch(self.config, batch_size=1)
+        apply_project_audit_plan(plan)
+        source = FakeAuditSource({})
+
+        execution = execute_project_audit_batch(
+            self.config,
+            batch_id=plan.batch.id,
+            sources=(source,),
+            reporter=Reporter(-1),
+        )
+
+        self.assertEqual(source.calls, [])
+        self.assertEqual(execution.completed_count, 1)
+        self.assertEqual(execution.retryable_count, 0)
+        report = audit_report_from_data(
+            read_json(self.config.audit.report, dict)
+        )
+        self.assertEqual(len(report.entries), 1)
+        result = report.entries[0].result
+        self.assertEqual(result.publication_id, publication.id)
+        self.assertEqual(result.identifiers, {})
+        self.assertEqual(len(result.provider_issues), 1)
+        self.assertEqual(result.provider_issues[0].classification, "unavailable")
+        self.assertEqual(
+            result.provider_issues[0].detail,
+            "canonical publication has no DOI",
+        )
+        review = project_audit_review(self.config)
+        self.assertEqual(review.audited_publications, 1)
+        self.assertEqual(review.provider_issues, 1)
 
 if __name__ == "__main__":
     unittest.main()

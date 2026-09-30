@@ -24,6 +24,7 @@ from .campaign import (
 )
 from .citation_format import format_crossref_citations
 from .config import BibReviewConfig
+from .identity import publication_identity_label
 from .model import Publication, Reference
 from .pipeline.collect import BatchWorkProvider
 from .pipeline.references import (
@@ -808,7 +809,7 @@ def execute_project_references_batch(
                     state = "completed"
 
         identity = (
-            publication.doi or publication.id
+            publication_identity_label(publication.id, publication.doi)
             if publication is not None
             else key
         )
@@ -1701,7 +1702,7 @@ def format_project_references_review(
 
     lines = [text]
     for item in review.items:
-        identity = item.doi or item.publication_id
+        identity = publication_identity_label(item.publication_id, item.doi)
         lines.extend(
             (
                 "",

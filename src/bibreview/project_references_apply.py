@@ -8,6 +8,7 @@ from types import MappingProxyType
 from typing import Any, Mapping
 
 from .config import BibReviewConfig
+from .identity import publication_identity_label
 from .pipeline.references import references_fingerprint
 from .project import ProjectStateError
 from .project_references import (
@@ -274,7 +275,7 @@ def plan_project_references_safe_apply(
         changes.append(
             ReferenceSafeApplyChange(
                 publication_id=publication.id,
-                doi=publication.doi or publication.id,
+                doi=publication_identity_label(publication.id, publication.doi),
                 title=publication.title,
                 source_classification=item.classification,
                 explanation=review.explanations.get(publication.id),

@@ -10,6 +10,7 @@ from textwrap import fill
 from types import MappingProxyType
 from typing import Any, Mapping
 
+from .identity import publication_identity_label
 from .config import BibReviewConfig
 from .project import ProjectStateError
 from .project_hygiene import (
@@ -408,7 +409,7 @@ def format_hygiene_resolution_candidate(
     proposal = candidate.proposal
     lines = [
         f"[{candidate.position}/{candidate.total}] "
-        f"{proposal.doi or proposal.publication_id} — {proposal.title}",
+        f"{publication_identity_label(proposal.publication_id, proposal.doi or None)} — {proposal.title}",
         "",
         f"Field: {proposal.field}",
     ]

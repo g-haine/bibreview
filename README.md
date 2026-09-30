@@ -11,7 +11,13 @@ feed.
 BibReview is designed so that provider output remains inspectable and ambiguous
 decisions remain human decisions.
 
-Current stable release: **v1.6.41**.
+Current stable release: **v1.6.42**.
+
+BibReview v1.6.42 hardens DOI-less canonical publications across ordinary
+merge, rendering and maintenance workflows. DOI-neutral operations use the
+persistent UUID normally; DOI-only audit/reference workflows classify DOI-less
+records explicitly without provider calls; backfill/refresh skip DOI-only
+lookups; and human-facing fallbacks are rendered unambiguously as `id:<UUID>`.
 
 BibReview v1.6.41 adds the reviewed manual-import core for DOI-less
 publications. `bibreview import --init FILE` persists a stable BibReview UUID
@@ -92,7 +98,7 @@ BibReview currently requires **Python 3.12 or newer**.
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.41"
+python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.42"
 
 bibreview --version
 ~~~

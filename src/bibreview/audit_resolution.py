@@ -10,6 +10,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Mapping
 
+from .identity import publication_identity_label
 from .config import BibReviewConfig
 from .pipeline.audit import AuditReviewFinding, AuditValue
 from .project import ProjectStateError
@@ -328,7 +329,7 @@ def load_project_audit_resolutions(
                 f"{path}: resolution finding is absent from the current review: "
                 f"{decision.key}"
             )
-        doi = candidate.identifiers.get("doi", candidate.publication_id)
+        doi = publication_identity_label(candidate.publication_id, candidate.identifiers.get("doi"))
         if (
             decision.publication_id != candidate.publication_id
             or decision.doi != doi
@@ -367,7 +368,7 @@ def record_audit_resolution(
     item = AuditResolutionDecision(
         key=candidate.key,
         publication_id=candidate.publication_id,
-        doi=candidate.identifiers.get("doi", candidate.publication_id),
+        doi=publication_identity_label(candidate.publication_id, candidate.identifiers.get("doi")),
         title=candidate.title,
         field=candidate.finding.field,
         decision=decision,
@@ -425,7 +426,7 @@ def unresolved_resolution_candidates(
 
 def format_audit_resolution_candidate(candidate: AuditResolutionCandidate) -> str:
     """Format one actionable finding for interactive human review."""
-    doi = candidate.identifiers.get("doi", candidate.publication_id)
+    doi = publication_identity_label(candidate.publication_id, candidate.identifiers.get("doi"))
     finding = candidate.finding
     lines = [
         f"[{candidate.position}/{candidate.total}] {doi} — {candidate.title}",

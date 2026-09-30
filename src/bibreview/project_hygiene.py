@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from textwrap import fill
 from typing import Any
 
+from .identity import publication_identity_label
 from .config import BibReviewConfig
 from .hygiene import (
     AbstractHygieneReport,
@@ -294,7 +295,7 @@ def format_project_hygiene_migration_review(
             (
                 "",
                 f"[{index}/{len(review.proposals)}] "
-                f"{proposal.doi or proposal.publication_id} — {proposal.title}",
+                f"{publication_identity_label(proposal.publication_id, proposal.doi or None)} — {proposal.title}",
                 f"  Field: {proposal.field}",
             )
         )

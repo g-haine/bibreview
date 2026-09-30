@@ -22,6 +22,7 @@ from .campaign import (
     record_item_result,
 )
 from .config import BibReviewConfig
+from .identity import publication_identity_label
 from .pipeline.audit import (
     AuditComparison,
     AuditError,
@@ -558,7 +559,7 @@ def format_project_audit_review(review: ProjectAuditReview) -> str:
     """Format the detailed human-readable audit review."""
     lines = [review.summary()]
     for item in review.items:
-        doi = item.identifiers.get("doi", item.publication_id)
+        doi = publication_identity_label(item.publication_id, item.identifiers.get("doi"))
         lines.append("")
         lines.append(f"{doi} — {item.title}")
         for finding in item.findings:
@@ -1031,7 +1032,7 @@ def execute_project_audit_batch(
             )
         else:
             progress_reporter.step(
-                f"Audit {publication.doi or publication.id}: {publication.title}"
+                f"Audit {publication_identity_label(publication.id, publication.doi)}: {publication.title}"
             )
             record = publication_audit_record(publication)
             evidences: list[ProviderEvidence] = []
