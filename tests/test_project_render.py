@@ -110,6 +110,9 @@ class ProjectRenderTests(unittest.TestCase):
         (site / "_posts").mkdir(parents=True)
         (site / "_posts/obsolete.md").write_text("obsolete", encoding="utf-8")
         (site / "manual.md").write_text("manual", encoding="utf-8")
+        obsolete_public = site / "assets/data/bibreview/obsolete.json"
+        obsolete_public.parent.mkdir(parents=True, exist_ok=True)
+        obsolete_public.write_text("{}\n", encoding="utf-8")
         orphan = self.config.paths.bibtex / "unused.bib"
         orphan.write_text("@misc{unused}\n", encoding="utf-8")
 
@@ -119,6 +122,7 @@ class ProjectRenderTests(unittest.TestCase):
         self.assertEqual(plan.persistence.expected_count, 8)
         self.assertEqual(plan.orphan_bibtex, (orphan,))
         self.assertIn(site / "_posts/obsolete.md", plan.persistence.deletes)
+        self.assertIn(obsolete_public, plan.persistence.deletes)
 
         apply_project_render(plan)
 
@@ -151,6 +155,7 @@ class ProjectRenderTests(unittest.TestCase):
             self.config.paths.author_mappings.read_text(encoding="utf-8"),
         )
         self.assertFalse((site / "_posts/obsolete.md").exists())
+        self.assertFalse(obsolete_public.exists())
         self.assertEqual((site / "manual.md").read_text(), "manual")
         self.assertTrue(orphan.exists())
 
