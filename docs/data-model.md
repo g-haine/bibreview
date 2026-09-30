@@ -189,9 +189,37 @@ Comments and blank lines are ignored when state files are read. Historical bare
 DOI lines remain readable during migration, but rewritten files use canonical
 `doi:` syntax. Untyped non-DOI lines are rejected rather than guessed.
 
-DOI-less publications will use the reviewed manual `bibreview import`
+DOI-less publications use the reviewed manual `bibreview import`
 workflow introduced by issue #28. That workflow does not create a second
 automated acquisition chain and never invents a fake DOI.
+
+### Reviewed manual import evidence
+
+A manual import is represented by a versioned YAML sidecar. The sidecar carries
+the persistent top-level BibReview UUID, reviewed publication metadata, explicit
+provenance, optional human-readable citation text, and the exact tracked BibTeX
+source.
+
+By default normalized sidecars are retained under:
+
+~~~text
+data/imports/<Publication.id>.yml
+~~~
+
+The sidecar is durable review evidence, not canonical bibliography state.
+`bibreview import` converts the reviewed publication portion into ordinary
+`collected.json` staging and writes the tracked BibTeX source under
+`bib/<permalink>.bib`. The canonical bibliography and `ID.txt` remain
+untouched until an explicit `bibreview merge`.
+
+UUID allocation is deliberately separate from bibliographic metadata.
+`bibreview import --init FILE` persists a random opaque UUID into the manifest
+before review. Title, contributor, year, permalink or auxiliary-identifier edits
+therefore cannot churn canonical identity.
+
+Manual import rejects DOI-bearing records because DOI is the sole current
+strong/automatable identifier. Auxiliary identifiers are retained as metadata
+and may produce duplicate warnings, but they never trigger automatic merging.
 
 ## Author mappings
 
