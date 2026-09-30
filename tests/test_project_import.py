@@ -327,6 +327,32 @@ class ProjectImportTests(unittest.TestCase):
         with self.assertRaisesRegex(ProjectImportError, "refusing to overwrite"):
             plan_project_import(self.config, self.manifest_path)
 
+    def test_repository_publication_example_is_a_valid_reference_manifest(self):
+        example = Path(__file__).resolve().parents[1] / "publication.example.yml"
+        manifest = load_import_manifest(example)
+
+        self.assertEqual(manifest.schema_version, 1)
+        self.assertEqual(
+            manifest.publication.id,
+            "11111111-1111-4111-8111-111111111111",
+        )
+        self.assertIsNone(manifest.publication.doi)
+        self.assertEqual(
+            manifest.publication.identifiers,
+            {"pmlr": "pmlr-example"},
+        )
+        self.assertEqual(manifest.provenance.kind, "official-import")
+        self.assertEqual(
+            manifest.publication.permalink,
+            "example-doi-less-publication",
+        )
+        self.assertNotIn("abstract=", manifest.bibtex.lower())
+        self.assertNotIn("url=", manifest.bibtex.lower())
+        self.assertIn(
+            "title={{Example DOI-less publication}}",
+            manifest.bibtex,
+        )
+
     def test_cli_init_dry_run_import_and_apply(self):
         stdout = StringIO()
         stderr = StringIO()

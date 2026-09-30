@@ -220,6 +220,12 @@ UUID allocation is deliberately separate from bibliographic metadata.
 before review. Title, contributor, year, permalink or auxiliary-identifier edits
 therefore cannot churn canonical identity.
 
+The repository-level [`publication.example.yml`](../publication.example.yml) is
+a maintained field reference for this schema. It is intentionally **not** a
+starter file to copy: initialize the real manifest first with `--init` so its
+persistent UUID is generated uniquely, then use the example only to guide the
+human-reviewed fields.
+
 Manual import rejects DOI-bearing records because DOI is the sole current
 strong/automatable identifier. Auxiliary identifiers are retained as metadata
 and may produce duplicate warnings, but they never trigger automatic merging.

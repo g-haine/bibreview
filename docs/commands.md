@@ -876,6 +876,12 @@ Initialization is intentionally a real write and cannot be combined with
 `--dry-run`: the generated UUID is persisted immediately so later metadata
 edits, dry-runs and retries cannot change canonical identity.
 
+Use the repository-level [`publication.example.yml`](../publication.example.yml)
+as a field reference while editing the generated manifest. Do **not** copy or
+rename that example to begin a real import: its UUID is illustrative, and
+`--init` deliberately refuses to overwrite an existing file. Always initialize
+the real manifest first, then transfer only the reviewed bibliographic fields.
+
 Edit the manifest, then validate the complete import without writing project
 state:
 
@@ -914,7 +920,8 @@ bibreview --dry-run merge
 bibreview merge
 ~~~
 
-The v1 import manifest has this shape:
+The v1 import manifest has the shape below. The complete maintained field-reference
+example is [`publication.example.yml`](../publication.example.yml):
 
 ~~~yaml
 schema_version: 1

@@ -1,0 +1,79 @@
+# Field-reference example for reviewed DOI-less imports.
+#
+# Start a real import with:
+#
+#   bibreview import --init publication.yml
+#
+# Then use this file only as a guide while editing publication.yml.
+# Do not reuse this illustrative UUID: --init allocates the persistent UUID
+# that identifies the real publication throughout its BibReview lifetime.
+
+schema_version: 1
+id: 11111111-1111-4111-8111-111111111111
+
+provenance:
+  # Allowed values: manual, official-import, provider.
+  kind: official-import
+  # Required for official-import and provider; optional for manual.
+  source: https://example.org/official-record
+  note: Reviewed against the official publication record.
+
+citation: >-
+  Ada Lovelace, Example DOI-less publication, Example Proceedings 331 (2026),
+  1--10.
+
+publication:
+  # Auxiliary identifiers are metadata only. Do not put a DOI here:
+  # DOI-bearing publications must use the automated DOI workflow.
+  identifiers:
+    pmlr: pmlr-example
+
+  type: proceedings-article
+  title: Example DOI-less publication
+
+  authors:
+    - given: Ada
+      family: Lovelace
+      literal: null
+      source_fields: {}
+
+  editors: []
+
+  abstract: >-
+    Example reviewed abstract retained in canonical publication metadata rather
+    than duplicated in tracked BibTeX.
+
+  container_title: Example Proceedings
+  publication_year: "2026"
+  volume: "331"
+  issue: ""
+  pages: 1--10
+  publisher: Example Publisher
+  event: Example Conference
+
+  keywords:
+    - example
+    - reviewed import
+
+  # Use an ISO date when known; otherwise null.
+  created_date: 2026-06-17
+
+  # Leave empty to derive the permalink deterministically from the title.
+  permalink: ""
+
+  references: []
+
+# BibReview canonicalizes this single reviewed entry before it becomes tracked
+# project state. Keep citation fields here; abstract/month/url/pdf belong in
+# publication metadata or provenance and are omitted from canonical tracked
+# BibTeX.
+bibtex: |
+  @inproceedings{example-doiless,
+    title={{Example DOI-less publication}},
+    author={Lovelace, Ada},
+    booktitle={{Example Proceedings}},
+    pages={1--10},
+    year={2026},
+    volume={331},
+    publisher={Example Publisher}
+  }

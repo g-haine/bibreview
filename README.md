@@ -11,7 +11,13 @@ feed.
 BibReview is designed so that provider output remains inspectable and ambiguous
 decisions remain human decisions.
 
-Current stable release: **v1.6.43**.
+Current stable release: **v1.6.44**.
+
+BibReview v1.6.44 adds a repository-level [`publication.example.yml`](publication.example.yml)
+field reference for reviewed DOI-less imports and documents the complete
+`--init` → review → dry-run → import → merge workflow. A real import must still
+start with `bibreview import --init publication.yml` so BibReview, rather than a
+copied example, allocates the persistent publication UUID.
 
 BibReview v1.6.43 canonicalizes reviewed DOI-less BibTeX before it becomes
 tracked project state: stable field spacing, protected `title`/`booktitle`,
@@ -103,7 +109,7 @@ BibReview currently requires **Python 3.12 or newer**.
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.43"
+python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.44"
 
 bibreview --version
 ~~~
