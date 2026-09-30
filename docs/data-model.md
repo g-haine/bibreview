@@ -197,8 +197,11 @@ automated acquisition chain and never invents a fake DOI.
 
 A manual import is represented by a versioned YAML sidecar. The sidecar carries
 the persistent top-level BibReview UUID, reviewed publication metadata, explicit
-provenance, optional human-readable citation text, and the exact tracked BibTeX
-source.
+provenance, optional human-readable citation text, and the reviewed BibTeX
+source normalized into BibReview's tracked canonical format. Canonicalization
+uses stable field spacing, protects whole `title`/`booktitle` values, normalizes
+page ranges, and omits `abstract`, `month`, `url`, and `pdf` payload fields;
+those data remain represented by reviewed publication metadata and provenance.
 
 By default normalized sidecars are retained under:
 

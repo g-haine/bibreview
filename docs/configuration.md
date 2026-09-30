@@ -423,6 +423,8 @@ Continue with [Local workflow](workflow.md) and
 `paths.imports` defaults to `data/imports`. It stores normalized, reviewed
 YAML sidecars for DOI-less publications staged through `bibreview import`.
 These files retain the persistent BibReview UUID, provenance, reviewed metadata,
-citation text when supplied, and the exact tracked BibTeX source used for the
-import. They are evidence, not canonical bibliography state: promotion still
+citation text when supplied, and the reviewed BibTeX after normalization to
+BibReview's tracked canonical format. Non-citation payload fields such as
+`abstract`, `month`, `url`, and `pdf` are omitted from that BibTeX. The
+sidecars are evidence, not canonical bibliography state: promotion still
 occurs only through `collected.json` followed by `bibreview merge`.

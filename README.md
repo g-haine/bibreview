@@ -11,7 +11,12 @@ feed.
 BibReview is designed so that provider output remains inspectable and ambiguous
 decisions remain human decisions.
 
-Current stable release: **v1.6.42**.
+Current stable release: **v1.6.43**.
+
+BibReview v1.6.43 canonicalizes reviewed DOI-less BibTeX before it becomes
+tracked project state: stable field spacing, protected `title`/`booktitle`,
+normalized page ranges, and removal of `abstract`, `month`, `url`, and
+`pdf` payload fields that belong in reviewed metadata/provenance instead.
 
 BibReview v1.6.42 hardens DOI-less canonical publications across ordinary
 merge, rendering and maintenance workflows. DOI-neutral operations use the
@@ -98,7 +103,7 @@ BibReview currently requires **Python 3.12 or newer**.
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.42"
+python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.43"
 
 bibreview --version
 ~~~

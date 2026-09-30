@@ -2,6 +2,20 @@
 
 All notable BibReview releases are documented here.
 
+## 1.6.43 — 2026-09-30
+
+### Canonical reviewed-import BibTeX
+
+- canonicalize reviewed manual-import BibTeX before writing durable import
+  evidence or tracked `bib/<permalink>.bib`;
+- serialize fields with two-space indentation and no spaces around `=`;
+- protect whole `title` and `booktitle` values with double braces;
+- omit `abstract`, `month`, `url`, and `pdf` from tracked BibTeX because
+  publication metadata/provenance are retained separately;
+- normalize en-dash page ranges to BibTeX double hyphens;
+- reject malformed or multi-entry manual BibTeX instead of preserving
+  non-canonical text verbatim.
+
 ## 1.6.42 — 2026-09-30
 
 ### DOI-less canonical hardening

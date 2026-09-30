@@ -6,11 +6,11 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
-import re
 from types import MappingProxyType
 
 import yaml
 
+from .bibtex_edit import BibtexEditError, canonicalize_bibtex
 from .config import BibReviewConfig
 from .identity import (
     IdentityError,
@@ -303,9 +303,10 @@ def _provenance(raw) -> ImportProvenance:
 
 def _bibtex(value) -> str:
     text = _string(value, "bibtex", required=True)
-    if re.search(r"(?m)^\s*@", text) is None:
-        raise ProjectImportError("bibtex must contain at least one BibTeX entry")
-    return text.rstrip() + "\n"
+    try:
+        return canonicalize_bibtex(text)
+    except BibtexEditError as error:
+        raise ProjectImportError(f"bibtex: {error}") from error
 
 
 def load_import_manifest(path: Path | str) -> ImportManifest:
