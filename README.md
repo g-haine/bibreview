@@ -13,7 +13,13 @@ decisions remain human decisions.
 
 Current stable release: **v1.6.44**.
 
-BibReview v1.6.44 adds a repository-level [`publication.example.yml`](publication.example.yml)\nfield reference for reviewed DOI-less imports and documents the complete\n`--init` → review → dry-run → import → merge workflow. A real import must still\nstart with `bibreview import --init publication.yml` so BibReview, rather than a\ncopied example, allocates the persistent publication UUID.\n\nBibReview v1.6.43 canonicalizes reviewed DOI-less BibTeX before it becomes
+BibReview v1.6.44 adds a repository-level [`publication.example.yml`](publication.example.yml)
+field reference for reviewed DOI-less imports and documents the complete
+`--init` → review → dry-run → import → merge workflow. A real import must still
+start with `bibreview import --init publication.yml` so BibReview, rather than a
+copied example, allocates the persistent publication UUID.
+
+BibReview v1.6.43 canonicalizes reviewed DOI-less BibTeX before it becomes
 tracked project state: stable field spacing, protected `title`/`booktitle`,
 normalized page ranges, and removal of `abstract`, `month`, `url`, and
 `pdf` payload fields that belong in reviewed metadata/provenance instead.
