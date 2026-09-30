@@ -5,6 +5,7 @@ import unittest
 from bibreview.bibtex_edit import (
     BibtexEditError,
     bibtex_field_names,
+    canonicalize_bibtex,
     parse_bibtex_entry,
     update_bibtex_fields,
 )
@@ -51,6 +52,32 @@ class BibtexEditTests(unittest.TestCase):
         self.assertEqual(
             {field.name for field in entry.fields},
             {"title", "abstract", "year"},
+        )
+
+    def test_canonicalizes_layout_title_protection_and_non_citation_fields(self):
+        source = (
+            "@InProceedings{example,\n"
+            "  title = {Manual title},\n"
+            '  author = "Ada Lovelace",\n'
+            "  booktitle = {Proceedings},\n"
+            "  pages = {1–9},\n"
+            "  month = {Jun},\n"
+            "  url = {https://example.test/paper},\n"
+            "  pdf = {https://example.test/paper.pdf},\n"
+            "  abstract = {Long abstract}\n"
+            "}\n"
+        )
+
+        self.assertEqual(
+            canonicalize_bibtex(source),
+            (
+                "@InProceedings{example,\n"
+                "  title={{Manual title}},\n"
+                "  author={Ada Lovelace},\n"
+                "  booktitle={{Proceedings}},\n"
+                "  pages={1--9}\n"
+                "}\n"
+            ),
         )
 
     def test_rejects_duplicate_fields(self):
