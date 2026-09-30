@@ -121,7 +121,7 @@ class ProjectImportTests(unittest.TestCase):
         raw["publication"]["title"] = "Edited later"
         raw["publication"]["publication_year"] = "2026"
         raw["publication"]["authors"] = [{"literal": "Example Author"}]
-        raw["bibtex"] = "@article{edited}\n"
+        raw["bibtex"] = "@article{edited,\n  title = {Edited later}\n}\n"
         self.manifest_path.write_text(
             yaml.safe_dump(raw, sort_keys=False),
             encoding="utf-8",
@@ -159,7 +159,7 @@ class ProjectImportTests(unittest.TestCase):
             (self.config.paths.bibtex / "manual-publication.bib").read_text(
                 encoding="utf-8"
             ),
-            "@article{manual,\n  title = {Manual publication}\n}\n",
+            "@article{manual,\n  title={{Manual publication}}\n}\n",
         )
         evidence = self.config.paths.imports / f"{raw['id']}.yml"
         self.assertTrue(evidence.is_file())
@@ -167,6 +167,45 @@ class ProjectImportTests(unittest.TestCase):
         self.assertEqual(persisted.publication.id, raw["id"])
         self.assertEqual(persisted.publication.permalink, "manual-publication")
         self.assertEqual(persisted.provenance.kind, "official-import")
+
+    def test_import_canonicalizes_bibtex_and_strips_non_citation_payload(self):
+        self.write_manifest(
+            bibtex=(
+                "@InProceedings{manual,\n"
+                "  title = {Manual publication},\n"
+                "  author = {Lovelace, Ada},\n"
+                "  booktitle = {Proceedings},\n"
+                "  pages = {1–10},\n"
+                "  month = {Jun},\n"
+                "  url = {https://example.test/paper},\n"
+                "  pdf = {https://example.test/paper.pdf},\n"
+                "  abstract = {Reviewed abstract}\n"
+                "}\n"
+            ),
+        )
+
+        plan = plan_project_import(self.config, self.manifest_path)
+
+        expected = (
+            "@InProceedings{manual,\n"
+            "  title={{Manual publication}},\n"
+            "  author={Lovelace, Ada},\n"
+            "  booktitle={{Proceedings}},\n"
+            "  pages={1--10}\n"
+            "}\n"
+        )
+        self.assertEqual(plan.manifest.bibtex, expected)
+
+        apply_project_import(plan)
+
+        self.assertEqual(
+            (self.config.paths.bibtex / "manual-publication.bib").read_text(
+                encoding="utf-8"
+            ),
+            expected,
+        )
+        evidence = self.config.paths.imports / f"{plan.manifest.publication.id}.yml"
+        self.assertEqual(load_import_manifest(evidence).bibtex, expected)
 
     def test_import_then_merge_preserves_uuid_and_projects_id_registry_token(self):
         raw = self.write_manifest(
