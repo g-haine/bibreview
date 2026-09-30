@@ -8,6 +8,7 @@ from types import MappingProxyType
 from typing import Any, Mapping
 
 from .config import BibReviewConfig
+from .identity import publication_identity_label
 from .pipeline.references import references_fingerprint
 from .project import ProjectStateError
 from .project_references import project_references_review
@@ -155,7 +156,7 @@ def plan_project_references_reconcile_applied(
         changes.append(
             ReferenceReconciliationChange(
                 publication_id=publication.id,
-                doi=publication.doi or publication.id,
+                doi=publication_identity_label(publication.id, publication.doi),
                 title=publication.title,
                 source_fingerprint=item.current_fingerprint,
                 current_fingerprint=current_fingerprint,
