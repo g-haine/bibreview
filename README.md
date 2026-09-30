@@ -11,7 +11,14 @@ feed.
 BibReview is designed so that provider output remains inspectable and ambiguous
 decisions remain human decisions.
 
-Current stable release: **v1.6.38**.
+Current stable release: **v1.6.39**.
+
+BibReview v1.6.39 establishes the recommended project layout: canonical state in
+`data/`, tracked BibTeX in `bib/`, maintenance evidence in `audit/`, backups
+in `archive/`, and presentation in `site/`. The renderer can optionally
+publish generated read-only snapshots of canonical bibliography and author
+mappings under `site/assets/data/bibreview/` while keeping canonical state
+outside the site tree.
 
 BibReview v1.6.38 introduces typed identifier project state for issue #28 while
 keeping DOI as the sole strong/automatable acquisition identifier. Project
@@ -70,7 +77,7 @@ BibReview currently requires **Python 3.12 or newer**.
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.38"
+python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.6.39"
 
 bibreview --version
 ~~~
