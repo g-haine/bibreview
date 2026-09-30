@@ -12,10 +12,15 @@ from bibreview.identity import new_publication_id
 from bibreview.model import Author, Publication, Reference
 
 
-def publication(abstract: str, *, doi: str = "10.1/example", title: str = "Example") -> Publication:
+def publication(
+    abstract: str,
+    *,
+    doi: str | None = "10.1/example",
+    title: str = "Example",
+) -> Publication:
     return Publication(
         id=new_publication_id(),
-        identifiers={"doi": doi},
+        identifiers={"doi": doi} if doi is not None else {},
         title=title,
         authors=(Author(literal="Example Author"),),
         abstract=abstract,
@@ -175,6 +180,14 @@ class AbstractHygieneTests(unittest.TestCase):
         ).findings[0]
         self.assertIn("unbalanced-structured-tags", finding.families)
         self.assertFalse(finding.deterministic_candidate)
+
+    def test_verbose_report_uses_explicit_uuid_identity_without_doi(self) -> None:
+        item = publication("<p>Markup</p>", doi=None, title="Manual")
+        report = scan_abstract_hygiene((item,))
+
+        verbose = format_abstract_hygiene_report(report, verbose=True)
+
+        self.assertIn(f"id:{item.id}: Manual", verbose)
 
     def test_summary_counts_families_and_verbose_format_lists_records(self) -> None:
         report = scan_abstract_hygiene(
