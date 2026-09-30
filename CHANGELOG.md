@@ -2,6 +2,20 @@
 
 All notable BibReview releases are documented here.
 
+## 1.6.40 — 2026-09-30
+
+### Generated public BibTeX assets
+
+- extend opt-in `site.jekyll.publish_data` so render publishes the tracked
+  canonical BibTeX sources under `site.jekyll.bibtex_asset_prefix` (default
+  `assets/bib`);
+- reconcile that public BibTeX subtree alongside the generated bibliography and
+  author-mapping snapshots;
+- remove stale public BibTeX files when publishing is enabled while leaving the
+  subtree untouched when publishing is disabled;
+- keep canonical BibTeX exclusively under `paths.bibtex`, allowing projects to
+  separate `bib/` source state cleanly from `site/` presentation assets.
+
 ## 1.6.39 — 2026-09-30
 
 ### Recommended project layout

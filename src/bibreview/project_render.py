@@ -158,8 +158,21 @@ def plan_project_render(config: BibReviewConfig) -> ProjectRenderPlan:
                 path="assets/data/bibreview/author_mappings.json",
                 content=config.paths.author_mappings.read_text(encoding="utf-8"),
             ),
+            *(
+                RenderedArtifact(
+                    path=(
+                        f"{config.site.jekyll.bibtex_asset_prefix}/"
+                        f"{publication.permalink}.bib"
+                    ),
+                    content=bibtex_by_id[publication.id],
+                )
+                for publication in model.publications
+            ),
         )
-        public_data_roots = ("assets/data/bibreview",)
+        public_data_roots = (
+            "assets/data/bibreview",
+            config.site.jekyll.bibtex_asset_prefix,
+        )
 
     artifacts = (
         metadata_artifact,

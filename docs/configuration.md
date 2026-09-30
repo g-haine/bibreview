@@ -407,9 +407,11 @@ pages. It does not own your Jekyll theme, layouts, CSS, deployment or analytics.
 When `site.jekyll.publish_data: true`, render also owns the dedicated
 `assets/data/bibreview/` subtree below the configured site source and publishes
 read-only snapshots of the canonical `bibliography.json` and
-`author_mappings.json`. These files are generated presentation artifacts, not
-canonical state. Other site data such as `assets/data/arxiv.json` remains
-outside that managed subtree.
+`author_mappings.json`, and also publishes the tracked BibTeX sources under
+the configured `site.jekyll.bibtex_asset_prefix` (default: `assets/bib`).
+These files are generated presentation artifacts, not canonical state. Other
+site data such as `assets/data/arxiv.json` remains outside those managed
+subtrees.
 
 Continue with [Local workflow](workflow.md) and
 [GitHub Pages](github-pages.md).
