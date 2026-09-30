@@ -5,6 +5,7 @@ from bibreview.identity import (
     IdentityError,
     new_publication_id,
     normalize_doi,
+    publication_identity_label,
     normalize_identifiers,
     shared_strong_identifier,
     strong_identifiers,
@@ -28,6 +29,17 @@ class IdentityTests(unittest.TestCase):
         uuid.UUID(first)
         uuid.UUID(second)
         self.assertNotEqual(first, second)
+
+    def test_publication_identity_label_prefers_doi_and_marks_uuid_fallback(self):
+        publication_id = new_publication_id()
+        self.assertEqual(
+            publication_identity_label(publication_id, "10.1234/ABC"),
+            "10.1234/abc",
+        )
+        self.assertEqual(
+            publication_identity_label(publication_id),
+            f"id:{publication_id}",
+        )
 
     def test_matches_only_shared_strong_identifiers(self):
         match = shared_strong_identifier(
