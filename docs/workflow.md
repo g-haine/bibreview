@@ -279,7 +279,7 @@ bibreview --config bibreview.yml arxiv
 
 This cache is separate from the canonical bibliography.
 
-## 9. Preview Jekyll
+## 10. Preview Jekyll
 
 From the site source directory:
 
