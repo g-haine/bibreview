@@ -574,6 +574,19 @@ external backup.
 not the whole site. It reconciles publication posts, author pages, year pages
 and BibReview metadata used by the site.
 
+When `site.jekyll.publish_data` is enabled, render additionally owns
+`assets/data/bibreview/` below the site root and publishes exact text snapshots
+of the canonical bibliography and reviewed author mappings there:
+
+~~~text
+site/assets/data/bibreview/bibliography.json
+site/assets/data/bibreview/author_mappings.json
+~~~
+
+The authoritative files remain under the configured project-state paths, normally
+`data/bibliography.json` and `data/author_mappings.json`. The copies below the
+site root are disposable generated artifacts and must never become merge inputs.
+
 The renderer receives editors through the renderer-independent site model. It
 may label editor-only rows explicitly (for example **Ed.** or **Eds.**) and
 render a dedicated **Editors** section.
