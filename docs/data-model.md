@@ -581,11 +581,13 @@ of the canonical bibliography and reviewed author mappings there:
 ~~~text
 site/assets/data/bibreview/bibliography.json
 site/assets/data/bibreview/author_mappings.json
+site/assets/bib/<publication-permalink>.bib
 ~~~
 
 The authoritative files remain under the configured project-state paths, normally
-`data/bibliography.json` and `data/author_mappings.json`. The copies below the
-site root are disposable generated artifacts and must never become merge inputs.
+`data/bibliography.json`, `data/author_mappings.json`, and `bib/*.bib`. The
+copies below the site root are disposable generated artifacts and must never
+become merge inputs.
 
 The renderer receives editors through the renderer-independent site model. It
 may label editor-only rows explicitly (for example **Ed.** or **Eds.**) and
