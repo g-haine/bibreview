@@ -16,6 +16,7 @@ from .pipeline.references import (
     reference_from_data,
     references_fingerprint,
 )
+from .identity import publication_identity_label
 from .project import ProjectStateError
 from .project_references import (
     ProjectReferencesReview,
@@ -331,7 +332,7 @@ def record_reference_resolution(
     stored = ReferenceResolutionDecision(
         key=candidate.key,
         publication_id=item.publication_id,
-        doi=item.doi or item.publication_id,
+        doi=publication_identity_label(item.publication_id, item.doi),
         title=item.title,
         decision=decision,
         source_fingerprint=item.current_fingerprint,
@@ -359,7 +360,7 @@ def record_reference_policy_resolution(
     stored = ReferenceResolutionDecision(
         key=reference_resolution_key(item),
         publication_id=item.publication_id,
-        doi=item.doi or item.publication_id,
+        doi=publication_identity_label(item.publication_id, item.doi),
         title=item.title,
         decision="deterministic-policy",
         source_fingerprint=item.current_fingerprint,
@@ -388,7 +389,7 @@ def record_reconciled_current_resolution(
     stored = ReferenceResolutionDecision(
         key=reference_resolution_key(item),
         publication_id=item.publication_id,
-        doi=item.doi or item.publication_id,
+        doi=publication_identity_label(item.publication_id, item.doi),
         title=item.title,
         decision="reconciled-current",
         source_fingerprint=item.current_fingerprint,
@@ -486,7 +487,7 @@ def format_reference_resolution_candidate(
     item = candidate.proposal
     lines = [
         f"[{candidate.position}/{candidate.total}] "
-        f"{item.doi or item.publication_id} — {item.title}",
+        f"{publication_identity_label(item.publication_id, item.doi)} — {item.title}",
         "",
         f"Reason      : {item.reason}",
         f"References  : {item.current_count} -> {item.provider_count}",
