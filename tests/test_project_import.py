@@ -10,6 +10,7 @@ from bibreview.cli import main
 from bibreview.config import load_config
 from bibreview.identity import new_publication_id
 from bibreview.model import Author, Publication
+from bibreview.project import apply_project_merge, plan_project_merge
 from bibreview.project_import import (
     ProjectImportError,
     apply_project_import,
@@ -166,6 +167,33 @@ class ProjectImportTests(unittest.TestCase):
         self.assertEqual(persisted.publication.id, raw["id"])
         self.assertEqual(persisted.publication.permalink, "manual-publication")
         self.assertEqual(persisted.provenance.kind, "official-import")
+
+    def test_import_then_merge_preserves_uuid_and_projects_id_registry_token(self):
+        raw = self.write_manifest(
+            identifiers={"pmlr": "331:manual"},
+            provenance_kind="official-import",
+            provenance_source="https://example.test/manual",
+        )
+        import_plan = plan_project_import(self.config, self.manifest_path)
+        apply_project_import(import_plan)
+
+        merge_plan = plan_project_merge(self.config)
+        self.assertEqual(merge_plan.incoming_count, 1)
+        self.assertEqual(merge_plan.result.added_ids, (raw["id"],))
+        self.assertFalse(self.config.paths.known.exists())
+
+        apply_project_merge(merge_plan)
+
+        canonical = read_bibliography(self.config.paths.bibliography)
+        self.assertEqual(len(canonical), 1)
+        self.assertEqual(canonical[0].id, raw["id"])
+        self.assertIsNone(canonical[0].doi)
+        self.assertEqual(canonical[0].identifiers["pmlr"], "331:manual")
+        self.assertEqual(
+            self.config.paths.known.read_text(encoding="utf-8"),
+            f"id:{raw['id']}\n",
+        )
+        self.assertEqual(read_bibliography(self.config.paths.collected), ())
 
     def test_doi_is_refused_from_manual_import(self):
         self.write_manifest(identifiers={"doi": "10.1234/example"})
