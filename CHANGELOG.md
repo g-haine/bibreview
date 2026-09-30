@@ -2,6 +2,25 @@
 
 All notable BibReview releases are documented here.
 
+## 1.6.42 — 2026-09-30
+
+### DOI-less canonical hardening
+
+- verify reviewed DOI-less imports cross the ordinary merge boundary with their
+  UUID unchanged and project to `id:<UUID>` in the canonical registry;
+- verify tracked BibTeX, publication rendering, author/year indexes and public
+  BibTeX publication work normally without a DOI and do not emit DOI links;
+- complete DOI-less audit items with explicit unavailable provider evidence and
+  no provider request;
+- complete DOI-less reference-refresh items as `unavailable` with reason
+  `canonical-publication-without-doi` and no provider request;
+- verify automatic backfill skips DOI-less publications before metadata lookup;
+- verify refresh skips stored/remote DOI BibTeX and metadata-provider access for
+  DOI-less publications;
+- use explicit `id:<UUID>` human-facing fallback labels wherever a DOI is
+  absent, while preserving the UUID as the canonical internal identity;
+- retain ordinary DOI-backed behavior unchanged.
+
 ## 1.6.41 — 2026-09-30
 
 ### Reviewed manual import core
