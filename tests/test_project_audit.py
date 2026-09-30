@@ -10,12 +10,15 @@ from bibreview.model import Author, Publication
 from bibreview.pipeline.audit import (
     AuditComparison,
     AuditResult,
+    AuditReviewFinding,
     ProviderEvidence,
     compare_audit_record,
     publication_audit_record,
 )
 from bibreview.project import ProjectStateError
 from bibreview.project_audit import (
+    AuditPublicationReview,
+    ProjectAuditReview,
     apply_project_audit_plan,
     audit_report_from_data,
     execute_project_audit_batch,
@@ -874,6 +877,40 @@ class ProjectAuditTests(unittest.TestCase):
                 state="completed",
             )
 
+
+    def test_human_audit_report_marks_uuid_fallback_explicitly(self):
+        publication_id = new_publication_id()
+        finding = AuditReviewFinding(
+            field="title",
+            classification="substantive",
+            providers=("provider",),
+            canonical_value="Canonical",
+            provider_values=(("provider", "Provider"),),
+            actionable=True,
+        )
+        review = ProjectAuditReview(
+            audited_publications=1,
+            flagged_publications=1,
+            actionable_findings=1,
+            informational_findings=0,
+            provider_issues=0,
+            items=(
+                AuditPublicationReview(
+                    publication_id=publication_id,
+                    identifiers={},
+                    permalink="manual-publication",
+                    title="Manual publication",
+                    findings=(finding,),
+                ),
+            ),
+        )
+
+        rendered = format_project_audit_review(review)
+
+        self.assertIn(
+            f"id:{publication_id} — Manual publication",
+            rendered,
+        )
 
     def test_non_doi_publication_is_completed_with_unavailable_provider_evidence(self):
         publication = Publication(
