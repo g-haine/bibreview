@@ -56,6 +56,12 @@ from .project import (
     plan_project_merge,
 )
 from .project_arxiv import apply_project_arxiv, plan_project_arxiv
+from .project_import import (
+    ProjectImportError,
+    apply_project_import,
+    initialize_import_manifest,
+    plan_project_import,
+)
 from .project_hygiene import (
     format_project_hygiene_migration_review,
     project_abstract_hygiene,
@@ -338,6 +344,19 @@ def _parser() -> argparse.ArgumentParser:
     )
     commands.add_parser("discover", help="Discover and screen new DOI candidates")
     commands.add_parser("collect", help="Collect pending DOI metadata into canonical staging state")
+    manual_import = commands.add_parser(
+        "import",
+        help="Stage one reviewed DOI-less publication from a YAML manifest",
+    )
+    manual_import.add_argument(
+        "manifest",
+        help="Reviewed manual-import YAML file",
+    )
+    manual_import.add_argument(
+        "--init",
+        action="store_true",
+        help="Create a new import manifest skeleton with a persistent BibReview UUID",
+    )
     backfill = commands.add_parser(
         "backfill",
         help="Fill selected missing canonical fields without replacing reviewed metadata",
@@ -1708,6 +1727,48 @@ def main(argv: list[str] | None = None) -> int:
             print(plan.summary())
             if not plan.changed:
                 print("No pending DOI state changes.")
+        return 0
+
+    if args.command == "import":
+        try:
+            if args.init:
+                if args.dry_run:
+                    raise ProjectImportError(
+                        "import --init cannot be used with --dry-run because "
+                        "initialization must persist the allocated UUID"
+                    )
+                publication_id = initialize_import_manifest(args.manifest)
+                if not args.quiet:
+                    print(f"Initialized import manifest: {args.manifest}")
+                    print(f"Publication id: {publication_id}")
+                return 0
+
+            plan = plan_project_import(config, args.manifest)
+            if args.dry_run:
+                if not args.quiet:
+                    print(f"Dry run: {plan.summary()}")
+                    for warning in plan.warnings:
+                        print(f"Warning: {warning}")
+                return 0
+
+            apply_project_import(plan)
+        except (
+            OSError,
+            StorageError,
+            ProjectImportError,
+            ValueError,
+            TypeError,
+        ) as error:
+            print(f"bibreview import: {error}", file=sys.stderr)
+            return 1
+
+        if not args.quiet:
+            print(plan.summary())
+            print(f"Staging: {config.paths.collected}")
+            print(f"Import evidence: {plan.evidence_path}")
+            print(f"BibTeX: {plan.bibtex_path}")
+            for warning in plan.warnings:
+                print(f"Warning: {warning}")
         return 0
 
     if args.command == "backfill":
