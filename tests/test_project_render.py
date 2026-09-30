@@ -216,6 +216,61 @@ class ProjectRenderTests(unittest.TestCase):
             )
         )
 
+    def test_doi_less_publication_renders_without_doi_link(self):
+        publication = Publication(
+            id=new_publication_id(),
+            identifiers={"pmlr": "331:example"},
+            type="proceedings-article",
+            title="DOI-less proceedings paper",
+            authors=(Author(given="Ada", family="Lovelace"),),
+            abstract="Reviewed abstract.",
+            container_title="Proceedings",
+            publication_year="2026",
+            volume="331",
+            issue="",
+            pages="1--10",
+            publisher="PMLR",
+            created_date=date(2026, 9, 20),
+            permalink="doi-less-proceedings-paper",
+        )
+        write_bibliography(
+            self.config.paths.bibliography,
+            (publication,),
+            metadata=BibliographyMetadata(last_update=date(2026, 9, 20)),
+        )
+        (self.config.paths.bibtex / "fluid-structure-example.bib").unlink()
+        (
+            self.config.paths.bibtex / "doi-less-proceedings-paper.bib"
+        ).write_text("@inproceedings{manual}\n", encoding="utf-8")
+
+        plan = plan_project_render(self.config)
+        apply_project_render(plan)
+
+        post = (
+            self.config.site.source
+            / "_posts/2026-09-20-doi-less-proceedings-paper.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn("DOI-less proceedings paper", post)
+        self.assertIn("## BibTeX", post)
+        self.assertNotIn("**DOI:**", post)
+        self.assertNotIn("https://doi.org/", post)
+        self.assertTrue(
+            (self.config.site.source / "years/2026.md").is_file()
+        )
+        self.assertTrue(
+            (self.config.site.source / "authors/ada-lovelace.md").is_file()
+        )
+        self.assertEqual(
+            (
+                self.config.site.source
+                / "assets/bib/doi-less-proceedings-paper.bib"
+            ).read_text(encoding="utf-8"),
+            "@inproceedings{manual}\n",
+        )
+
+        final = plan_project_render(self.config)
+        self.assertFalse(final.changed)
+
     def test_disabled_site_is_rejected(self):
         self.config_path.write_text(
             CONFIG.replace("enabled: true", "enabled: false", 1),
