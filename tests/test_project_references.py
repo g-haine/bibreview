@@ -431,6 +431,9 @@ class ProjectReferencesTests(unittest.TestCase):
             report.entries[0].result.reason,
             "canonical-publication-without-doi",
         )
+        review = project_references_review(self.config)
+        rendered = format_project_references_review(review, verbose=1)
+        self.assertIn(f"id:{item.id} — No DOI", rendered)
 
 
 if __name__ == "__main__":
