@@ -5,6 +5,7 @@ from bibreview.identity import (
     IdentityError,
     new_publication_id,
     normalize_doi,
+    normalize_identifiers,
     shared_strong_identifier,
     strong_identifiers,
 )
@@ -34,6 +35,13 @@ class IdentityTests(unittest.TestCase):
         )
         self.assertEqual(match, ("doi", "10.1234/abc"))
         self.assertIsNone(shared_strong_identifier({}, {}))
+
+    def test_reserved_id_cannot_be_used_as_external_identifier(self):
+        with self.assertRaisesRegex(
+            IdentityError,
+            "reserved for canonical publication identity",
+        ):
+            normalize_identifiers({"id": "external-value"})
 
     def test_isbn_is_metadata_but_not_an_automatic_merge_key(self):
         self.assertEqual(strong_identifiers({"isbn": "978-0-00-000000-0"}), ())

@@ -13,6 +13,7 @@ _DOI_PREFIX = re.compile(r"^(?:https?://(?:dx\.)?doi\.org/|doi:\s*)", re.IGNOREC
 # Future identifiers (for example arXiv or PMID) must be added deliberately
 # once their normalization and identity semantics are defined.
 STRONG_IDENTIFIER_NAMES = frozenset({"doi"})
+RESERVED_IDENTIFIER_NAMES = frozenset({"id"})
 
 
 class IdentityError(ValueError):
@@ -59,6 +60,10 @@ def normalize_identifiers(values: Mapping[str, str] | None) -> dict[str, str]:
         if not isinstance(value, str) or not value.strip():
             raise IdentityError(f"identifier {name!r} must be a non-empty string")
         key = name.strip().lower()
+        if key in RESERVED_IDENTIFIER_NAMES:
+            raise IdentityError(
+                f"identifier name {key!r} is reserved for canonical publication identity"
+            )
         result[key] = normalize_doi(value) if key == "doi" else value.strip()
     return result
 
