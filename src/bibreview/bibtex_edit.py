@@ -1,7 +1,8 @@
-"""Conservative field-level editing for tracked single-entry BibTeX files."""
+"""Conservative parsing, canonicalization, and field editing for BibTeX."""
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 import re
 from typing import Mapping
@@ -16,21 +17,26 @@ class BibtexField:
     """One parsed top-level BibTeX field value span."""
 
     name: str
+    source_name: str
     value_start: int
     value_end: int
 
 
 @dataclass(frozen=True)
 class BibtexEntry:
-    """Parsed top-level structure needed for conservative field replacement."""
+    """Parsed top-level structure needed for safe BibTeX transformations."""
 
     entry_type: str
+    source_entry_type: str
+    key: str
     close_index: int
     fields: tuple[BibtexField, ...]
 
 
 _ENTRY = re.compile(r"@\s*([A-Za-z]+)\s*([({])", re.MULTILINE)
 _NAME = re.compile(r"[A-Za-z][A-Za-z0-9_-]*")
+_CANONICAL_DROP_FIELDS = frozenset({"abstract", "month", "url", "pdf"})
+_CANONICAL_PROTECTED_FIELDS = frozenset({"title", "booktitle"})
 
 
 def _escaped(text: str, index: int) -> bool:
@@ -119,7 +125,8 @@ def parse_bibtex_entry(text: str) -> BibtexEntry:
     key_end = text.find(",", index, close_index)
     if key_end < 0:
         raise BibtexEditError("BibTeX entry key is not followed by fields")
-    if not text[index:key_end].strip():
+    key = text[index:key_end].strip()
+    if not key:
         raise BibtexEditError("BibTeX entry key is empty")
     index = key_end + 1
 
@@ -134,7 +141,8 @@ def parse_bibtex_entry(text: str) -> BibtexEntry:
             raise BibtexEditError(
                 f"cannot parse BibTeX field near offset {index}"
             )
-        name = name_match.group(0).casefold()
+        source_name = name_match.group(0)
+        name = source_name.casefold()
         if name in seen:
             raise BibtexEditError(f"duplicate BibTeX field: {name}")
         seen.add(name)
@@ -151,6 +159,7 @@ def parse_bibtex_entry(text: str) -> BibtexEntry:
         fields.append(
             BibtexField(
                 name=name,
+                source_name=source_name,
                 value_start=value_start,
                 value_end=value_end,
             )
@@ -159,6 +168,8 @@ def parse_bibtex_entry(text: str) -> BibtexEntry:
 
     return BibtexEntry(
         entry_type=match.group(1).casefold(),
+        source_entry_type=match.group(1),
+        key=key,
         close_index=close_index,
         fields=tuple(fields),
     )
@@ -167,6 +178,69 @@ def parse_bibtex_entry(text: str) -> BibtexEntry:
 def bibtex_field_names(text: str) -> frozenset[str]:
     """Return parsed top-level field names."""
     return frozenset(field.name for field in parse_bibtex_entry(text).fields)
+
+
+def _unwrap_value(value: str) -> str:
+    stripped = value.strip()
+    if stripped.startswith("{") and _balanced_end(stripped, 0, "{", "}") == len(stripped):
+        return stripped[1:-1]
+    if (
+        len(stripped) >= 2
+        and stripped.startswith('"')
+        and stripped.endswith('"')
+        and not _escaped(stripped, len(stripped) - 1)
+    ):
+        return stripped[1:-1]
+    return stripped
+
+
+def _whole_braced(value: str) -> bool:
+    return bool(
+        value.startswith("{")
+        and _balanced_end(value, 0, "{", "}") == len(value)
+    )
+
+
+def _canonical_value(name: str, value: str) -> str:
+    content = _unwrap_value(value).replace("&amp;", r"\&")
+    if name == "pages":
+        content = content.replace("–", "--")
+    if name in _CANONICAL_PROTECTED_FIELDS:
+        protected = content if _whole_braced(content) else "{" + content + "}"
+        return "{" + protected + "}"
+    return "{" + content + "}"
+
+
+def canonicalize_bibtex(
+    text: str,
+    *,
+    drop_fields: Iterable[str] = _CANONICAL_DROP_FIELDS,
+) -> str:
+    """Render one BibTeX entry in BibReview's stable tracked-file format.
+
+    The canonical tracked form uses two-space indentation, no spaces around
+    equals signs, whole-title brace protection for title and booktitle, and
+    omits non-citation payload fields that BibReview stores elsewhere.
+    """
+
+    entry = parse_bibtex_entry(text)
+    omitted = {str(name).casefold() for name in drop_fields}
+    rendered_fields: list[str] = []
+    for field in entry.fields:
+        if field.name in omitted:
+            continue
+        value = text[field.value_start : field.value_end]
+        rendered_fields.append(
+            f"  {field.source_name}={_canonical_value(field.name, value)}"
+        )
+    if not rendered_fields:
+        raise BibtexEditError("BibTeX entry has no canonical fields")
+
+    return (
+        f"@{entry.source_entry_type}{{{entry.key},\n"
+        + ",\n".join(rendered_fields)
+        + "\n}\n"
+    )
 
 
 def update_bibtex_fields(text: str, updates: Mapping[str, str]) -> str:
