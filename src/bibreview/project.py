@@ -335,7 +335,8 @@ def plan_project_discovery(
 
     paths = config.paths
     existing = _optional_bibliography(paths.bibliography)
-    known = list(_registry_dois(paths.known))
+    registry = _registry_tokens(paths.known)
+    known = list(doi_values(registry))
     pending = list(_queue_dois(paths.pending))
     rejected = list(_queue_dois(paths.rejected))
     review = list(_queue_dois(paths.review))
@@ -441,13 +442,11 @@ def apply_project_author_mappings(plan: ProjectAuthorMappingPlan) -> None:
 def plan_project_merge(config: BibReviewConfig) -> ProjectMergePlan:
     """Build a complete merge plan without mutating project files.
 
-    ``paths.collected`` is the canonical staging bibliography produced by the
-    collection workflow. Accepted staged publications are merged into the main
-    bibliography, their DOI values are moved from ``pending`` to ``known``, and
-    the staging bibliography is emptied. DOI values present in ``rejected`` are
-    discarded from the staged batch and removed from ``pending``/``review``.
-
-    Project-specific queue byte conventions deliberately do not live here.
+    ``paths.collected`` is the canonical staging bibliography. Accepted staged
+    publications are merged into the main bibliography, the canonical registry
+    is rebuilt from the complete merge result, and processed DOI values are
+    removed from ``pending``/``review``. DOI values present in
+    ``rejected`` are discarded from the staged batch.
     """
     paths = config.paths
     existing_document = (
@@ -519,7 +518,7 @@ def plan_project_merge(config: BibReviewConfig) -> ProjectMergePlan:
         backup=backup,
         incoming_count=len(incoming),
         rejected_count=rejected_count,
-        known_count=len(known),
+        known_count=len(registry),
         pending_count=len(pending),
     )
 

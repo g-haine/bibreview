@@ -87,7 +87,7 @@ class ProjectRefreshTests(unittest.TestCase):
     ):
         return Publication(
             id=new_publication_id(),
-            identifiers={"doi": doi},
+            identifiers={"doi": doi} if doi else {},
             type="journal-article",
             title=title,
             authors=(Author(literal="Reviewed Author"),),
@@ -165,6 +165,51 @@ class ProjectRefreshTests(unittest.TestCase):
         self.assertEqual(
             self.config.paths.pending.read_text(encoding="utf-8"),
             "doi:10.1/preexisting\ndoi:10.1/orphaned\n",
+        )
+
+    def test_refresh_repairs_registry_projection_with_doi_less_publication(self):
+        doi_backed = self.publication(
+            "10.1/complete",
+            permalink="complete-paper",
+            volume="1",
+            issue="2",
+            pages="1--2",
+        )
+        doi_less = self.publication(
+            None,
+            permalink="manual-paper",
+            volume="1",
+            issue="2",
+            pages="1--2",
+        )
+        write_bibliography(
+            self.config.paths.bibliography,
+            [doi_backed, doi_less],
+        )
+        write_bibliography(self.config.paths.collected, [])
+        self.config.paths.known.write_text(
+            "10.1/complete\n",
+            encoding="utf-8",
+        )
+
+        provider = FakeProvider({})
+        plan = plan_project_refresh(
+            self.config,
+            provider=provider,
+            bibtex_lookup=lambda doi: "unused\n",
+        )
+
+        self.assertEqual(provider.calls, [])
+        self.assertEqual(plan.orphaned_known, ())
+        self.assertIn(self.config.paths.known, plan.outputs)
+
+        apply_project_refresh(plan)
+        self.assertEqual(
+            self.config.paths.known.read_text(encoding="utf-8"),
+            (
+                "doi:10.1/complete\n"
+                f"id:{doi_less.id}\n"
+            ),
         )
 
     def test_verbose_review_shows_collateral_current_and_provider_values(self):
