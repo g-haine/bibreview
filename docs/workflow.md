@@ -1,7 +1,39 @@
 # Local workflow
 
-This guide describes the normal human-reviewed operating cycle for an existing
-BibReview project.
+This guide describes the human-reviewed operating cycle for BibReview projects.
+
+## Initialize a new bibliography
+
+For a brand-new empty project, initialize the discovery corpus in bounded
+batches:
+
+~~~bash
+bibreview --dry-run init --batch-size 10
+bibreview init --batch-size 10
+~~~
+
+The current batch is screened into the ordinary DOI queues. Review
+`checkID.txt`, then use the existing collection and merge boundary:
+
+~~~bash
+bibreview collect
+bibreview --dry-run merge
+bibreview merge
+~~~
+
+Only after every DOI in the current initialization batch is canonical or
+deliberately rejected will another `bibreview init` invocation open the next
+stable batch.
+
+~~~bash
+bibreview init --status
+bibreview init
+~~~
+
+This repeats until the campaign is complete. `init` coordinates batch scope
+only; it never promotes provider data or invokes collection/merge implicitly.
+
+## Maintain an existing bibliography
 
 BibReview intentionally separates provider evidence, review state, staging, and
 canonical state. Do not skip the explicit `merge` boundary.
