@@ -162,6 +162,7 @@ class OpenAlexProvider:
         query: str,
         *,
         max_pages: int = 20,
+        search_field: str = "title_and_abstract",
     ) -> OpenAlexDiscoveryResult:
         """Return DOI candidates plus paging/truncation diagnostics."""
         query = query.strip()
@@ -169,6 +170,12 @@ class OpenAlexProvider:
             raise ValueError("OpenAlex discovery query must not be empty")
         if not isinstance(max_pages, int) or isinstance(max_pages, bool) or max_pages < 1:
             raise ValueError("OpenAlex max_pages must be a positive integer")
+        if search_field not in {"title", "abstract", "title_and_abstract"}:
+            raise ValueError(
+                "OpenAlex search_field must be 'title', 'abstract', or "
+                "'title_and_abstract'"
+            )
+        search_filter = f"{search_field}.search"
 
         cursor = "*"
         seen_cursors: set[str] = set()
@@ -188,7 +195,7 @@ class OpenAlexProvider:
             seen_cursors.add(cursor)
 
             params: dict[str, object] = {
-                "filter": f"title_and_abstract.search:{query}",
+                "filter": f"{search_filter}:{query}",
                 "per-page": 200,
                 "sort": "publication_date:desc",
                 "cursor": cursor,
@@ -252,6 +259,16 @@ class OpenAlexProvider:
             truncated=not exhausted,
         )
 
-    def discover(self, query: str, *, max_pages: int = 20) -> tuple[str, ...]:
+    def discover(
+        self,
+        query: str,
+        *,
+        max_pages: int = 20,
+        search_field: str = "title_and_abstract",
+    ) -> tuple[str, ...]:
         """Return unique normalized DOI candidates in provider order."""
-        return self.discover_detailed(query, max_pages=max_pages).candidates
+        return self.discover_detailed(
+            query,
+            max_pages=max_pages,
+            search_field=search_field,
+        ).candidates
