@@ -103,6 +103,18 @@ explicit human decision. Accepted/custom values are staged in
 field gains a meaningful value before application, BibReview treats the proposal
 as stale and refuses to overwrite the newer value.
 
+When provider evidence is unavailable or deliberately not desired, use:
+
+~~~bash
+bibreview --config bibreview.yml backfill --field abstract --manual
+~~~
+
+This path makes no provider request. It creates review-required candidates only
+for canonically missing abstracts, including DOI-less publications. Because
+there is no automatic proposal, Enter/Y is invalid during `--resolve`; provide
+an explicit `f VALUE`, reject, or defer. The same fingerprint, staleness,
+staging, and merge protections still apply.
+
 Inspect staging and use the normal `bibreview merge` boundary only after the
 accepted values are satisfactory.
 
