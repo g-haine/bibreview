@@ -13,6 +13,7 @@ from bibreview.cli import main
 from bibreview.config import load_config
 from bibreview.model import Author, Publication
 from bibreview.identity import new_publication_id
+from bibreview.providers.openalex import OpenAlexDiscoveryResult
 from bibreview.storage import write_bibliography
 
 
@@ -48,6 +49,24 @@ class FakeDiscoveryProvider:
     def discover(self, query, *, max_pages=20):
         self.calls.append((query, max_pages))
         return self.candidates
+
+
+class FakeDetailedDiscoveryProvider(FakeDiscoveryProvider):
+    def __init__(self, candidates, *, total_matches, works_examined, truncated):
+        super().__init__(candidates)
+        self.total_matches = total_matches
+        self.works_examined = works_examined
+        self.truncated = truncated
+
+    def discover_detailed(self, query, *, max_pages=20):
+        self.calls.append((query, max_pages))
+        return OpenAlexDiscoveryResult(
+            candidates=self.candidates,
+            total_matches=self.total_matches,
+            pages_fetched=max_pages,
+            works_examined=self.works_examined,
+            truncated=self.truncated,
+        )
 
 
 class FakeWorkProvider:
@@ -123,6 +142,48 @@ class InitCliTests(unittest.TestCase):
         self.assertEqual(services.provider.calls, [])
         self.assertFalse(self.config.initialization.campaign.exists())
         self.assertFalse(self.config.initialization.report.exists())
+
+    def test_dry_run_reports_openalex_discovery_diagnostics(self):
+        services = SimpleNamespace(
+            discovery_provider=FakeDetailedDiscoveryProvider(
+                ("10.1/a", "10.1/b"),
+                total_matches=12345,
+                works_examined=600,
+                truncated=True,
+            ),
+            provider=FakeWorkProvider({}),
+            enrichment_lookup=None,
+        )
+        stdout = StringIO()
+        stderr = StringIO()
+
+        with patch(
+            "bibreview.cli.build_discovery_services",
+            return_value=services,
+        ), redirect_stdout(stdout), redirect_stderr(stderr):
+            code = main([
+                "--config",
+                str(self.config_path),
+                "--dry-run",
+                "init",
+                "--batch-size",
+                "1",
+                "--json",
+            ])
+
+        self.assertEqual(code, 0, stderr.getvalue())
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(
+            payload["discovery"],
+            {
+                "total_matches": 12345,
+                "pages_fetched": 3,
+                "works_examined": 600,
+                "doi_candidates": 2,
+                "truncated": True,
+            },
+        )
+        self.assertEqual(payload["progress"]["total"], 2)
 
     def test_dry_run_excludes_configured_doi_substrings_from_campaign_universe(self):
         self.config_path.write_text(

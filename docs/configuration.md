@@ -128,6 +128,13 @@ applied **before the stable campaign universe is frozen**, so repository DOI
 artifacts such as configured Zenodo/arXiv records never consume initialization
 slots.
 
+
+For a new initialization campaign, `bibreview --dry-run init --json` also
+reports OpenAlex discovery diagnostics: the provider's total matching-work
+count, pages fetched, works examined, unique DOI candidates found, and whether
+the configured `max_pages` limit truncated retrieval. This distinction matters:
+the campaign DOI count is not the same quantity as OpenAlex's total query count.
+
 Discovery currently uses OpenAlex to find DOI-backed candidates, then verifies
 metadata through CrossRef.
 
