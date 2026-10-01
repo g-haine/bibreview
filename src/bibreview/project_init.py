@@ -473,6 +473,25 @@ def _ensure_startable(config: BibReviewConfig) -> None:
         raise ProjectStateError("discovery.query must not be empty")
 
 
+def validate_project_init_start(config: BibReviewConfig) -> None:
+    """Validate that a new initialization campaign may be created."""
+    if not isinstance(config, BibReviewConfig):
+        raise ProjectStateError("config must be a BibReviewConfig")
+    if (
+        config.initialization.campaign.exists()
+        or config.initialization.report.exists()
+    ):
+        if (
+            config.initialization.campaign.exists()
+            != config.initialization.report.exists()
+        ):
+            raise ProjectStateError(
+                "initialization campaign and report must either both exist or both be absent"
+            )
+        return
+    _ensure_startable(config)
+
+
 def _normalize_candidates(candidates: Iterable[str]) -> tuple[str, ...]:
     result: list[str] = []
     seen: set[str] = set()
