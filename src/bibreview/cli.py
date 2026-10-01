@@ -1090,7 +1090,11 @@ def main(argv: list[str] | None = None) -> int:
             enabled = sorted(name for name, provider in config.providers.items() if provider.enabled)
             print(f"Project: {config.project.name} ({config.project.slug})")
             print(f"Schema: {config.schema_version}")
-            print(f"Discovery: {config.discovery.provider} / {config.discovery.query or '(no query)'}")
+            print(
+                f"Discovery: {config.discovery.provider} "
+                f"[{config.discovery.search_field}] / "
+                f"{config.discovery.query or '(no query)'}"
+            )
             refresh_types = ", ".join(config.refresh.types) if config.refresh.types else "disabled"
             print(f"Refresh: {refresh_types}")
             print("Providers: " + (", ".join(enabled) if enabled else "none"))
@@ -1780,12 +1784,14 @@ def main(argv: list[str] | None = None) -> int:
                     discovery_diagnostics = detailed_discovery(
                         config.discovery.query,
                         max_pages=config.discovery.max_pages,
+                        search_field=config.discovery.search_field,
                     )
                     candidates = discovery_diagnostics.candidates
                 else:
                     candidates = services.discovery_provider.discover(
                         config.discovery.query,
                         max_pages=config.discovery.max_pages,
+                        search_field=config.discovery.search_field,
                     )
 
             plan = plan_project_init_batch(
