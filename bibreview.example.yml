@@ -38,6 +38,8 @@ paths:
 discovery:
   provider: openalex
   query: fluid-structure interaction
+  # OpenAlex search surface: title, abstract, or title_and_abstract.
+  search_field: title_and_abstract
   max_pages: 20
   accepted_types:
     - journal-article
