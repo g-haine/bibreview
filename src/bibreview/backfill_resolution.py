@@ -139,7 +139,9 @@ def backfill_resolution_state_from_data(value: Any) -> BackfillResolutionState:
         strings: dict[str, str] = {}
         for name in ("key", "publication_id", "doi", "title", "field", "decision"):
             item = raw.get(name)
-            if not isinstance(item, str) or (name != "title" and not item):
+            if not isinstance(item, str) or (
+                name not in {"title", "doi"} and not item
+            ):
                 raise ProjectStateError(
                     f"backfill resolution decision {index}.{name} must be a string"
                 )
@@ -333,8 +335,9 @@ def format_backfill_resolution_candidate(
 ) -> str:
     """Format one proposal or review-required evidence for human review."""
     proposal = candidate.proposal
+    label = proposal.doi or f"id:{proposal.publication_id}"
     lines = [
-        f"[{candidate.position}/{candidate.total}] {proposal.doi} — {proposal.title}",
+        f"[{candidate.position}/{candidate.total}] {label} — {proposal.title}",
         "",
         f"Field: {proposal.field}",
         "Current:",
@@ -345,7 +348,11 @@ def format_backfill_resolution_candidate(
     if proposal.review_required:
         lines.extend((
             "Status: REVIEW REQUIRED",
-            "No safe automatic proposal is available.",
+            (
+                "Manual value requested; no provider lookup was performed."
+                if proposal.manual
+                else "No safe automatic proposal is available."
+            ),
             "",
         ))
     else:
