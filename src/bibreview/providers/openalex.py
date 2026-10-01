@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 import re
 from urllib.parse import quote
 
@@ -41,6 +42,28 @@ def openalex_abstract(value: object) -> str:
 
 class OpenAlexError(ValueError):
     """Raised when OpenAlex returns an unexpected successful response."""
+
+
+
+@dataclass(frozen=True)
+class OpenAlexDiscoveryResult:
+    """Detailed outcome of one OpenAlex discovery query."""
+
+    candidates: tuple[str, ...]
+    total_matches: int | None
+    pages_fetched: int
+    works_examined: int
+    truncated: bool
+
+    def data(self) -> dict[str, object]:
+        """Return a JSON-serializable diagnostic representation."""
+        return {
+            "total_matches": self.total_matches,
+            "pages_fetched": self.pages_fetched,
+            "works_examined": self.works_examined,
+            "doi_candidates": len(self.candidates),
+            "truncated": self.truncated,
+        }
 
 
 class OpenAlexProvider:
@@ -134,8 +157,13 @@ class OpenAlexProvider:
                 result[doi] = work
         return result
 
-    def discover(self, query: str, *, max_pages: int = 20) -> tuple[str, ...]:
-        """Return unique normalized DOI candidates in provider order."""
+    def discover_detailed(
+        self,
+        query: str,
+        *,
+        max_pages: int = 20,
+    ) -> OpenAlexDiscoveryResult:
+        """Return DOI candidates plus paging/truncation diagnostics."""
         query = query.strip()
         if not query:
             raise ValueError("OpenAlex discovery query must not be empty")
@@ -146,9 +174,16 @@ class OpenAlexProvider:
         seen_cursors: set[str] = set()
         seen_dois: set[str] = set()
         result: list[str] = []
+        total_matches: int | None = None
+        pages_fetched = 0
+        works_examined = 0
+        exhausted = False
 
         for _ in range(max_pages):
-            if not cursor or cursor == "null" or cursor in seen_cursors:
+            if not cursor or cursor == "null":
+                exhausted = True
+                break
+            if cursor in seen_cursors:
                 break
             seen_cursors.add(cursor)
 
@@ -173,6 +208,21 @@ class OpenAlexProvider:
             ):
                 raise OpenAlexError("OpenAlex: unexpected page response")
 
+            meta = data["meta"]
+            raw_count = meta.get("count")
+            if raw_count is not None:
+                if (
+                    not isinstance(raw_count, int)
+                    or isinstance(raw_count, bool)
+                    or raw_count < 0
+                ):
+                    raise OpenAlexError("OpenAlex: unexpected meta.count")
+                if total_matches is None:
+                    total_matches = raw_count
+
+            pages_fetched += 1
+            works_examined += len(data["results"])
+
             for work in data["results"]:
                 if not isinstance(work, dict):
                     continue
@@ -187,7 +237,21 @@ class OpenAlexProvider:
                     seen_dois.add(doi)
                     result.append(doi)
 
-            next_cursor = data["meta"].get("next_cursor")
-            cursor = next_cursor if isinstance(next_cursor, str) else ""
+            next_cursor = meta.get("next_cursor")
+            if not isinstance(next_cursor, str) or not next_cursor or next_cursor == "null":
+                cursor = ""
+                exhausted = True
+            else:
+                cursor = next_cursor
 
-        return tuple(result)
+        return OpenAlexDiscoveryResult(
+            candidates=tuple(result),
+            total_matches=total_matches,
+            pages_fetched=pages_fetched,
+            works_examined=works_examined,
+            truncated=not exhausted,
+        )
+
+    def discover(self, query: str, *, max_pages: int = 20) -> tuple[str, ...]:
+        """Return unique normalized DOI candidates in provider order."""
+        return self.discover_detailed(query, max_pages=max_pages).candidates
