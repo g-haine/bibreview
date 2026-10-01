@@ -5,7 +5,13 @@ This guide describes the human-reviewed operating cycle for BibReview projects.
 ## Initialize a new bibliography
 
 For a brand-new empty project, initialize the discovery corpus in bounded
-batches:
+batches.
+
+Configured `discovery.exclude_doi_substrings` values are removed from the
+OpenAlex DOI candidate list **before** the initialization campaign is created.
+They therefore do not appear in the frozen campaign universe or consume batch
+slots.
+
 
 ~~~bash
 bibreview --dry-run init --batch-size 10
