@@ -108,6 +108,25 @@ metadata; reject and defer remain non-mutating decisions. Evidence is part of
 the backfill review fingerprint, so resolution state cannot be reused after the
 provider evidence changes.
 
+Manual backfill uses the same review schema with an explicit marker and no
+provider evidence:
+
+~~~json
+{
+  "publication_id": "550e8400-e29b-41d4-a716-446655440000",
+  "doi": "",
+  "field": "abstract",
+  "proposed_value": "",
+  "review_required": true,
+  "manual": true
+}
+~~~
+
+An empty `doi` is valid only for a manual candidate and allows the reviewed
+workflow to cover DOI-less canonical publications. Candidate identity remains
+`Publication.id + field`; DOI is display/provenance metadata rather than the
+resolution key.
+
 ## Identifier registry and acquisition queues
 
 BibReview distinguishes the canonical publication registry from automated
