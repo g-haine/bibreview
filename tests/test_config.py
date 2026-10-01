@@ -72,8 +72,26 @@ class ConfigTests(unittest.TestCase):
         )
         self.assertEqual(config.references.batch_size, 50)
         self.assertEqual(config.discovery.query, "fluid-structure interaction")
+        self.assertEqual(config.discovery.search_field, "title_and_abstract")
         self.assertEqual(config.discovery.accepted_types, DEFAULT_DISCOVERY_TYPES)
         self.assertEqual(config.discovery.exclude_doi_substrings, ())
+
+    def test_loads_discovery_search_field(self):
+        _, path = self.write(BASE.replace(
+            "  query: fluid-structure interaction\n",
+            "  query: fluid-structure interaction\n"
+            "  search_field: title\n",
+        ))
+        self.assertEqual(load_config(path).discovery.search_field, "title")
+
+    def test_rejects_invalid_discovery_search_field(self):
+        _, path = self.write(BASE.replace(
+            "  query: fluid-structure interaction\n",
+            "  query: fluid-structure interaction\n"
+            "  search_field: fulltext\n",
+        ))
+        with self.assertRaisesRegex(ConfigError, "discovery.search_field"):
+            load_config(path)
 
     def test_site_publish_data_defaults_to_false_and_can_be_enabled(self):
         _, path = self.write()
