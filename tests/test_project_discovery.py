@@ -121,7 +121,10 @@ class ProjectDiscoveryTests(unittest.TestCase):
         )
 
         self.assertEqual(before, self.snapshot())
-        self.assertEqual(discovery.calls, [("fluid-structure interaction", 3)])
+        self.assertEqual(
+            discovery.calls,
+            [("fluid-structure interaction", 3, "title_and_abstract")],
+        )
         self.assertEqual(
             works.calls,
             ["10.1/relevant", "10.1/review", "10.1/unsupported"],
