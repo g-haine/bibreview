@@ -720,6 +720,14 @@ def execute_project_init_batch(
     pending = list(_queue_dois(config.paths.pending))
     review_queue = list(_queue_dois(config.paths.review))
     rejected = list(_queue_dois(config.paths.rejected))
+    _checkpoint(
+        config,
+        campaign,
+        report,
+        pending=pending,
+        review_queue=review_queue,
+        rejected=rejected,
+    )
 
     screened = queued_count = review_count = rejected_count = 0
     skipped_count = retryable_count = 0
