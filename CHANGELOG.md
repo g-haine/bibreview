@@ -2,6 +2,26 @@
 
 All notable BibReview releases are documented here.
 
+## Unreleased
+
+### Resumable new-project initialization
+
+- add a generic `bibreview init` workflow backed by the existing campaign
+  machinery;
+- freeze the configured discovery candidate universe once and process it through
+  stable bounded batches;
+- keep each batch open until its screened candidates are merged, deliberately
+  rejected, or explicitly skipped;
+- reuse the ordinary `newID.txt`, `checkID.txt`, `badID.txt`,
+  `collected.json`, and canonical bibliography instead of duplicating
+  downstream collection/merge state;
+- convert provider/transport failures into retryable campaign items rather than
+  bibliographic rejection;
+- add offline `bibreview init --status` and machine-readable JSON progress;
+- keep `collect`, `merge`, `authors`, and `render` explicit and outside
+  initialization orchestration;
+- add dedicated initialization campaign/report configuration and documentation.
+
 ## 1.7.1 — 2026-10-01
 
 ### Manual reviewed backfill

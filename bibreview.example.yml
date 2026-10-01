@@ -47,6 +47,14 @@ discovery:
     - monograph
   exclude_doi_substrings: []
 
+# New-project initialization freezes the discovery candidate universe once,
+# then opens one end-to-end reviewed batch at a time. The batch remains open
+# until its candidates are merged or deliberately rejected.
+initialization:
+  campaign: audit/init/campaign.json
+  report: audit/init/report.json
+  batch_size: 50
+
 # Existing-publication refresh is opt-in. Here, incomplete journal articles are
 # checked against their current DOI BibTeX; stale records become review evidence
 # and only explicitly accepted missing-field fills reach collected staging.

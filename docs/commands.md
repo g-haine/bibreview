@@ -27,6 +27,63 @@ Global options:
 | **--dry-run** | Plan a mutating command without writing project files. |
 | **--version** | Print the BibReview version. |
 
+## init
+
+Build a brand-new DOI-backed bibliography through stable end-to-end batches.
+
+Preview the first batch:
+
+~~~bash
+bibreview --dry-run init --batch-size 10
+~~~
+
+The first real invocation freezes the configured discovery provider's candidate
+universe, persists a versioned initialization campaign/report, opens one stable
+batch, and screens only that batch:
+
+~~~bash
+bibreview init --batch-size 10
+~~~
+
+Relevant candidates enter `newID.txt`; unmatched candidates follow the
+configured relevance policy into `checkID.txt` or `badID.txt`. Transient
+provider/transport failures become retryable campaign items and are **not**
+written to `badID.txt`.
+
+An initialization batch remains open while any of its candidates are:
+
+- pending in `newID.txt`;
+- awaiting human relevance review in `checkID.txt`;
+- staged in `collected.json`.
+
+Resolve those candidates with the ordinary project workflow:
+
+~~~bash
+# Review checkID.txt and move each DOI to newID.txt or badID.txt.
+bibreview collect
+bibreview --dry-run merge
+bibreview merge
+~~~
+
+Run `bibreview init` again. BibReview observes the canonical/rejected outcome
+of the current batch, closes it only when fully resolved, and then opens the
+next stable batch. It never invokes `collect`, `merge`, `authors`, or
+`render` automatically.
+
+Inspect progress offline:
+
+~~~bash
+bibreview init --status
+bibreview init --status --json
+~~~
+
+The status includes total candidates, unscreened, pending, manual-review,
+staged, merged, rejected, skipped, retryable, failed, and batch progress.
+
+A new campaign refuses to start over a non-empty canonical bibliography,
+non-empty staging, or pre-existing acquisition queues. Existing initialization
+campaigns remain resumable after canonical records begin to accumulate.
+
 ## validate
 
 Validate the configuration file:

@@ -74,6 +74,13 @@ from .project_hygiene_apply import (
     plan_project_hygiene_apply,
     plan_project_hygiene_safe_apply,
 )
+from .project_init import (
+    apply_project_init_plan,
+    execute_project_init_batch,
+    plan_project_init_batch,
+    project_init_status,
+    validate_project_init_start,
+)
 from .project_backfill import (
     apply_project_backfill_plan,
     load_project_backfill_review,
@@ -341,6 +348,30 @@ def _parser() -> argparse.ArgumentParser:
         dest="json_output",
         action="store_true",
         help="Print reference refresh output as JSON",
+    )
+    initialize = commands.add_parser(
+        "init",
+        help="Build a new bibliography through one resumable reviewed batch at a time",
+    )
+    initialize.add_argument(
+        "--batch-size",
+        type=int,
+        default=None,
+        help=(
+            "Override the size of the next new initialization batch; "
+            "campaign default otherwise"
+        ),
+    )
+    initialize.add_argument(
+        "--status",
+        action="store_true",
+        help="Show initialization progress without provider requests",
+    )
+    initialize.add_argument(
+        "--json",
+        dest="json_output",
+        action="store_true",
+        help="Print initialization status/result as JSON",
     )
     commands.add_parser("discover", help="Discover and screen new DOI candidates")
     commands.add_parser("collect", help="Collect pending DOI metadata into canonical staging state")
@@ -1684,6 +1715,152 @@ def main(argv: list[str] | None = None) -> int:
         elif not args.quiet:
             print(execution.summary())
             print(f"Report: {config.references.report}")
+        return 0
+
+    if args.command == "init":
+        reporter = Reporter(-1 if args.quiet else args.verbose)
+
+        if args.status:
+            try:
+                if args.batch_size is not None:
+                    raise ProjectStateError(
+                        "--batch-size cannot be used with init --status"
+                    )
+                status = project_init_status(config)
+            except (
+                OSError,
+                StorageError,
+                ProjectStateError,
+                ValueError,
+                TypeError,
+            ) as error:
+                print(f"bibreview init: {error}", file=sys.stderr)
+                return 1
+
+            if args.json_output:
+                print(json.dumps(status.data(), ensure_ascii=False, indent=2))
+            elif not args.quiet:
+                print(status.summary())
+            return 0
+
+        services = None
+        candidates = None
+        try:
+            campaign_exists = config.initialization.campaign.exists()
+            report_exists = config.initialization.report.exists()
+            if campaign_exists != report_exists:
+                raise ProjectStateError(
+                    "initialization campaign and report must either both exist or both be absent"
+                )
+
+            if not campaign_exists:
+                validate_project_init_start(config)
+                services = build_discovery_services(config, reporter=reporter)
+                candidates = services.discovery_provider.discover(
+                    config.discovery.query,
+                    max_pages=config.discovery.max_pages,
+                )
+
+            plan = plan_project_init_batch(
+                config,
+                candidates=candidates,
+                batch_size=args.batch_size,
+            )
+
+            if args.dry_run:
+                progress = campaign_progress(plan.campaign)
+                payload = {
+                    "dry_run": True,
+                    "batch_id": plan.batch.id if plan.batch is not None else None,
+                    "keys": list(plan.batch.keys) if plan.batch is not None else [],
+                    "needs_screening": plan.needs_screening,
+                    "progress": {
+                        **progress.data(),
+                        "exhausted": progress.exhausted,
+                        "successful": progress.successful,
+                    },
+                    "campaign": str(config.initialization.campaign),
+                    "report": str(config.initialization.report),
+                }
+                if args.json_output:
+                    print(json.dumps(payload, ensure_ascii=False, indent=2))
+                elif not args.quiet:
+                    print(f"Dry run: {plan.summary()}")
+                    if plan.batch is not None:
+                        print(
+                            f"Would initialize {len(plan.batch.keys)} candidate(s) "
+                            f"in {plan.batch.id}."
+                        )
+                return 0
+
+            apply_project_init_plan(plan)
+
+            if plan.batch is None:
+                status = project_init_status(config)
+                if args.json_output:
+                    print(json.dumps(status.data(), ensure_ascii=False, indent=2))
+                elif not args.quiet:
+                    print("Initialization campaign complete.")
+                    print(status.summary())
+                return 0
+
+            if not plan.needs_screening:
+                status = project_init_status(config)
+                if args.json_output:
+                    print(json.dumps(status.data(), ensure_ascii=False, indent=2))
+                elif not args.quiet:
+                    print(status.summary())
+                    print(
+                        "Current initialization batch is waiting for ordinary "
+                        "review/collect/merge or rejection."
+                    )
+                return 0
+
+            if services is None:
+                services = build_discovery_services(config, reporter=reporter)
+            execution = execute_project_init_batch(
+                config,
+                batch_id=plan.batch.id,
+                provider=services.provider,
+                enrichment_lookup=services.enrichment_lookup,
+                reporter=reporter,
+            )
+        except (
+            OSError,
+            StorageError,
+            ProjectStateError,
+            ValueError,
+            TypeError,
+        ) as error:
+            print(f"bibreview init: {error}", file=sys.stderr)
+            return 1
+
+        if args.json_output:
+            print(
+                json.dumps(
+                    {
+                        "batch_id": execution.batch_id,
+                        "screened": execution.screened,
+                        "queued": execution.queued,
+                        "review": execution.review,
+                        "rejected": execution.rejected,
+                        "skipped": execution.skipped,
+                        "retryable": execution.retryable,
+                        "status": execution.status.data(),
+                        "campaign": str(config.initialization.campaign),
+                        "report": str(config.initialization.report),
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+        elif not args.quiet:
+            print(execution.summary())
+            if execution.status.current_batch is not None:
+                print(
+                    "Resolve the current batch with the ordinary relevance, "
+                    "collect, and merge workflow before opening the next batch."
+                )
         return 0
 
     if args.command == "discover":

@@ -54,6 +54,15 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(config.audit.report, root / "audit/report.json")
         self.assertEqual(config.audit.batch_size, 50)
         self.assertEqual(
+            config.initialization.campaign,
+            root / "audit/init/campaign.json",
+        )
+        self.assertEqual(
+            config.initialization.report,
+            root / "audit/init/report.json",
+        )
+        self.assertEqual(config.initialization.batch_size, 50)
+        self.assertEqual(
             config.references.campaign,
             root / "audit/references/campaign.json",
         )
@@ -205,6 +214,59 @@ class ConfigTests(unittest.TestCase):
         )
         _, path = self.write(invalid_size)
         with self.assertRaisesRegex(ConfigError, "audit.batch_size"):
+            load_config(path)
+
+    def test_loads_initialization_configuration(self):
+        root, path = self.write(BASE.replace(
+            "relevance:\n",
+            "initialization:\n"
+            "  campaign: state/init-campaign.json\n"
+            "  report: reports/init-report.json\n"
+            "  batch_size: 25\n"
+            "relevance:\n",
+        ))
+        config = load_config(path)
+        self.assertEqual(
+            config.initialization.campaign,
+            root / "state/init-campaign.json",
+        )
+        self.assertEqual(
+            config.initialization.report,
+            root / "reports/init-report.json",
+        )
+        self.assertEqual(config.initialization.batch_size, 25)
+
+    def test_rejects_invalid_or_overlapping_initialization_state(self):
+        same_path = BASE.replace(
+            "relevance:\n",
+            "initialization:\n"
+            "  campaign: state/init.json\n"
+            "  report: state/init.json\n"
+            "relevance:\n",
+        )
+        _, path = self.write(same_path)
+        with self.assertRaisesRegex(ConfigError, "must be different paths"):
+            load_config(path)
+
+        overlap = BASE.replace(
+            "relevance:\n",
+            "initialization:\n"
+            "  campaign: data/bibliography.json\n"
+            "  report: state/init-report.json\n"
+            "relevance:\n",
+        )
+        _, path = self.write(overlap)
+        with self.assertRaisesRegex(ConfigError, "must not overlap"):
+            load_config(path)
+
+        invalid_size = BASE.replace(
+            "relevance:\n",
+            "initialization:\n"
+            "  batch_size: 0\n"
+            "relevance:\n",
+        )
+        _, path = self.write(invalid_size)
+        with self.assertRaisesRegex(ConfigError, "initialization.batch_size"):
             load_config(path)
 
     def test_loads_references_configuration(self):

@@ -1,0 +1,262 @@
+from __future__ import annotations
+
+from contextlib import redirect_stderr, redirect_stdout
+from io import StringIO
+import json
+from pathlib import Path
+from types import SimpleNamespace
+import tempfile
+import unittest
+from unittest.mock import patch
+
+from bibreview.cli import main
+from bibreview.config import load_config
+from bibreview.model import Author, Publication
+from bibreview.identity import new_publication_id
+from bibreview.storage import write_bibliography
+
+
+CONFIG = """\
+schema_version: 1
+project:
+  name: Example Review
+  slug: example-review
+discovery:
+  provider: openalex
+  query: fluid-structure interaction
+  max_pages: 3
+  accepted_types:
+    - journal-article
+relevance:
+  patterns:
+    - 'fluid[-\\s]+structure'
+  unmatched: manual-review
+initialization:
+  campaign: state/init-campaign.json
+  report: state/init-report.json
+  batch_size: 2
+site:
+  enabled: false
+"""
+
+
+class FakeDiscoveryProvider:
+    def __init__(self, candidates):
+        self.candidates = tuple(candidates)
+        self.calls = []
+
+    def discover(self, query, *, max_pages=20):
+        self.calls.append((query, max_pages))
+        return self.candidates
+
+
+class FakeWorkProvider:
+    def __init__(self, records):
+        self.records = dict(records)
+        self.calls = []
+
+    def work(self, doi):
+        self.calls.append(doi)
+        return self.records.get(doi)
+
+
+def work(title):
+    return {
+        "type": "journal-article",
+        "title": [title],
+        "author": [{"given": "Ada", "family": "Lovelace"}],
+        "container-title": ["Journal"],
+        "created": {"date-parts": [[2026, 10, 1]]},
+        "published-print": {"date-parts": [[2026]]},
+        "reference": [],
+    }
+
+
+class InitCliTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.config_path = self.root / "bibreview.yml"
+        self.config_path.write_text(CONFIG, encoding="utf-8")
+        self.config = load_config(self.config_path)
+
+    def services(self):
+        return SimpleNamespace(
+            discovery_provider=FakeDiscoveryProvider(("10.1/a", "10.1/b")),
+            provider=FakeWorkProvider({
+                "10.1/a": work("Fluid-structure interaction model"),
+                "10.1/b": work("Another coupled model"),
+            }),
+            enrichment_lookup=None,
+        )
+
+    def test_dry_run_freezes_candidate_plan_without_writing_or_screening(self):
+        services = self.services()
+        stdout = StringIO()
+        stderr = StringIO()
+
+        with patch(
+            "bibreview.cli.build_discovery_services",
+            return_value=services,
+        ), redirect_stdout(stdout), redirect_stderr(stderr):
+            code = main([
+                "--config",
+                str(self.config_path),
+                "--dry-run",
+                "init",
+                "--batch-size",
+                "1",
+                "--json",
+            ])
+
+        self.assertEqual(code, 0, stderr.getvalue())
+        payload = json.loads(stdout.getvalue())
+        self.assertTrue(payload["dry_run"])
+        self.assertEqual(payload["batch_id"], "batch-0001")
+        self.assertEqual(payload["keys"], ["10.1/a"])
+        self.assertTrue(payload["needs_screening"])
+        self.assertEqual(
+            services.discovery_provider.calls,
+            [("fluid-structure interaction", 3)],
+        )
+        self.assertEqual(services.provider.calls, [])
+        self.assertFalse(self.config.initialization.campaign.exists())
+        self.assertFalse(self.config.initialization.report.exists())
+
+    def test_init_screens_one_batch_then_waits_without_rebuilding_services(self):
+        services = self.services()
+        stdout = StringIO()
+        stderr = StringIO()
+        with patch(
+            "bibreview.cli.build_discovery_services",
+            return_value=services,
+        ), redirect_stdout(stdout), redirect_stderr(stderr):
+            code = main([
+                "--config",
+                str(self.config_path),
+                "init",
+                "--batch-size",
+                "1",
+            ])
+
+        self.assertEqual(code, 0, stderr.getvalue())
+        self.assertEqual(services.provider.calls, ["10.1/a"])
+        self.assertTrue(self.config.initialization.campaign.exists())
+        self.assertEqual(
+            self.config.paths.pending.read_text(encoding="utf-8"),
+            "doi:10.1/a\n",
+        )
+        self.assertIn("Resolve the current batch", stdout.getvalue())
+
+        stdout = StringIO()
+        stderr = StringIO()
+        with patch(
+            "bibreview.cli.build_discovery_services",
+            side_effect=AssertionError("provider services must not be built"),
+        ), redirect_stdout(stdout), redirect_stderr(stderr):
+            code = main([
+                "--config",
+                str(self.config_path),
+                "init",
+            ])
+
+        self.assertEqual(code, 0, stderr.getvalue())
+        self.assertIn("waiting for ordinary review/collect/merge", stdout.getvalue())
+
+    def test_status_is_offline_json(self):
+        services = self.services()
+        with patch(
+            "bibreview.cli.build_discovery_services",
+            return_value=services,
+        ), redirect_stdout(StringIO()), redirect_stderr(StringIO()):
+            self.assertEqual(
+                main([
+                    "--config",
+                    str(self.config_path),
+                    "init",
+                    "--batch-size",
+                    "1",
+                ]),
+                0,
+            )
+
+        stdout = StringIO()
+        stderr = StringIO()
+        with patch(
+            "bibreview.cli.build_discovery_services",
+            side_effect=AssertionError("status must be offline"),
+        ), redirect_stdout(stdout), redirect_stderr(stderr):
+            code = main([
+                "--config",
+                str(self.config_path),
+                "init",
+                "--status",
+                "--json",
+            ])
+
+        self.assertEqual(code, 0, stderr.getvalue())
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(payload["total"], 2)
+        self.assertEqual(payload["queued"], 1)
+        self.assertEqual(payload["current_batch"], "batch-0001")
+
+    def test_merged_batch_allows_next_stable_batch(self):
+        services = self.services()
+        with patch(
+            "bibreview.cli.build_discovery_services",
+            return_value=services,
+        ), redirect_stdout(StringIO()), redirect_stderr(StringIO()):
+            self.assertEqual(
+                main([
+                    "--config",
+                    str(self.config_path),
+                    "init",
+                    "--batch-size",
+                    "1",
+                ]),
+                0,
+            )
+
+        canonical = Publication(
+            id=new_publication_id(),
+            identifiers={"doi": "10.1/a"},
+            type="journal-article",
+            title="Reviewed A",
+            authors=(Author(literal="Reviewed Author"),),
+            publication_year="2026",
+            permalink="reviewed-a",
+        )
+        write_bibliography(self.config.paths.bibliography, (canonical,))
+        self.config.paths.pending.write_text("", encoding="utf-8")
+
+        second_services = SimpleNamespace(
+            discovery_provider=FakeDiscoveryProvider(()),
+            provider=FakeWorkProvider({
+                "10.1/b": work("Unrelated title"),
+            }),
+            enrichment_lookup=None,
+        )
+        stdout = StringIO()
+        stderr = StringIO()
+        with patch(
+            "bibreview.cli.build_discovery_services",
+            return_value=second_services,
+        ), redirect_stdout(stdout), redirect_stderr(stderr):
+            code = main([
+                "--config",
+                str(self.config_path),
+                "init",
+            ])
+
+        self.assertEqual(code, 0, stderr.getvalue())
+        self.assertEqual(second_services.discovery_provider.calls, [])
+        self.assertEqual(second_services.provider.calls, ["10.1/b"])
+        self.assertEqual(
+            self.config.paths.review.read_text(encoding="utf-8"),
+            "doi:10.1/b\n",
+        )
+
+
+if __name__ == "__main__":
+    unittest.main()

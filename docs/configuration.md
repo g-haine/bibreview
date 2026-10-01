@@ -77,7 +77,7 @@ state from presentation:
 ~~~text
 data/      canonical bibliography, staging, mappings, identifier state and reviewed import evidence
 bib/       tracked BibTeX source records
-audit/     audit/reference campaign evidence
+audit/     initialization, audit, and reference campaign evidence
 archive/   backups created by reviewed maintenance operations
 site/      static-site source and generated presentation artifacts
 ~~~
@@ -141,6 +141,31 @@ Patterns are regular expressions. **unmatched** can be:
 
 Prefer conservative patterns and human review over an over-aggressive reject
 rule.
+
+## Initialization state
+
+New-project initialization has its own campaign/report pair:
+
+~~~yaml
+initialization:
+  campaign: audit/init/campaign.json
+  report: audit/init/report.json
+  batch_size: 50
+~~~
+
+The campaign freezes the DOI candidate universe returned by the configured
+discovery query. Its batch size controls only newly opened initialization
+batches; an already-open batch always resumes with its persisted membership.
+
+Initialization state is separate from `bibliography.json`,
+`collected.json`, and the typed acquisition queues. The command observes those
+ordinary project files to determine whether the current batch is still pending,
+under manual review, staged, merged, or deliberately rejected.
+
+A new initialization campaign refuses to start when canonical bibliography,
+canonical staging, or acquisition queues are already non-empty. Once a campaign
+exists, later canonical publications are expected because they are the output of
+completed initialization batches.
 
 ## Refresh policy
 

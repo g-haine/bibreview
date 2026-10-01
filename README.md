@@ -93,6 +93,25 @@ bibreview.yml
 
 See [Data and state files](docs/data-model.md) for the exact semantics.
 
+For a brand-new empty bibliography, BibReview can freeze the configured
+discovery universe and process it through stable reviewed batches:
+
+~~~bash
+bibreview --dry-run init --batch-size 10
+bibreview init --batch-size 10
+~~~
+
+Resolve the current batch with the ordinary relevance, `collect`, and `merge`
+commands. A later `bibreview init` invocation will observe the merged/rejected
+outcomes and only then open the next stable batch.
+
+~~~bash
+bibreview init --status
+~~~
+
+`init` never runs `collect`, `merge`, `authors`, or `render`
+automatically.
+
 ## Add DOI-backed publications
 
 The ordinary automated acquisition path remains DOI-only:
