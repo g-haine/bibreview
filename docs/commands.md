@@ -980,6 +980,20 @@ Repeat `--field` to propose more than one scalar field. Use repeated `--type`
 options to restrict proposal generation to selected publication types. Existing
 non-empty canonical fields are never proposed for replacement.
 
+For a missing abstract that must be supplied by a maintainer rather than a
+provider, use manual mode:
+
+~~~bash
+bibreview --config bibreview.yml backfill --field abstract --manual
+~~~
+
+Manual mode performs **no provider lookup** and therefore also works for
+DOI-less canonical publications. It creates one `review_required` candidate
+with no automatic value for each semantically missing abstract. The normal
+resolver then requires an explicit **f VALUE**, reject, or defer decision;
+direct Enter/Y acceptance is disabled. Manual mode is currently exposed only
+for `--field abstract`.
+
 Proposal generation may call CrossRef, publisher enrichment, and configured
 abstract fallbacks such as OpenAlex, Semantic Scholar, and Mendeley. Backfill
 uses exact multi-DOI requests where the provider adapter supports them: CrossRef
