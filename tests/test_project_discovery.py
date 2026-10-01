@@ -42,8 +42,8 @@ class FakeDiscoveryProvider:
         self.candidates = tuple(candidates)
         self.calls = []
 
-    def discover(self, query, *, max_pages=20):
-        self.calls.append((query, max_pages))
+    def discover(self, query, *, max_pages=20, search_field="title_and_abstract"):
+        self.calls.append((query, max_pages, search_field))
         return self.candidates
 
 
