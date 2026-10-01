@@ -147,7 +147,7 @@ class InitCliTests(unittest.TestCase):
             self.config.paths.pending.read_text(encoding="utf-8"),
             "doi:10.1/a\n",
         )
-        self.assertIn("Current initialization batch", stdout.getvalue())
+        self.assertIn("Resolve the current batch", stdout.getvalue())
 
         stdout = StringIO()
         stderr = StringIO()
