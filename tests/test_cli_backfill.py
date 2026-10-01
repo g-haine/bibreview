@@ -16,7 +16,11 @@ from bibreview.config import load_config
 from bibreview.identity import new_publication_id
 from bibreview.model import Author, Publication
 from bibreview.pipeline.backfill import BackfillCandidate
-from bibreview.project_backfill import BackfillReview, backfill_review_path
+from bibreview.project_backfill import (
+    BackfillReview,
+    backfill_review_path,
+    load_project_backfill_review,
+)
 from bibreview.providers.base import AbstractEvidence
 from bibreview.storage import read_bibliography, write_bibliography, write_json
 
@@ -195,6 +199,97 @@ class BackfillCliTests(unittest.TestCase):
         staged = read_bibliography(self.config.paths.collected)
         self.assertEqual(staged[0].abstract, "Candidate abstract")
         self.assertIn("Changes to stage", stdout.getvalue())
+
+    def test_manual_generation_skips_provider_services(self):
+        stdout = StringIO()
+        stderr = StringIO()
+        with patch("bibreview.cli.build_collection_services") as services, redirect_stdout(
+            stdout
+        ), redirect_stderr(stderr):
+            code = main([
+                "--config",
+                str(self.config_path),
+                "backfill",
+                "--field",
+                "abstract",
+                "--manual",
+            ])
+
+        self.assertEqual(code, 0, stderr.getvalue())
+        services.assert_not_called()
+        review = load_project_backfill_review(self.config)
+        self.assertEqual(len(review.candidates), 1)
+        candidate = review.candidates[0]
+        self.assertTrue(candidate.manual)
+        self.assertTrue(candidate.review_required)
+        self.assertEqual(candidate.proposed_value, "")
+        self.assertEqual(candidate.evidence, ())
+        self.assertFalse(self.config.paths.collected.exists())
+
+    def test_manual_resolution_requires_explicit_custom_value(self):
+        review = BackfillReview(
+            fields=("abstract",),
+            types=(),
+            scanned_count=1,
+            eligible_count=1,
+            candidates=(
+                BackfillCandidate(
+                    publication_id=self.publication.id,
+                    doi=self.publication.doi,
+                    title=self.publication.title,
+                    field="abstract",
+                    proposed_value="",
+                    review_required=True,
+                    manual=True,
+                ),
+            ),
+            unavailable=(),
+            no_value=(),
+        )
+        write_json(backfill_review_path(self.config), review.data())
+
+        stdout = StringIO()
+        stderr = StringIO()
+        with patch(
+            "builtins.input",
+            side_effect=["", "f Manually reviewed abstract"],
+        ), redirect_stdout(stdout), redirect_stderr(stderr):
+            code = main([
+                "--config",
+                str(self.config_path),
+                "backfill",
+                "--resolve",
+            ])
+
+        self.assertEqual(code, 0, stderr.getvalue())
+        self.assertIn(
+            "Manual value requested; no provider lookup was performed.",
+            stdout.getvalue(),
+        )
+        state = load_project_backfill_resolutions(self.config, review)
+        self.assertEqual(state.decisions[0].decision, "custom")
+        self.assertEqual(
+            state.decisions[0].resolved_value,
+            "Manually reviewed abstract",
+        )
+
+    def test_manual_generation_is_currently_abstract_only(self):
+        stderr = StringIO()
+        with redirect_stdout(StringIO()), redirect_stderr(stderr):
+            code = main([
+                "--config",
+                str(self.config_path),
+                "backfill",
+                "--field",
+                "event",
+                "--manual",
+            ])
+
+        self.assertEqual(code, 1)
+        self.assertIn(
+            "backfill --manual currently supports only --field abstract",
+            stderr.getvalue(),
+        )
 
     def test_generation_requires_field(self):
         stderr = StringIO()
