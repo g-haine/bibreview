@@ -13,7 +13,7 @@ from bibreview.backfill_resolution import (
 from bibreview.config import load_config
 from bibreview.identity import new_publication_id
 from bibreview.model import Author, Publication
-from bibreview.pipeline.backfill import BackfillCandidate, backfill
+from bibreview.pipeline.backfill import BackfillCandidate, backfill, manual_backfill
 from bibreview.pipeline.enrich import EnrichmentService
 from bibreview.project import ProjectStateError
 from bibreview.project_backfill import (
@@ -439,6 +439,55 @@ class BackfillPipelineTests(unittest.TestCase):
         )
         self.assertEqual(len(result.candidates), 2)
 
+    def test_manual_backfill_creates_review_candidates_without_provider(self):
+        doi_publication = self.publication()
+        doi_less = Publication(
+            id=new_publication_id(),
+            identifiers={},
+            type="journal-article",
+            title="Manual DOI-less publication",
+            authors=(Author(literal="Manual Author"),),
+            abstract="",
+            container_title="Journal",
+            publication_year="2026",
+            permalink="manual-doi-less-publication",
+        )
+
+        result = manual_backfill(
+            [doi_publication, doi_less],
+            fields=("abstract",),
+        )
+
+        self.assertEqual(result.scanned_count, 2)
+        self.assertEqual(result.eligible_count, 2)
+        self.assertEqual(result.unavailable, ())
+        self.assertEqual(result.no_value, ())
+        self.assertEqual(len(result.candidates), 2)
+
+        first, second = result.candidates
+        self.assertTrue(first.manual)
+        self.assertTrue(first.review_required)
+        self.assertEqual(first.proposed_value, "")
+        self.assertEqual(first.doi, doi_publication.doi)
+        self.assertEqual(first.evidence, ())
+
+        self.assertTrue(second.manual)
+        self.assertTrue(second.review_required)
+        self.assertEqual(second.doi, "")
+        self.assertEqual(second.publication_id, doi_less.id)
+        self.assertEqual(second.evidence, ())
+
+    def test_manual_backfill_skips_non_missing_fields(self):
+        publication = self.publication(abstract="Canonical abstract")
+
+        result = manual_backfill(
+            [publication],
+            fields=("abstract",),
+        )
+
+        self.assertEqual(result.eligible_count, 0)
+        self.assertEqual(result.candidates, ())
+
     def test_doi_less_publication_is_skipped_without_provider_call(self):
         publication = Publication(
             id=new_publication_id(),
@@ -520,6 +569,70 @@ class ProjectBackfillTests(unittest.TestCase):
 
     def persist_review(self, review):
         write_json(backfill_review_path(self.config), review.data())
+
+    def test_manual_plan_round_trips_and_stages_custom_doi_less_value(self):
+        doi_less = Publication(
+            id=new_publication_id(),
+            identifiers={},
+            type="journal-article",
+            title="DOI-less publication",
+            authors=(Author(literal="Manual Author"),),
+            abstract="",
+            container_title="Journal",
+            publication_year="2026",
+            permalink="doi-less-publication",
+        )
+        write_bibliography(
+            self.config.paths.bibliography,
+            (self.publication, doi_less),
+        )
+
+        plan = plan_project_backfill(
+            self.config,
+            fields=("abstract",),
+            manual=True,
+        )
+        self.assertEqual(len(plan.review.candidates), 2)
+        self.assertTrue(all(item.manual for item in plan.review.candidates))
+        self.assertFalse(self.config.paths.collected.exists())
+
+        apply_project_backfill_plan(plan)
+        loaded = load_project_backfill_review(self.config)
+        doi_less_candidate = next(
+            item for item in loaded.candidates
+            if item.publication_id == doi_less.id
+        )
+        self.assertTrue(doi_less_candidate.manual)
+        self.assertEqual(doi_less_candidate.doi, "")
+
+        state = load_project_backfill_resolutions(self.config, loaded)
+        for candidate in backfill_resolution_candidates(loaded):
+            state = record_backfill_resolution(
+                state,
+                candidate,
+                decision="custom",
+                resolved_value=(
+                    "Manual DOI-less abstract"
+                    if candidate.proposal.publication_id == doi_less.id
+                    else "Manual DOI abstract"
+                ),
+            )
+        save_project_backfill_resolutions(self.config, state)
+
+        apply_plan = plan_project_backfill_apply(self.config)
+        apply_project_backfill_apply(apply_plan)
+        staged = {
+            item.id: item
+            for item in read_bibliography(self.config.paths.collected)
+        }
+        self.assertEqual(
+            staged[doi_less.id].abstract,
+            "Manual DOI-less abstract",
+        )
+        self.assertEqual(
+            staged[self.publication.id].abstract,
+            "Manual DOI abstract",
+        )
 
     def test_proposal_generation_never_writes_collected_staging(self):
         provider = FakeProvider({self.publication.doi: message()})
