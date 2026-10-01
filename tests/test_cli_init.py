@@ -46,8 +46,8 @@ class FakeDiscoveryProvider:
         self.candidates = tuple(candidates)
         self.calls = []
 
-    def discover(self, query, *, max_pages=20):
-        self.calls.append((query, max_pages))
+    def discover(self, query, *, max_pages=20, search_field="title_and_abstract"):
+        self.calls.append((query, max_pages, search_field))
         return self.candidates
 
 
@@ -58,8 +58,14 @@ class FakeDetailedDiscoveryProvider(FakeDiscoveryProvider):
         self.works_examined = works_examined
         self.truncated = truncated
 
-    def discover_detailed(self, query, *, max_pages=20):
-        self.calls.append((query, max_pages))
+    def discover_detailed(
+        self,
+        query,
+        *,
+        max_pages=20,
+        search_field="title_and_abstract",
+    ):
+        self.calls.append((query, max_pages, search_field))
         return OpenAlexDiscoveryResult(
             candidates=self.candidates,
             total_matches=self.total_matches,
@@ -137,7 +143,7 @@ class InitCliTests(unittest.TestCase):
         self.assertTrue(payload["needs_screening"])
         self.assertEqual(
             services.discovery_provider.calls,
-            [("fluid-structure interaction", 3)],
+            [("fluid-structure interaction", 3, "title_and_abstract")],
         )
         self.assertEqual(services.provider.calls, [])
         self.assertFalse(self.config.initialization.campaign.exists())
