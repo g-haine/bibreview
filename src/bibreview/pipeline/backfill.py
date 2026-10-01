@@ -44,8 +44,8 @@ class BackfillCandidate:
     field: str
     proposed_value: str
     review_required: bool = False
-    manual: bool = False
     evidence: tuple[AbstractEvidence, ...] = ()
+    manual: bool = False
 
     def __post_init__(self) -> None:
         evidence = tuple(self.evidence)
