@@ -4,6 +4,11 @@ All notable BibReview releases are documented here.
 
 ## Unreleased
 
+- expose OpenAlex initialization discovery diagnostics, including total matching
+  works, pages/works examined, DOI candidate count, and page-limit truncation,
+  so `bibreview init` dry-runs cannot confuse a bounded DOI campaign slice with
+  the provider's full search universe;
+
 - make `bibreview init` honor configured `discovery.exclude_doi_substrings`
   before freezing the stable initialization universe, so known repository DOI
   artifacts do not consume campaign or batch slots;
