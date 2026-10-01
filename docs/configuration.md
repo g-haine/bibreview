@@ -122,6 +122,12 @@ discovery:
   exclude_doi_substrings: []
 ~~~
 
+For ordinary discovery, `exclude_doi_substrings` is applied during candidate
+screening. For a new `bibreview init` campaign, the same exclusions are also
+applied **before the stable campaign universe is frozen**, so repository DOI
+artifacts such as configured Zenodo/arXiv records never consume initialization
+slots.
+
 Discovery currently uses OpenAlex to find DOI-backed candidates, then verifies
 metadata through CrossRef.
 

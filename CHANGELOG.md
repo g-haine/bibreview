@@ -4,6 +4,10 @@ All notable BibReview releases are documented here.
 
 ## Unreleased
 
+- make `bibreview init` honor configured `discovery.exclude_doi_substrings`
+  before freezing the stable initialization universe, so known repository DOI
+  artifacts do not consume campaign or batch slots;
+
 ### Resumable new-project initialization
 
 - add a generic `bibreview init` workflow backed by the existing campaign

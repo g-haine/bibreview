@@ -492,11 +492,22 @@ def validate_project_init_start(config: BibReviewConfig) -> None:
     _ensure_startable(config)
 
 
-def _normalize_candidates(candidates: Iterable[str]) -> tuple[str, ...]:
+def _normalize_candidates(
+    candidates: Iterable[str],
+    *,
+    excluded_doi_substrings: Iterable[str] = (),
+) -> tuple[str, ...]:
+    excluded = tuple(
+        str(value).strip().lower()
+        for value in excluded_doi_substrings
+        if str(value).strip()
+    )
     result: list[str] = []
     seen: set[str] = set()
     for raw in candidates:
         doi = normalize_doi(raw)
+        if any(fragment in doi for fragment in excluded):
+            continue
         if doi not in seen:
             seen.add(doi)
             result.append(doi)
@@ -578,7 +589,10 @@ def plan_project_init_batch(
             raise ProjectStateError(
                 "initialization candidate universe is required for a new campaign"
             )
-        normalized = _normalize_candidates(candidates)
+        normalized = _normalize_candidates(
+            candidates,
+            excluded_doi_substrings=config.discovery.exclude_doi_substrings,
+        )
         try:
             campaign = create_campaign(
                 "init",

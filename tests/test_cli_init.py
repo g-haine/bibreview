@@ -124,6 +124,49 @@ class InitCliTests(unittest.TestCase):
         self.assertFalse(self.config.initialization.campaign.exists())
         self.assertFalse(self.config.initialization.report.exists())
 
+    def test_dry_run_excludes_configured_doi_substrings_from_campaign_universe(self):
+        self.config_path.write_text(
+            CONFIG.replace(
+                "relevance:\n",
+                "  exclude_doi_substrings:\n"
+                "    - zenodo\n"
+                "relevance:\n",
+            ),
+            encoding="utf-8",
+        )
+        services = SimpleNamespace(
+            discovery_provider=FakeDiscoveryProvider((
+                "10.5281/zenodo.12345",
+                "10.1/a",
+                "10.1/b",
+            )),
+            provider=FakeWorkProvider({}),
+            enrichment_lookup=None,
+        )
+        stdout = StringIO()
+        stderr = StringIO()
+
+        with patch(
+            "bibreview.cli.build_discovery_services",
+            return_value=services,
+        ), redirect_stdout(stdout), redirect_stderr(stderr):
+            code = main([
+                "--config",
+                str(self.config_path),
+                "--dry-run",
+                "init",
+                "--batch-size",
+                "2",
+                "--json",
+            ])
+
+        self.assertEqual(code, 0, stderr.getvalue())
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(payload["keys"], ["10.1/a", "10.1/b"])
+        self.assertEqual(payload["progress"]["total"], 2)
+        self.assertFalse(self.config.initialization.campaign.exists())
+        self.assertFalse(self.config.initialization.report.exists())
+
     def test_init_screens_one_batch_then_waits_without_rebuilding_services(self):
         services = self.services()
         stdout = StringIO()
