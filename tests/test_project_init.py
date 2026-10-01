@@ -117,6 +117,35 @@ class ProjectInitTests(unittest.TestCase):
         self.assertTrue(self.config.initialization.campaign.exists())
         self.assertTrue(self.config.initialization.report.exists())
 
+    def test_new_campaign_filters_configured_excluded_doi_substrings_before_freeze(self):
+        self.config_path.write_text(
+            CONFIG.replace(
+                "relevance:\n",
+                "  exclude_doi_substrings:\n"
+                "    - zenodo\n"
+                "    - arxiv\n"
+                "relevance:\n",
+            ),
+            encoding="utf-8",
+        )
+        config = load_config(self.config_path)
+
+        plan = plan_project_init_batch(
+            config,
+            candidates=(
+                "10.5281/zenodo.12345",
+                "10.1000/KEEP",
+                "10.48550/arxiv.2601.12345",
+                "10.1000/keep",
+            ),
+        )
+
+        self.assertEqual(
+            tuple(item.key for item in plan.campaign.items),
+            ("10.1000/keep",),
+        )
+        self.assertEqual(plan.batch.keys, ("10.1000/keep",))
+
     def test_batch_waits_for_review_collect_merge_before_next_batch(self):
         plan = plan_project_init_batch(
             self.config,
