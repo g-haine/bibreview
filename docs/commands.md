@@ -968,7 +968,8 @@ required. Manual provenance may leave it empty.
 ## backfill
 
 Propose values for selected fields that are semantically missing in existing
-canonical DOI-backed publications. For `abstract`, the historical
+canonical publications. Provider-backed proposal generation requires a DOI;
+manual abstract mode also supports DOI-less records. For `abstract`, the historical
 `Not Available` placeholder is treated as missing case- and
 whitespace-insensitively:
 
