@@ -218,6 +218,15 @@ class DiscoveryConfig:
 
 
 @dataclass(frozen=True)
+class InitializationConfig:
+    """Persistent state and batching policy for new-project initialization."""
+
+    campaign: Path
+    report: Path
+    batch_size: int = 50
+
+
+@dataclass(frozen=True)
 class RefreshConfig:
     """Policy selecting existing publications eligible for refresh checks."""
 
@@ -308,6 +317,7 @@ class BibReviewConfig:
     arxiv: ArxivConfig
     paths: PathsConfig
     discovery: DiscoveryConfig
+    initialization: InitializationConfig
     refresh: RefreshConfig
     audit: AuditConfig
     references: ReferencesConfig
@@ -447,6 +457,34 @@ def load_config(path: str | Path = "bibreview.yml") -> BibReviewConfig:
         ),
     )
 
+    initialization_raw = _mapping(
+        raw.get("initialization"),
+        "initialization",
+    )
+    initialization = InitializationConfig(
+        campaign=_path(
+            base,
+            initialization_raw.get("campaign"),
+            "audit/init/campaign.json",
+            "initialization.campaign",
+        ),
+        report=_path(
+            base,
+            initialization_raw.get("report"),
+            "audit/init/report.json",
+            "initialization.report",
+        ),
+        batch_size=_integer(
+            initialization_raw.get("batch_size"),
+            "initialization.batch_size",
+            50,
+        ),
+    )
+    if initialization.campaign == initialization.report:
+        raise ConfigError(
+            "initialization.campaign and initialization.report must be different paths"
+        )
+
     refresh_raw = _mapping(raw.get("refresh"), "refresh")
     refresh_fields = _string_tuple(
         refresh_raw.get("when_missing_any"),
@@ -511,7 +549,7 @@ def load_config(path: str | Path = "bibreview.yml") -> BibReviewConfig:
             "references.campaign and references.report must be different paths"
         )
 
-    references_reserved_paths = {
+    initialization_reserved_paths = {
         paths.bibliography,
         paths.collected,
         paths.author_mappings,
@@ -521,6 +559,20 @@ def load_config(path: str | Path = "bibreview.yml") -> BibReviewConfig:
         paths.review,
         audit.campaign,
         audit.report,
+    }
+    for name, path in (
+        ("initialization.campaign", initialization.campaign),
+        ("initialization.report", initialization.report),
+    ):
+        if path in initialization_reserved_paths:
+            raise ConfigError(
+                f"{name} must not overlap canonical/project/audit state paths"
+            )
+
+    references_reserved_paths = {
+        *initialization_reserved_paths,
+        initialization.campaign,
+        initialization.report,
     }
     for name, path in (
         ("references.campaign", references.campaign),
@@ -661,6 +713,7 @@ def load_config(path: str | Path = "bibreview.yml") -> BibReviewConfig:
         arxiv=arxiv,
         paths=paths,
         discovery=discovery,
+        initialization=initialization,
         refresh=refresh,
         audit=audit,
         references=references,
