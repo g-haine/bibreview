@@ -2,6 +2,29 @@
 
 All notable BibReview releases are documented here.
 
+## 1.7.1 — 2026-10-01
+
+### Manual reviewed backfill
+
+- add `bibreview backfill --field abstract --manual` for provider-free
+  reviewed entry of canonically missing abstracts;
+- create explicit manual review-required candidates with no automatic proposal,
+  requiring a custom value, reject, or defer decision;
+- skip provider-service construction entirely in manual mode so the workflow
+  makes no provider request;
+- support DOI-backed and DOI-less canonical publications through the same
+  UUID-based backfill resolution key;
+- preserve the existing fingerprint, staleness, `collected.json` staging, and
+  explicit `merge` boundaries;
+- keep automatic provider-backed backfill behavior unchanged.
+
+### Documentation
+
+- document manual backfill in the command, workflow, correction, and data-model
+  guides;
+- make new-project initialization (#31) the sole near-term user-facing roadmap
+  priority after the remaining maintenance gap is closed.
+
 ## 1.7.0 — 2026-09-30
 
 ### Stable reviewed-ingestion contract

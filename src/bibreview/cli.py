@@ -376,6 +376,14 @@ def _parser() -> argparse.ArgumentParser:
         default=[],
         help="Restrict proposal generation to one publication type; repeat for multiple types",
     )
+    backfill.add_argument(
+        "--manual",
+        action="store_true",
+        help=(
+            "Create human-review candidates without provider lookup; "
+            "currently supported for --field abstract"
+        ),
+    )
     backfill_actions = backfill.add_mutually_exclusive_group()
     backfill_actions.add_argument(
         "--resolve",
@@ -677,9 +685,9 @@ def _run_audit_resolution(config, args) -> int:
 
 def _run_backfill_resolution(config, args) -> int:
     """Run resumable human review for persisted backfill proposals."""
-    if args.backfill_fields or args.backfill_types:
+    if args.backfill_fields or args.backfill_types or args.manual:
         raise ProjectStateError(
-            "--field/--type cannot be used with backfill --resolve"
+            "--field/--type/--manual cannot be used with backfill --resolve"
         )
     if args.quiet:
         raise ProjectStateError(
@@ -1787,9 +1795,9 @@ def main(argv: list[str] | None = None) -> int:
 
         if args.apply:
             try:
-                if args.backfill_fields or args.backfill_types:
+                if args.backfill_fields or args.backfill_types or args.manual:
                     raise ProjectStateError(
-                        "--field/--type cannot be used with backfill --apply"
+                        "--field/--type/--manual cannot be used with backfill --apply"
                     )
                 plan = plan_project_backfill_apply(config)
                 if not args.dry_run:
@@ -1823,17 +1831,30 @@ def main(argv: list[str] | None = None) -> int:
 
         reporter = Reporter(-1 if args.quiet else args.verbose)
         try:
-            services = build_collection_services(config, reporter=reporter)
-            plan = plan_project_backfill(
-                config,
-                provider=services.provider,
-                fields=tuple(args.backfill_fields),
-                types=tuple(args.backfill_types),
-                enrichment_lookup=services.enrichment_lookup,
-                batch_provider=services.batch_provider,
-                enrichment_many_lookup=services.enrichment_many_lookup,
-                reporter=reporter,
-            )
+            if args.manual:
+                if set(args.backfill_fields) != {"abstract"}:
+                    raise ProjectStateError(
+                        "backfill --manual currently supports only --field abstract"
+                    )
+                plan = plan_project_backfill(
+                    config,
+                    fields=tuple(args.backfill_fields),
+                    types=tuple(args.backfill_types),
+                    reporter=reporter,
+                    manual=True,
+                )
+            else:
+                services = build_collection_services(config, reporter=reporter)
+                plan = plan_project_backfill(
+                    config,
+                    provider=services.provider,
+                    fields=tuple(args.backfill_fields),
+                    types=tuple(args.backfill_types),
+                    enrichment_lookup=services.enrichment_lookup,
+                    batch_provider=services.batch_provider,
+                    enrichment_many_lookup=services.enrichment_many_lookup,
+                    reporter=reporter,
+                )
             if not args.dry_run:
                 apply_project_backfill_plan(plan)
         except (

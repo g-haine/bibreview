@@ -214,7 +214,8 @@ tracked BibTeX changes, then merge.
 
 ### Backfill a missing field
 
-For a known missing canonical field such as an abstract:
+For a known missing canonical field such as an abstract, first try the
+provider-backed workflow:
 
 ~~~bash
 bibreview backfill --field abstract
@@ -223,7 +224,19 @@ bibreview --dry-run backfill --apply
 bibreview backfill --apply
 ~~~
 
-Then inspect and merge normally.
+If no provider can supply a trustworthy abstract, create manual review
+candidates without making provider requests:
+
+~~~bash
+bibreview backfill --field abstract --manual
+bibreview backfill --resolve
+bibreview --dry-run backfill --apply
+bibreview backfill --apply
+~~~
+
+Manual candidates require an explicit custom value, reject, or defer decision
+and also work for DOI-less canonical publications. Then inspect staging and
+merge normally.
 
 Provider values are proposals, not canonical authority. Backfill never replaces a
 meaningful non-empty canonical value.

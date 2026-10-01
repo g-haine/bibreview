@@ -1,10 +1,10 @@
 # Roadmap
 
 This roadmap describes the current development direction for BibReview after the
-v1.7.0 stabilization milestone. GitHub issues remain the authoritative place for
+v1.7 stabilization milestone. GitHub issues remain the authoritative place for
 feature-specific design and acceptance criteria.
 
-## Current state: v1.7.0
+## Current state: v1.7
 
 The v1.7 line marks the point where the core architecture is considered stable
 enough for broader use.
@@ -22,7 +22,8 @@ Completed foundations include:
 - author identity review;
 - deterministic Jekyll rendering;
 - resumable audit campaigns;
-- reviewed refresh and backfill;
+- reviewed refresh and provider-backed backfill;
+- provider-free reviewed manual abstract backfill (v1.7.1);
 - resumable reference-list review and reconciliation;
 - historical abstract/title/reference hygiene workflows;
 - provider diagnostics and rate-limit-aware transport;
@@ -59,22 +60,6 @@ Target direction:
 
 A successful second deployment should become the main proof that BibReview is a
 generic engine rather than a PHRAISE-specific extraction.
-
-### 2. Manual reviewed backfill — #98
-
-Some canonical metadata cannot be recovered from configured providers.
-
-Issue #98 adds a provider-free manual mode, initially:
-
-~~~bash
-bibreview backfill --field abstract --manual
-~~~
-
-The feature should reuse the existing backfill resolution, fingerprint,
-staleness, staging, and merge boundaries. It is a small but important gap in the
-current maintenance story.
-
-This is suitable for the v1.7.x line.
 
 ## Performance and architecture work
 
@@ -173,7 +158,7 @@ direction is:
 ~~~text
 v1.7.x
   documentation stabilization
-  manual maintenance gaps
+  manual abstract backfill
   small compatibility / correctness improvements
 
 next feature release
