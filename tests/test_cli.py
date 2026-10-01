@@ -46,7 +46,7 @@ class FakeProvider:
 
 
 class FakeDiscoveryProvider:
-    def discover(self, query, *, max_pages=20):
+    def discover(self, query, *, max_pages=20, search_field="title_and_abstract"):
         return ("10.1/relevant", "10.1/review", "10.1/unsupported")
 
 
