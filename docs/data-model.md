@@ -318,6 +318,58 @@ a trustworthy BibTeX record or add a reviewed explicit mechanism for creating
 one. Do not generate a citation merely to satisfy the renderer.
 
 
+## Initialization campaign state
+
+New-project initialization stores two versioned files, by default:
+
+~~~text
+audit/init/campaign.json
+audit/init/report.json
+~~~
+
+The campaign is the generic mechanical state: stable DOI universe, batch
+membership, attempts, pending/active/completed/retryable/failed states, and batch
+history.
+
+The initialization report stores the screening result for candidates that have
+already been examined:
+
+~~~json
+{
+  "schema_version": 1,
+  "campaign_items": ["10.1234/a", "10.1234/b"],
+  "entries": [
+    {
+      "doi": "10.1234/a",
+      "batch_id": "batch-0001",
+      "attempt": 1,
+      "outcome": "queued"
+    }
+  ]
+}
+~~~
+
+The report outcomes are `queued`, `review`, `rejected`, and `skipped`.
+They record how BibReview screened the candidate; they do **not** duplicate its
+current project status.
+
+Current initialization status is derived from ordinary BibReview state:
+
+- `newID.txt` → pending collection;
+- `checkID.txt` → manual relevance review;
+- `collected.json` → staged;
+- `bibliography.json` → merged/canonical;
+- `badID.txt` → deliberately rejected.
+
+A screened pending/review/staged DOI deliberately remains mechanically
+`active` in its initialization batch. The item becomes `completed` only when
+it is merged, rejected, or intentionally skipped. Therefore an initialization
+batch cannot close merely because discovery screening finished.
+
+Transient provider/transport failures have no screening report entry and become
+campaign `retryable` items. They are retried only after never-screened pending
+campaign items, following the generic campaign policy.
+
 ## Resumable campaign state
 
 Long-running workflows such as **audit** and **references** (and the planned
