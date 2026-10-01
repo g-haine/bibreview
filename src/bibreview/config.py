@@ -212,6 +212,7 @@ class PathsConfig:
 class DiscoveryConfig:
     provider: str = "openalex"
     query: str = ""
+    search_field: str = "title_and_abstract"
     max_pages: int = 20
     accepted_types: tuple[str, ...] = DEFAULT_DISCOVERY_TYPES
     exclude_doi_substrings: tuple[str, ...] = ()
@@ -442,9 +443,19 @@ def load_config(path: str | Path = "bibreview.yml") -> BibReviewConfig:
     )
 
     discovery_raw = _mapping(raw.get("discovery"), "discovery")
+    discovery_search_field = (
+        _string(discovery_raw.get("search_field"), "discovery.search_field")
+        or "title_and_abstract"
+    )
+    if discovery_search_field not in {"title", "abstract", "title_and_abstract"}:
+        raise ConfigError(
+            "discovery.search_field must be 'title', 'abstract', or "
+            "'title_and_abstract'"
+        )
     discovery = DiscoveryConfig(
         provider=_string(discovery_raw.get("provider"), "discovery.provider") or "openalex",
         query=_string(discovery_raw.get("query"), "discovery.query"),
+        search_field=discovery_search_field,
         max_pages=_integer(discovery_raw.get("max_pages"), "discovery.max_pages", 20),
         accepted_types=_string_tuple(
             discovery_raw.get("accepted_types"),

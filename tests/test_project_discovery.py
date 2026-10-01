@@ -42,8 +42,8 @@ class FakeDiscoveryProvider:
         self.candidates = tuple(candidates)
         self.calls = []
 
-    def discover(self, query, *, max_pages=20):
-        self.calls.append((query, max_pages))
+    def discover(self, query, *, max_pages=20, search_field="title_and_abstract"):
+        self.calls.append((query, max_pages, search_field))
         return self.candidates
 
 
@@ -121,7 +121,10 @@ class ProjectDiscoveryTests(unittest.TestCase):
         )
 
         self.assertEqual(before, self.snapshot())
-        self.assertEqual(discovery.calls, [("fluid-structure interaction", 3)])
+        self.assertEqual(
+            discovery.calls,
+            [("fluid-structure interaction", 3, "title_and_abstract")],
+        )
         self.assertEqual(
             works.calls,
             ["10.1/relevant", "10.1/review", "10.1/unsupported"],

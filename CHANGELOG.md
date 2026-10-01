@@ -4,6 +4,9 @@ All notable BibReview releases are documented here.
 
 ## Unreleased
 
+- add `discovery.search_field` for OpenAlex projects, with `title`,
+  `abstract`, and backward-compatible `title_and_abstract` search surfaces;
+
 - expose OpenAlex initialization discovery diagnostics, including total matching
   works, pages/works examined, DOI candidate count, and page-limit truncation,
   so `bibreview init` dry-runs cannot confuse a bounded DOI campaign slice with

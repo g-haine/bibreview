@@ -61,7 +61,13 @@ class ProjectStateError(ValueError):
 class CandidateProvider(Protocol):
     """Configured source of DOI candidates for one discovery run."""
 
-    def discover(self, query: str, *, max_pages: int = 20) -> tuple[str, ...]:
+    def discover(
+        self,
+        query: str,
+        *,
+        max_pages: int = 20,
+        search_field: str = "title_and_abstract",
+    ) -> tuple[str, ...]:
         """Return normalized DOI candidates in provider order."""
 
 
@@ -344,6 +350,7 @@ def plan_project_discovery(
     candidates = discovery_provider.discover(
         config.discovery.query,
         max_pages=config.discovery.max_pages,
+        search_field=config.discovery.search_field,
     )
     already_classified = list(known) + pending + review
     already_classified.extend(

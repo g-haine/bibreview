@@ -112,6 +112,7 @@ BibReview never guesses their identifier type.
 discovery:
   provider: openalex
   query: fluid-structure interaction
+  search_field: title_and_abstract
   max_pages: 20
   accepted_types:
     - journal-article
@@ -121,6 +122,18 @@ discovery:
     - monograph
   exclude_doi_substrings: []
 ~~~
+
+OpenAlex discovery can choose its text-search surface with
+`search_field`:
+
+- `title` — search only work titles;
+- `abstract` — search only abstracts;
+- `title_and_abstract` — search both (the backward-compatible default).
+
+The configured Boolean query is passed unchanged to the selected OpenAlex
+`*.search` filter. This lets a project choose recall-oriented discovery across
+titles/abstracts or a higher-precision title-only seed corpus without encoding
+provider syntax inside the query itself.
 
 For ordinary discovery, `exclude_doi_substrings` is applied during candidate
 screening. For a new `bibreview init` campaign, the same exclusions are also

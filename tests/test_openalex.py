@@ -192,6 +192,33 @@ class OpenAlexProviderTests(unittest.TestCase):
         self.assertEqual(first.kwargs["params"]["cursor"], "*")
         self.assertEqual(self.transport.json.call_count, 2)
 
+    def test_discovery_can_search_title_only(self) -> None:
+        self.transport.json.return_value = {
+            "results": [{"doi": "10.1000/a"}],
+            "meta": {"count": 1, "next_cursor": None},
+        }
+        provider = OpenAlexProvider(self.transport)
+
+        self.assertEqual(
+            provider.discover(
+                "fluid structure interaction",
+                search_field="title",
+            ),
+            ("10.1000/a",),
+        )
+
+        call = self.transport.json.call_args
+        self.assertEqual(
+            call.kwargs["params"]["filter"],
+            "title.search:fluid structure interaction",
+        )
+
+    def test_discovery_rejects_invalid_search_field(self) -> None:
+        provider = OpenAlexProvider(self.transport)
+        with self.assertRaisesRegex(ValueError, "search_field"):
+            provider.discover("query", search_field="fulltext")
+        self.transport.json.assert_not_called()
+
     def test_discovery_diagnostics_report_total_pages_and_truncation(self) -> None:
         self.transport.json.side_effect = [
             {
