@@ -5,7 +5,12 @@ from __future__ import annotations
 import unittest
 from unittest.mock import Mock
 
-from bibreview.providers.openalex import OpenAlexError, OpenAlexProvider, openalex_abstract
+from bibreview.providers.openalex import (
+    OpenAlexDiscoveryResult,
+    OpenAlexError,
+    OpenAlexProvider,
+    openalex_abstract,
+)
 
 
 class OpenAlexAbstractTests(unittest.TestCase):
@@ -164,14 +169,14 @@ class OpenAlexProviderTests(unittest.TestCase):
                     {"doi": "10.1000/abc"},
                     {"doi": None},
                 ],
-                "meta": {"next_cursor": "page-2"},
+                "meta": {"count": 5, "next_cursor": "page-2"},
             },
             {
                 "results": [
                     {"doi": "https://doi.org/10.1000/DEF"},
                     {"doi": "not-a-doi"},
                 ],
-                "meta": {"next_cursor": None},
+                "meta": {"count": 5, "next_cursor": None},
             },
         ]
         provider = OpenAlexProvider(self.transport, api_key="secret")
@@ -187,10 +192,59 @@ class OpenAlexProviderTests(unittest.TestCase):
         self.assertEqual(first.kwargs["params"]["cursor"], "*")
         self.assertEqual(self.transport.json.call_count, 2)
 
+    def test_discovery_diagnostics_report_total_pages_and_truncation(self) -> None:
+        self.transport.json.side_effect = [
+            {
+                "results": [
+                    {"doi": "10.1000/a"},
+                    {"doi": None},
+                ],
+                "meta": {"count": 450, "next_cursor": "page-2"},
+            },
+            {
+                "results": [{"doi": "10.1000/b"}],
+                "meta": {"count": 450, "next_cursor": "page-3"},
+            },
+        ]
+        provider = OpenAlexProvider(self.transport)
+
+        result = provider.discover_detailed("query", max_pages=2)
+
+        self.assertIsInstance(result, OpenAlexDiscoveryResult)
+        self.assertEqual(result.candidates, ("10.1000/a", "10.1000/b"))
+        self.assertEqual(result.total_matches, 450)
+        self.assertEqual(result.pages_fetched, 2)
+        self.assertEqual(result.works_examined, 3)
+        self.assertTrue(result.truncated)
+        self.assertEqual(
+            result.data(),
+            {
+                "total_matches": 450,
+                "pages_fetched": 2,
+                "works_examined": 3,
+                "doi_candidates": 2,
+                "truncated": True,
+            },
+        )
+
+    def test_discovery_diagnostics_report_exhausted_result(self) -> None:
+        self.transport.json.return_value = {
+            "results": [{"doi": "10.1000/a"}],
+            "meta": {"count": 1, "next_cursor": None},
+        }
+        provider = OpenAlexProvider(self.transport)
+
+        result = provider.discover_detailed("query", max_pages=20)
+
+        self.assertEqual(result.total_matches, 1)
+        self.assertEqual(result.pages_fetched, 1)
+        self.assertEqual(result.works_examined, 1)
+        self.assertFalse(result.truncated)
+
     def test_repeated_cursor_stops_pagination(self) -> None:
         self.transport.json.side_effect = [
-            {"results": [], "meta": {"next_cursor": "same"}},
-            {"results": [], "meta": {"next_cursor": "same"}},
+            {"results": [], "meta": {"count": 0, "next_cursor": "same"}},
+            {"results": [], "meta": {"count": 0, "next_cursor": "same"}},
         ]
         provider = OpenAlexProvider(self.transport)
         self.assertEqual(provider.discover("query", max_pages=10), ())
@@ -198,8 +252,8 @@ class OpenAlexProviderTests(unittest.TestCase):
 
     def test_page_limit_is_respected(self) -> None:
         self.transport.json.side_effect = [
-            {"results": [{"doi": "10.1000/a"}], "meta": {"next_cursor": "two"}},
-            {"results": [{"doi": "10.1000/b"}], "meta": {"next_cursor": "three"}},
+            {"results": [{"doi": "10.1000/a"}], "meta": {"count": 300, "next_cursor": "two"}},
+            {"results": [{"doi": "10.1000/b"}], "meta": {"count": 300, "next_cursor": "three"}},
         ]
         provider = OpenAlexProvider(self.transport)
         self.assertEqual(provider.discover("query", max_pages=1), ("10.1000/a",))
@@ -212,6 +266,18 @@ class OpenAlexProviderTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "max_pages"):
             provider.discover("query", max_pages=0)
         self.transport.json.assert_not_called()
+
+    def test_discovery_diagnostics_reject_invalid_meta_count(self) -> None:
+        provider = OpenAlexProvider(self.transport)
+        for count in (-1, True, "10"):
+            with self.subTest(count=count):
+                self.transport.json.reset_mock()
+                self.transport.json.return_value = {
+                    "results": [],
+                    "meta": {"count": count, "next_cursor": None},
+                }
+                with self.assertRaisesRegex(OpenAlexError, "meta.count"):
+                    provider.discover_detailed("query")
 
     def test_unexpected_page_shape_is_rejected(self) -> None:
         provider = OpenAlexProvider(self.transport)
