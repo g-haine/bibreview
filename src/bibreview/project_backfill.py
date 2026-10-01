@@ -10,7 +10,12 @@ from types import MappingProxyType
 from typing import Any, Mapping
 
 from .config import BibReviewConfig
-from .pipeline.backfill import BackfillCandidate, BackfillResult, backfill
+from .pipeline.backfill import (
+    BackfillCandidate,
+    BackfillResult,
+    backfill,
+    manual_backfill,
+)
 from .providers.base import AbstractEvidence
 from .pipeline.collect import (
     BatchWorkProvider,
@@ -37,6 +42,8 @@ def _backfill_candidate_data(item: BackfillCandidate) -> dict[str, Any]:
     }
     if item.review_required:
         data["review_required"] = True
+    if item.manual:
+        data["manual"] = True
     if item.evidence:
         data["evidence"] = [
             {
@@ -166,7 +173,7 @@ def backfill_review_from_data(value: Any) -> BackfillReview:
                 raise ProjectStateError(
                     f"backfill candidate {index}.{name} must be a string"
                 )
-            if name not in {"title", "proposed_value"} and not item:
+            if name not in {"title", "proposed_value", "doi"} and not item:
                 raise ProjectStateError(
                     f"backfill candidate {index}.{name} must not be empty"
                 )
@@ -176,6 +183,11 @@ def backfill_review_from_data(value: Any) -> BackfillReview:
         if not isinstance(review_required, bool):
             raise ProjectStateError(
                 f"backfill candidate {index}.review_required must be a boolean"
+            )
+        manual = raw.get("manual", False)
+        if not isinstance(manual, bool):
+            raise ProjectStateError(
+                f"backfill candidate {index}.manual must be a boolean"
             )
         raw_evidence = raw.get("evidence", [])
         if not isinstance(raw_evidence, list):
@@ -209,6 +221,7 @@ def backfill_review_from_data(value: Any) -> BackfillReview:
                 BackfillCandidate(
                     **data,
                     review_required=review_required,
+                    manual=manual,
                     evidence=tuple(evidence),
                 )
             )
@@ -244,13 +257,14 @@ def load_project_backfill_review(config: BibReviewConfig) -> BackfillReview:
 def plan_project_backfill(
     config: BibReviewConfig,
     *,
-    provider: WorkProvider,
     fields: tuple[str, ...],
+    provider: WorkProvider | None = None,
     types: tuple[str, ...] = (),
     enrichment_lookup: EnrichmentLookup | None = None,
     batch_provider: BatchWorkProvider | None = None,
     enrichment_many_lookup: EnrichmentManyLookup | None = None,
     reporter: Reporter | None = None,
+    manual: bool = False,
 ) -> ProjectBackfillPlan:
     """Build and persist proposals without touching collected/canonical state."""
     staged = (
@@ -268,16 +282,28 @@ def plan_project_backfill(
         if config.paths.bibliography.exists()
         else ()
     )
-    result: BackfillResult = backfill(
-        existing,
-        provider=provider,
-        fields=fields,
-        types=types,
-        enrichment_lookup=enrichment_lookup,
-        batch_provider=batch_provider,
-        enrichment_many_lookup=enrichment_many_lookup,
-        reporter=reporter,
-    )
+    if manual:
+        result: BackfillResult = manual_backfill(
+            existing,
+            fields=fields,
+            types=types,
+            reporter=reporter,
+        )
+    else:
+        if provider is None:
+            raise ProjectStateError(
+                "automatic backfill requires a configured metadata provider"
+            )
+        result = backfill(
+            existing,
+            provider=provider,
+            fields=fields,
+            types=types,
+            enrichment_lookup=enrichment_lookup,
+            batch_provider=batch_provider,
+            enrichment_many_lookup=enrichment_many_lookup,
+            reporter=reporter,
+        )
     review = BackfillReview(
         fields=tuple(dict.fromkeys(fields)),
         types=tuple(dict.fromkeys(types)),
