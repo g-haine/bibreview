@@ -6,7 +6,7 @@ databases and static scholarly websites.**
 It automates repetitive bibliographic work while keeping ambiguous decisions,
 provider disagreements, and canonical changes inspectable by a human maintainer.
 
-Current release line: **v1.7.0**.
+Current release line: **v1.7.1**.
 
 ## What BibReview is for
 
@@ -44,7 +44,7 @@ For reproducible use, install an exact release tag:
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.7.0"
+python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.7.1"
 
 bibreview --version
 ~~~
@@ -173,7 +173,7 @@ Routine maintenance is split into focused workflows rather than one destructive
 | `audit` | Compare canonical records with current provider evidence in resumable batches. |
 | `references` | Rebuild and review reference-list evidence without silent canonical replacement. |
 | `refresh` | Review safe fills for configured incomplete/stale records. |
-| `backfill` | Propose enrichment for a specific missing canonical field. |
+| `backfill` | Propose provider enrichment or request a reviewed manual value for a missing field. |
 | `hygiene` | Inspect and review structured-text/title/citation cleanup. |
 | `authors` | Resolve contributor identity mappings. |
 | `render` | Reconcile generated Jekyll bibliography artifacts. |
