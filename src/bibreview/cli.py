@@ -1403,6 +1403,20 @@ def main(argv: list[str] | None = None) -> int:
                     print(json.dumps(payload, ensure_ascii=False, indent=2))
                 elif not args.quiet:
                     print(f"Dry run: {plan.summary()}")
+                    if discovery_diagnostics is not None:
+                        total = (
+                            str(discovery_diagnostics.total_matches)
+                            if discovery_diagnostics.total_matches is not None
+                            else "unknown"
+                        )
+                        print(
+                            "OpenAlex discovery: "
+                            f"{total} matching work(s); "
+                            f"{discovery_diagnostics.works_examined} examined "
+                            f"across {discovery_diagnostics.pages_fetched} page(s); "
+                            f"{len(discovery_diagnostics.candidates)} DOI candidate(s); "
+                            f"truncated: {'yes' if discovery_diagnostics.truncated else 'no'}."
+                        )
                     if plan.batch is not None:
                         print(
                             f"Would audit {len(plan.batch.keys)} publication(s) "
@@ -1745,6 +1759,7 @@ def main(argv: list[str] | None = None) -> int:
 
         services = None
         candidates = None
+        discovery_diagnostics = None
         try:
             campaign_exists = config.initialization.campaign.exists()
             report_exists = config.initialization.report.exists()
@@ -1756,10 +1771,22 @@ def main(argv: list[str] | None = None) -> int:
             if not campaign_exists:
                 validate_project_init_start(config)
                 services = build_discovery_services(config, reporter=reporter)
-                candidates = services.discovery_provider.discover(
-                    config.discovery.query,
-                    max_pages=config.discovery.max_pages,
+                detailed_discovery = getattr(
+                    services.discovery_provider,
+                    "discover_detailed",
+                    None,
                 )
+                if callable(detailed_discovery):
+                    discovery_diagnostics = detailed_discovery(
+                        config.discovery.query,
+                        max_pages=config.discovery.max_pages,
+                    )
+                    candidates = discovery_diagnostics.candidates
+                else:
+                    candidates = services.discovery_provider.discover(
+                        config.discovery.query,
+                        max_pages=config.discovery.max_pages,
+                    )
 
             plan = plan_project_init_batch(
                 config,
@@ -1774,6 +1801,11 @@ def main(argv: list[str] | None = None) -> int:
                     "batch_id": plan.batch.id if plan.batch is not None else None,
                     "keys": list(plan.batch.keys) if plan.batch is not None else [],
                     "needs_screening": plan.needs_screening,
+                    "discovery": (
+                        discovery_diagnostics.data()
+                        if discovery_diagnostics is not None
+                        else None
+                    ),
                     "progress": {
                         **progress.data(),
                         "exhausted": progress.exhausted,
@@ -1840,6 +1872,11 @@ def main(argv: list[str] | None = None) -> int:
                 json.dumps(
                     {
                         "batch_id": execution.batch_id,
+                        "discovery": (
+                            discovery_diagnostics.data()
+                            if discovery_diagnostics is not None
+                            else None
+                        ),
                         "screened": execution.screened,
                         "queued": execution.queued,
                         "review": execution.review,
