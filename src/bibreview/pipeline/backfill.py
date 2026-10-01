@@ -44,24 +44,31 @@ class BackfillCandidate:
     field: str
     proposed_value: str
     review_required: bool = False
+    manual: bool = False
     evidence: tuple[AbstractEvidence, ...] = ()
 
     def __post_init__(self) -> None:
         evidence = tuple(self.evidence)
         if any(not isinstance(item, AbstractEvidence) for item in evidence):
             raise TypeError("backfill candidate evidence must contain AbstractEvidence")
+        if self.manual and not self.review_required:
+            raise ValueError("manual backfill candidate must require human review")
+        if not self.doi and not self.manual:
+            raise ValueError("non-manual backfill candidate requires a DOI")
+        if self.manual and evidence:
+            raise ValueError("manual backfill candidate must not define provider evidence")
         if self.review_required:
-            if self.field != "abstract":
+            if not self.manual and self.field != "abstract":
                 raise ValueError(
-                    "review-required backfill candidates are currently abstract-only"
+                    "provider review-required backfill candidates are currently abstract-only"
                 )
             if self.proposed_value:
                 raise ValueError(
                     "review-required backfill candidate must not define proposed_value"
                 )
-            if not evidence:
+            if not self.manual and not evidence:
                 raise ValueError(
-                    "review-required backfill candidate requires provider evidence"
+                    "provider review-required backfill candidate requires provider evidence"
                 )
         object.__setattr__(self, "evidence", evidence)
 
@@ -172,6 +179,73 @@ def _prefetch_work_messages(
                 reporter=reporter,
             )
     return result
+
+
+def manual_backfill(
+    publications: Iterable[Publication],
+    *,
+    fields: Iterable[str],
+    types: Iterable[str] = (),
+    reporter: Reporter | None = None,
+) -> BackfillResult:
+    """Create human-review candidates for semantically missing scalar fields.
+
+    Manual mode performs no provider lookup. It is therefore also available for
+    canonical publications without a DOI. Every candidate has no automatic
+    proposed value and must be resolved explicitly with a custom value, reject,
+    or defer decision.
+    """
+    publication_values = tuple(publications)
+    requested_fields = tuple(dict.fromkeys(fields))
+    if not requested_fields:
+        raise ValueError("backfill requires at least one field")
+    unsupported = set(requested_fields) - BACKFILL_FIELDS
+    if unsupported:
+        raise ValueError(
+            "unsupported backfill field(s): " + ", ".join(sorted(unsupported))
+        )
+
+    selected_types = set(types)
+    progress = reporter or Reporter(-1)
+    candidates: list[BackfillCandidate] = []
+    eligible_count = 0
+
+    for publication in publication_values:
+        if selected_types and publication.type not in selected_types:
+            continue
+        missing = tuple(
+            field
+            for field in requested_fields
+            if is_missing_metadata_value(field, getattr(publication, field))
+        )
+        if not missing:
+            continue
+
+        eligible_count += 1
+        label = publication.doi or f"id:{publication.id}"
+        progress.detail(
+            f"{label}: manual backfill candidate ({', '.join(missing)})"
+        )
+        for field in missing:
+            candidates.append(
+                BackfillCandidate(
+                    publication_id=publication.id,
+                    doi=publication.doi or "",
+                    title=publication.title,
+                    field=field,
+                    proposed_value="",
+                    review_required=True,
+                    manual=True,
+                )
+            )
+
+    return BackfillResult(
+        scanned_count=len(publication_values),
+        eligible_count=eligible_count,
+        candidates=tuple(candidates),
+        unavailable=(),
+        no_value=(),
+    )
 
 
 def backfill(
