@@ -1,4 +1,4 @@
-"""Persist networked missing-field proposals outside canonical staging."""
+"""Persist reviewed missing-field proposals outside canonical staging."""
 
 from __future__ import annotations
 
