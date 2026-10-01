@@ -18,6 +18,17 @@ bibreview --dry-run init --batch-size 10
 bibreview init --batch-size 10
 ~~~
 
+Before starting the real campaign, inspect the dry-run discovery diagnostics.
+In JSON mode they distinguish:
+
+- OpenAlex total matching works;
+- works actually examined under `discovery.max_pages`;
+- unique DOI candidates retained;
+- whether paging was truncated by the configured page limit.
+
+A large campaign `progress.total` alone must not be interpreted as the full
+OpenAlex result count.
+
 The current batch is screened into the ordinary DOI queues. Review
 `checkID.txt`, then use the existing collection and merge boundary:
 
