@@ -427,16 +427,28 @@ def _project_sets(config: BibReviewConfig) -> dict[str, set[str]]:
         "staged": _staged_dois(config),
         "merged": _canonical_dois(config),
     }
-    keys = tuple(values)
-    for index, left in enumerate(keys):
-        for right in keys[index + 1 :]:
-            overlap = values[left] & values[right]
-            if overlap:
-                sample = sorted(overlap)[0]
-                raise ProjectStateError(
-                    f"{sample}: initialization candidate appears in both "
-                    f"{left} and {right} project state"
-                )
+
+    # Collection deliberately stages accepted pending DOI values without
+    # removing them from newID.txt. Therefore queued/staged overlap is the
+    # expected transient state between collect and merge.
+    incompatible = (
+        ("queued", "review"),
+        ("queued", "rejected"),
+        ("review", "rejected"),
+        ("review", "staged"),
+        ("review", "merged"),
+        ("rejected", "staged"),
+        ("rejected", "merged"),
+        ("staged", "merged"),
+    )
+    for left, right in incompatible:
+        overlap = values[left] & values[right]
+        if overlap:
+            sample = sorted(overlap)[0]
+            raise ProjectStateError(
+                f"{sample}: initialization candidate appears in both "
+                f"{left} and {right} project state"
+            )
     return values
 
 
@@ -690,13 +702,16 @@ def project_init_status(config: BibReviewConfig) -> ProjectInitStatus:
     )
     current = _current_open_batch(campaign)
     progress = campaign_progress(campaign)
+    staged = campaign_keys & project["staged"]
+    merged = campaign_keys & project["merged"]
+    queued = (campaign_keys & project["queued"]) - staged - merged
     return ProjectInitStatus(
         total=len(campaign.items),
         unscreened=unscreened,
-        queued=len(campaign_keys & project["queued"]),
+        queued=len(queued),
         review=len(campaign_keys & project["review"]),
-        staged=len(campaign_keys & project["staged"]),
-        merged=len(campaign_keys & project["merged"]),
+        staged=len(staged - merged),
+        merged=len(merged),
         rejected=len(campaign_keys & project["rejected"]),
         skipped=len(skipped),
         retryable=progress.retryable,
