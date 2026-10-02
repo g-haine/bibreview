@@ -288,6 +288,55 @@ class CliTests(unittest.TestCase):
             "@article{new}\n",
         )
 
+    def test_collect_reports_invalid_metadata_with_doi_and_continues(self):
+        write_bibliography(self.config.paths.collected, [])
+        self.config.paths.pending.write_text(
+            "10.1/invalid\n10.1/new\n",
+            encoding="utf-8",
+        )
+
+        class MixedProvider:
+            def work(self, doi):
+                if doi == "10.1/invalid":
+                    return {
+                        "type": "journal-article",
+                        "title": ["Invalid publication"],
+                        "author": [],
+                        "editor": [],
+                        "container-title": ["Journal"],
+                        "created": {"date-parts": [[2026, 9, 17]]},
+                        "published-print": {"date-parts": [[2026]]},
+                    }
+                return FakeProvider().work(doi)
+
+        services = SimpleNamespace(
+            provider=MixedProvider(),
+            enrichment_lookup=None,
+            citation_lookup=None,
+            bibtex_lookup=lambda doi: "@article{new}\n",
+        )
+        stdout = StringIO()
+        stderr = StringIO()
+
+        with patch(
+            "bibreview.cli.build_collection_services",
+            return_value=services,
+        ), redirect_stdout(stdout), redirect_stderr(stderr):
+            code = main([
+                "--config", str(self.config_path),
+                "--dry-run",
+                "collect",
+            ])
+
+        self.assertEqual(code, 0, stderr.getvalue())
+        self.assertIn("collected: 1", stdout.getvalue())
+        self.assertIn("invalid: 1", stdout.getvalue())
+        self.assertIn(
+            "Invalid metadata (review required): "
+            "10.1/invalid: publication must contain at least one author or editor",
+            stdout.getvalue(),
+        )
+
     def test_render_dry_run_apply_and_noop(self):
         self.config_path.write_text(
             CONFIG.replace(
