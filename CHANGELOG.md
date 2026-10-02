@@ -4,6 +4,11 @@ All notable BibReview releases are documented here.
 
 ## Unreleased
 
+- add explicit `relevance.reject_patterns` for conservative three-way
+  relevance triage: accept-only matches are queued, reject-only matches are
+  rejected, conflicting matches require manual review, and unmatched works keep
+  the existing project policy;
+
 - isolate candidate-local structural metadata failures during `collect` so one
   malformed provider record no longer aborts valid candidates in the same batch;
   report each failing DOI and reason explicitly while leaving it pending for

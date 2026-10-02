@@ -157,16 +157,29 @@ metadata through CrossRef.
 relevance:
   patterns:
     - 'fluid[-\s]+structure'
+  reject_patterns:
+    - 'experimental[-\s]+test[-\s]+bench'
   unmatched: manual-review
 ~~~
 
-Patterns are regular expressions. **unmatched** can be:
+Both `patterns` and `reject_patterns` are case-insensitive regular
+expressions evaluated against the same title/abstract/keyword screening text.
+
+Triage is deliberately conservative:
+
+- an accept-pattern match only goes to the pending collection queue;
+- a reject-pattern match only goes to the rejected queue;
+- a work matching both accept and reject patterns goes to manual review;
+- a work matching neither follows **unmatched**.
+
+**unmatched** can be:
 
 - **manual-review** — unmatched supported works go to the review queue;
 - **reject** — unmatched supported works go directly to the rejected queue.
 
-Prefer conservative patterns and human review over an over-aggressive reject
-rule.
+Omitting `reject_patterns` preserves the previous behavior. Prefer narrow,
+high-confidence rejection rules; conflicting evidence is intentionally surfaced
+for human review instead of being auto-rejected.
 
 ## Initialization state
 

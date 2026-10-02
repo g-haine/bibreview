@@ -84,6 +84,7 @@ references:
 relevance:
   patterns:
     - 'fluid[-\\s]+structure'
+  reject_patterns: []
   unmatched: manual-review
 
 providers:

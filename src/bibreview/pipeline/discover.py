@@ -73,6 +73,7 @@ def discover(
     known: Iterable[str] = (),
     rejected: Iterable[str] = (),
     patterns: Iterable[str] = (),
+    reject_patterns: Iterable[str] = (),
     unmatched: str = "manual-review",
     accepted_types: Iterable[str] = DEFAULT_ACCEPTED_TYPES,
     excluded_doi_substrings: Iterable[str] = (),
@@ -99,6 +100,7 @@ def discover(
         if str(value).strip()
     )
     relevance_patterns = tuple(patterns)
+    relevance_reject_patterns = tuple(reject_patterns)
 
     unique: list[str] = []
     seen: set[str] = set()
@@ -148,9 +150,19 @@ def discover(
             )
             if part
         )
-        if is_relevant(text, relevance_patterns):
+        accepted_by_pattern = is_relevant(text, relevance_patterns)
+        rejected_by_pattern = is_relevant(text, relevance_reject_patterns)
+        if accepted_by_pattern and rejected_by_pattern:
+            review.append(doi)
+            progress.detail(
+                f"{doi}: queued for manual relevance check (accept/reject conflict)"
+            )
+        elif accepted_by_pattern:
             queued.append(doi)
             progress.detail(f"{doi}: queued for collection")
+        elif rejected_by_pattern:
+            newly_rejected.append(doi)
+            progress.detail(f"{doi}: rejected by configured relevance pattern")
         elif unmatched == "manual-review":
             review.append(doi)
             progress.detail(f"{doi}: queued for manual relevance check")
