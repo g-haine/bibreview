@@ -4,6 +4,11 @@ All notable BibReview releases are documented here.
 
 ## Unreleased
 
+- isolate candidate-local structural metadata failures during `collect` so one
+  malformed provider record no longer aborts valid candidates in the same batch;
+  report each failing DOI and reason explicitly while leaving it pending for
+  human review instead of auto-rejecting it;
+
 - make `bibreview --dry-run init` report the actual pending screening work:
   show the number of candidates that still need provider screening, and say
   explicitly when the current batch is already screened instead of implying
