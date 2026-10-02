@@ -388,6 +388,48 @@ class CollectionTests(unittest.TestCase):
         )
         self.assertEqual(len({publication.id for publication in result.publications}), 2)
 
+    def test_collect_isolates_invalid_metadata_and_continues(self):
+        invalid = message("Invalid publication")
+        invalid["author"] = []
+        invalid["editor"] = []
+        provider = FakeProvider({
+            "10.1/invalid": invalid,
+            "10.1/valid": message("Valid publication"),
+        })
+
+        result = collect(
+            ["10.1/invalid", "10.1/valid"],
+            provider=provider,
+        )
+
+        self.assertEqual(provider.calls, ["10.1/invalid", "10.1/valid"])
+        self.assertEqual(
+            [item.publication.doi for item in result.items],
+            ["10.1/valid"],
+        )
+        self.assertEqual(len(result.invalid), 1)
+        self.assertEqual(result.invalid[0].doi, "10.1/invalid")
+        self.assertIn("at least one author or editor", result.invalid[0].reason)
+
+    def test_invalid_metadata_does_not_consume_slug(self):
+        invalid = message("Shared title")
+        invalid["author"] = []
+        invalid["editor"] = []
+        provider = FakeProvider({
+            "10.1/invalid": invalid,
+            "10.1/valid": message("Shared title"),
+        })
+
+        result = collect(
+            ["10.1/invalid", "10.1/valid"],
+            provider=provider,
+        )
+
+        self.assertEqual(
+            result.items[0].publication.permalink,
+            "shared-title",
+        )
+
     def test_collect_can_attach_bibtex_without_owning_bibtex_provider(self):
         provider = FakeProvider({"10.1/new": message()})
         result = collect(
