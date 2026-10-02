@@ -171,6 +171,15 @@ def _enable_interactive_line_editing() -> None:
         return
 
 
+def _print_collection_failures(plan) -> None:
+    """Print candidate-local collection failures that require human review."""
+    for failure in plan.result.invalid:
+        print(
+            f"Invalid metadata (review required): "
+            f"{failure.doi}: {failure.reason}"
+        )
+
+
 def _audit_progress_data(campaign) -> dict[str, object]:
     progress = campaign_progress(campaign)
     return {
@@ -1952,6 +1961,7 @@ def main(argv: list[str] | None = None) -> int:
             if args.dry_run:
                 if not args.quiet:
                     print(f"Dry run: {plan.summary()}")
+                    _print_collection_failures(plan)
                 return 0
             apply_project_collection(plan)
         except (OSError, StorageError, ValueError, TypeError) as error:
@@ -1959,6 +1969,7 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         if not args.quiet:
             print(plan.summary())
+            _print_collection_failures(plan)
             if not plan.changed:
                 print("No pending DOI state changes.")
         return 0
