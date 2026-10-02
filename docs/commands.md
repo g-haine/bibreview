@@ -65,6 +65,12 @@ bibreview --dry-run merge
 bibreview merge
 ~~~
 
+If one pending DOI has structurally invalid provider metadata, `collect`
+isolates that candidate instead of aborting the whole batch. Valid publications
+are still staged, while the invalid DOI remains in the pending queue and is
+reported with its reason as requiring explicit human review. BibReview never
+moves such a candidate to `badID.txt` automatically.
+
 Run `bibreview init` again. BibReview observes the canonical/rejected outcome
 of the current batch, closes it only when fully resolved, and then opens the
 next stable batch. It never invokes `collect`, `merge`, `authors`, or
