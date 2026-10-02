@@ -256,6 +256,7 @@ class ReferencesConfig:
 @dataclass(frozen=True)
 class RelevanceConfig:
     patterns: tuple[str, ...] = ()
+    reject_patterns: tuple[str, ...] = ()
     unmatched: str = "manual-review"
 
 
@@ -604,10 +605,27 @@ def load_config(path: str | Path = "bibreview.yml") -> BibReviewConfig:
             re.compile(pattern, re.IGNORECASE)
         except re.error as error:
             raise ConfigError(f"invalid relevance.patterns[{index}]: {error}") from error
+    reject_patterns_raw = relevance_raw.get("reject_patterns", [])
+    if not isinstance(reject_patterns_raw, list) or any(
+        not isinstance(v, str) for v in reject_patterns_raw
+    ):
+        raise ConfigError("relevance.reject_patterns must be a list of strings")
+    reject_patterns = tuple(reject_patterns_raw)
+    for index, pattern in enumerate(reject_patterns, 1):
+        try:
+            re.compile(pattern, re.IGNORECASE)
+        except re.error as error:
+            raise ConfigError(
+                f"invalid relevance.reject_patterns[{index}]: {error}"
+            ) from error
     unmatched = _string(relevance_raw.get("unmatched"), "relevance.unmatched") or "manual-review"
     if unmatched not in {"manual-review", "reject"}:
         raise ConfigError("relevance.unmatched must be 'manual-review' or 'reject'")
-    relevance = RelevanceConfig(patterns=patterns, unmatched=unmatched)
+    relevance = RelevanceConfig(
+        patterns=patterns,
+        reject_patterns=reject_patterns,
+        unmatched=unmatched,
+    )
 
     providers_raw = _mapping(raw.get("providers"), "providers")
     providers: dict[str, ProviderConfig] = {}
