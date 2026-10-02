@@ -263,6 +263,61 @@ class ProjectInitTests(unittest.TestCase):
         with self.assertRaisesRegex(ProjectStateError, "empty pending"):
             validate_project_init_start(self.config)
 
+    def test_status_treats_collected_pending_candidate_as_staged(self):
+        plan = plan_project_init_batch(
+            self.config,
+            candidates=("10.1/a",),
+        )
+        apply_project_init_plan(plan)
+        execute_project_init_batch(
+            self.config,
+            batch_id=plan.batch.id,
+            provider=FakeWorkProvider({
+                "10.1/a": work("Fluid-structure interaction"),
+            }),
+        )
+
+        write_bibliography(
+            self.config.paths.collected,
+            (publication("10.1/a", "Staged A"),),
+        )
+
+        status = project_init_status(self.config)
+
+        self.assertEqual(status.queued, 0)
+        self.assertEqual(status.staged, 1)
+        self.assertEqual(status.merged, 0)
+        self.assertEqual(status.current_batch, "batch-0001")
+        self.assertFalse(status.complete)
+
+        waiting = plan_project_init_batch(self.config)
+        self.assertEqual(waiting.batch.id, "batch-0001")
+        self.assertFalse(waiting.needs_screening)
+
+    def test_status_still_rejects_incompatible_review_staging_overlap(self):
+        plan = plan_project_init_batch(
+            self.config,
+            candidates=("10.1/a",),
+        )
+        apply_project_init_plan(plan)
+        execute_project_init_batch(
+            self.config,
+            batch_id=plan.batch.id,
+            provider=FakeWorkProvider({
+                "10.1/a": work("Another coupled model"),
+            }),
+        )
+        write_bibliography(
+            self.config.paths.collected,
+            (publication("10.1/a", "Staged A"),),
+        )
+
+        with self.assertRaisesRegex(
+            ProjectStateError,
+            "both review and staged project state",
+        ):
+            project_init_status(self.config)
+
     def test_status_is_derived_from_persisted_state(self):
         plan = plan_project_init_batch(
             self.config,
