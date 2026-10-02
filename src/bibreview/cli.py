@@ -1825,10 +1825,16 @@ def main(argv: list[str] | None = None) -> int:
                 elif not args.quiet:
                     print(f"Dry run: {plan.summary()}")
                     if plan.batch is not None:
-                        print(
-                            f"Would initialize {len(plan.batch.keys)} candidate(s) "
-                            f"in {plan.batch.id}."
-                        )
+                        if plan.needs_screening:
+                            print(
+                                f"Would screen {len(plan.screening_keys)} candidate(s) "
+                                f"in {plan.batch.id}."
+                            )
+                        else:
+                            print(
+                                f"Current initialization batch {plan.batch.id} is "
+                                "already screened; no provider screening would run."
+                            )
                 return 0
 
             apply_project_init_plan(plan)

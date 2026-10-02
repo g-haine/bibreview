@@ -89,15 +89,20 @@ class ProjectInitBatchPlan:
         return bool(self.outputs)
 
     @property
-    def needs_screening(self) -> bool:
+    def screening_keys(self) -> tuple[str, ...]:
         if self.batch is None:
-            return False
+            return ()
         outcomes = {entry.doi for entry in self.report.entries}
         states = {item.key: item.state for item in self.campaign.items}
-        return any(
-            states.get(key) == "active" and key not in outcomes
+        return tuple(
+            key
             for key in self.batch.keys
+            if states.get(key) == "active" and key not in outcomes
         )
+
+    @property
+    def needs_screening(self) -> bool:
+        return bool(self.screening_keys)
 
     def summary(self) -> str:
         progress = campaign_progress(self.campaign)

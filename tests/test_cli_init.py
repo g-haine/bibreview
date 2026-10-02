@@ -149,6 +149,71 @@ class InitCliTests(unittest.TestCase):
         self.assertFalse(self.config.initialization.campaign.exists())
         self.assertFalse(self.config.initialization.report.exists())
 
+    def test_dry_run_text_reports_only_candidates_that_need_screening(self):
+        services = self.services()
+        stdout = StringIO()
+        stderr = StringIO()
+
+        with patch(
+            "bibreview.cli.build_discovery_services",
+            return_value=services,
+        ), redirect_stdout(stdout), redirect_stderr(stderr):
+            code = main([
+                "--config",
+                str(self.config_path),
+                "--dry-run",
+                "init",
+                "--batch-size",
+                "1",
+            ])
+
+        self.assertEqual(code, 0, stderr.getvalue())
+        self.assertIn(
+            "Would screen 1 candidate(s) in batch-0001.",
+            stdout.getvalue(),
+        )
+        self.assertNotIn("Would initialize", stdout.getvalue())
+
+    def test_dry_run_text_reports_already_screened_open_batch(self):
+        services = self.services()
+        with patch(
+            "bibreview.cli.build_discovery_services",
+            return_value=services,
+        ), redirect_stdout(StringIO()), redirect_stderr(StringIO()):
+            self.assertEqual(
+                main([
+                    "--config",
+                    str(self.config_path),
+                    "init",
+                    "--batch-size",
+                    "1",
+                ]),
+                0,
+            )
+
+        stdout = StringIO()
+        stderr = StringIO()
+        with patch(
+            "bibreview.cli.build_discovery_services",
+            side_effect=AssertionError("provider services must not be built"),
+        ), redirect_stdout(stdout), redirect_stderr(stderr):
+            code = main([
+                "--config",
+                str(self.config_path),
+                "--dry-run",
+                "init",
+                "--batch-size",
+                "1",
+            ])
+
+        self.assertEqual(code, 0, stderr.getvalue())
+        self.assertIn(
+            "Current initialization batch batch-0001 is already screened; "
+            "no provider screening would run.",
+            stdout.getvalue(),
+        )
+        self.assertNotIn("Would initialize", stdout.getvalue())
+
     def test_dry_run_reports_openalex_discovery_diagnostics(self):
         services = SimpleNamespace(
             discovery_provider=FakeDetailedDiscoveryProvider(

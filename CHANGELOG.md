@@ -4,6 +4,11 @@ All notable BibReview releases are documented here.
 
 ## Unreleased
 
+- make `bibreview --dry-run init` report the actual pending screening work:
+  show the number of candidates that still need provider screening, and say
+  explicitly when the current batch is already screened instead of implying
+  that the whole batch would be initialized again;
+
 - treat the expected `newID.txt` + `collected.json` overlap after `collect`
   as staged initialization state rather than a project-state conflict;
 
