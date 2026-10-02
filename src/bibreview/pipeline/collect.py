@@ -47,6 +47,14 @@ class CollectedItem:
 
 
 @dataclass(frozen=True)
+class CollectionFailure:
+    """One DOI whose provider metadata cannot build a canonical publication."""
+
+    doi: str
+    reason: str
+
+
+@dataclass(frozen=True)
 class CollectionResult:
     """Complete read-only result of one collection pass."""
 
@@ -54,6 +62,7 @@ class CollectionResult:
     candidates: tuple[str, ...]
     items: tuple[CollectedItem, ...]
     unavailable: tuple[str, ...]
+    invalid: tuple[CollectionFailure, ...]
 
     @property
     def publications(self) -> tuple[Publication, ...]:
@@ -529,6 +538,7 @@ def collect(
     used = set(used_slugs)
     items: list[CollectedItem] = []
     unavailable: list[str] = []
+    invalid: list[CollectionFailure] = []
     for index, doi in enumerate(candidates, 1):
         progress.detail(f"[{index}/{len(candidates)}] fetching {doi}")
         message = provider.work(doi)
@@ -537,16 +547,33 @@ def collect(
             progress.detail(f"{doi}: unavailable from metadata provider")
             continue
         if not isinstance(message, Mapping):
-            raise ValueError(f"{doi}: metadata provider returned a non-mapping work record")
-        slug = _slug_for_message(doi, message, used)
-        progress.detail(f"{doi}: permalink {slug}")
-        publication = build_publication(
-            doi,
-            message,
-            slug,
-            enrichment_lookup=enrichment_lookup,
-            citation_lookup=citation_lookup,
-        )
+            reason = "metadata provider returned a non-mapping work record"
+            invalid.append(CollectionFailure(doi=doi, reason=reason))
+            progress.detail(f"{doi}: invalid metadata ({reason})")
+            continue
+
+        slug: str | None = None
+        try:
+            slug = _slug_for_message(doi, message, used)
+            progress.detail(f"{doi}: permalink {slug}")
+            publication = build_publication(
+                doi,
+                message,
+                slug,
+                enrichment_lookup=enrichment_lookup,
+                citation_lookup=citation_lookup,
+            )
+        except ValueError as error:
+            if slug is not None:
+                used.discard(slug)
+            reason = str(error)
+            prefix = f"{doi}: "
+            if reason.startswith(prefix):
+                reason = reason[len(prefix):]
+            invalid.append(CollectionFailure(doi=doi, reason=reason))
+            progress.detail(f"{doi}: invalid metadata ({reason})")
+            continue
+
         bibtex = bibtex_lookup(doi) if bibtex_lookup is not None else None
         if bibtex is not None and not isinstance(bibtex, str):
             raise TypeError("BibTeX lookup must return a string")
@@ -562,4 +589,5 @@ def collect(
         candidates=candidates,
         items=tuple(items),
         unavailable=tuple(unavailable),
+        invalid=tuple(invalid),
     )

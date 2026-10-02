@@ -113,6 +113,35 @@ class ProjectCollectionTests(unittest.TestCase):
         )
         self.assertEqual(len(read_bibliography(self.config.paths.bibliography)), 1)
 
+    def test_invalid_metadata_is_reported_and_left_pending(self):
+        write_bibliography(self.config.paths.collected, [])
+        invalid = message("Invalid publication")
+        invalid["author"] = []
+        invalid["editor"] = []
+        self.config.paths.pending.write_text(
+            "10.1/invalid\n10.1/valid\n",
+            encoding="utf-8",
+        )
+        provider = FakeProvider({
+            "10.1/invalid": invalid,
+            "10.1/valid": message("Valid publication"),
+        })
+
+        plan = plan_project_collection(self.config, provider=provider)
+
+        self.assertEqual(len(plan.result.invalid), 1)
+        self.assertEqual(plan.result.invalid[0].doi, "10.1/invalid")
+        self.assertIn("invalid: 1", plan.summary())
+
+        apply_project_collection(plan)
+
+        staged = read_bibliography(self.config.paths.collected)
+        self.assertEqual([publication.doi for publication in staged], ["10.1/valid"])
+        self.assertEqual(
+            self.config.paths.pending.read_text(encoding="utf-8"),
+            "doi:10.1/invalid\ndoi:10.1/valid\n",
+        )
+
     def test_non_doi_identifier_is_rejected_from_automated_queue(self):
         write_bibliography(self.config.paths.collected, [])
         self.config.paths.pending.write_text(

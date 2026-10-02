@@ -91,6 +91,7 @@ class ProjectCollectionPlan:
             f"candidates: {len(self.result.candidates)}; "
             f"collected: {len(self.result.items)}; "
             f"unavailable: {len(self.result.unavailable)}; "
+            f"invalid: {len(self.result.invalid)}; "
             f"existing: {self.existing_count}"
         )
 
@@ -250,7 +251,8 @@ def plan_project_collection(
     canonical ``paths.collected`` staging and remain pending until a later
     ``bibreview merge`` accepts or rejects them. DOI values unavailable from the
     metadata provider also remain pending so a later collection run can retry
-    them.
+    them. Candidate-local structural metadata failures are isolated, reported,
+    and left pending for explicit maintainer review.
 
     A non-empty staging bibliography is never overwritten: the caller must merge
     or otherwise resolve the previous batch before collecting another one.
