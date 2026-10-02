@@ -96,6 +96,36 @@ class DiscoveryTests(unittest.TestCase):
         self.assertNotIn("10.1/rejected", provider.calls)
         self.assertNotIn("10.1/zenodo-record", provider.calls)
 
+    def test_explicit_reject_patterns_and_conflicts_are_triaged_conservatively(self):
+        provider = FakeProvider({
+            "10.1/accept": {
+                "type": "journal-article",
+                "title": ["Fluid-structure interaction analysis"],
+            },
+            "10.1/reject": {
+                "type": "journal-article",
+                "title": ["Experimental test bench study"],
+            },
+            "10.1/conflict": {
+                "type": "journal-article",
+                "title": ["Experimental fluid-structure interaction analysis"],
+            },
+            "10.1/unmatched": {
+                "type": "journal-article",
+                "title": ["Generic coupled model"],
+            },
+        })
+        result = discover(
+            ["10.1/accept", "10.1/reject", "10.1/conflict", "10.1/unmatched"],
+            provider=provider,
+            patterns=(r"fluid[-\\s]+structure",),
+            reject_patterns=(r"experimental", r"test[-\\s]+bench"),
+            unmatched="manual-review",
+        )
+        self.assertEqual(result.queued, ("10.1/accept",))
+        self.assertEqual(result.rejected, ("10.1/reject",))
+        self.assertEqual(result.review, ("10.1/conflict", "10.1/unmatched"))
+
     def test_unmatched_can_be_rejected_instead_of_reviewed(self):
         provider = FakeProvider({
             "10.1/no-match": {
