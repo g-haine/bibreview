@@ -4,6 +4,9 @@ All notable BibReview releases are documented here.
 
 ## Unreleased
 
+- treat the expected `newID.txt` + `collected.json` overlap after `collect`
+  as staged initialization state rather than a project-state conflict;
+
 - add `discovery.search_field` for OpenAlex projects, with `title`,
   `abstract`, and backward-compatible `title_and_abstract` search surfaces;
 
