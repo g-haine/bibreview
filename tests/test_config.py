@@ -482,6 +482,14 @@ class ConfigTests(unittest.TestCase):
         with self.assertRaisesRegex(ConfigError, "relevance.patterns"):
             load_config(path)
 
+    def test_rejects_invalid_relevance_reject_regex(self):
+        _, path = self.write(BASE.replace(
+            "relevance:\n",
+            "relevance:\n  reject_patterns:\n    - '[broken'\n",
+        ))
+        with self.assertRaisesRegex(ConfigError, "relevance.reject_patterns"):
+            load_config(path)
+
     def test_rejects_invalid_discovery_string_lists(self):
         for field in ("accepted_types", "exclude_doi_substrings"):
             with self.subTest(field=field):

@@ -367,6 +367,7 @@ def plan_project_discovery(
         known=already_classified,
         rejected=rejected,
         patterns=config.relevance.patterns,
+        reject_patterns=config.relevance.reject_patterns,
         unmatched=config.relevance.unmatched,
         accepted_types=config.discovery.accepted_types,
         excluded_doi_substrings=config.discovery.exclude_doi_substrings,
