@@ -340,10 +340,10 @@ class ProjectInitTests(unittest.TestCase):
 
         self.config_path.write_text(
             CONFIG.replace(
-                "  patterns:\n    - 'fluid[-\\\\s]+structure'\n",
+                "  patterns:\n    - 'fluid[-\\s]+structure'\n",
                 "  patterns:\n"
-                "    - 'fluid[-\\\\s]+structure'\n"
-                "    - 'coupled[-\\\\s]+numerical'\n"
+                "    - 'fluid[-\\s]+structure'\n"
+                "    - 'coupled[-\\s]+numerical'\n"
                 "  reject_patterns:\n"
                 "    - 'experimental'\n",
             ),
