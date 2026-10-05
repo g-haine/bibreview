@@ -242,7 +242,7 @@ class InitCliTests(unittest.TestCase):
             CONFIG.replace(
                 "  unmatched: manual-review\n",
                 "  reject_patterns:\n"
-                "    - 'another[-\\\\s]+coupled'\n"
+                "    - 'another[-\\s]+coupled'\n"
                 "  unmatched: manual-review\n",
             ),
             encoding="utf-8",
