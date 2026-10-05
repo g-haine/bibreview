@@ -10,8 +10,10 @@ from bibreview.model import Author, Publication
 from bibreview.project import ProjectStateError
 from bibreview.project_init import (
     apply_project_init_plan,
+    apply_project_init_rescreen,
     execute_project_init_batch,
     plan_project_init_batch,
+    plan_project_init_rescreen,
     project_init_status,
     validate_project_init_start,
 )
@@ -317,6 +319,118 @@ class ProjectInitTests(unittest.TestCase):
             "both review and staged project state",
         ):
             project_init_status(self.config)
+
+    def test_current_batch_rescreen_is_read_only_until_applied(self):
+        plan = plan_project_init_batch(
+            self.config,
+            candidates=("10.1/a", "10.1/b", "10.1/c", "10.1/d"),
+            batch_size=4,
+        )
+        apply_project_init_plan(plan)
+        execute_project_init_batch(
+            self.config,
+            batch_id=plan.batch.id,
+            provider=FakeWorkProvider({
+                "10.1/a": work("Fluid-structure interaction model"),
+                "10.1/b": work("Coupled numerical model"),
+                "10.1/c": work("Experimental benchmark study"),
+                "10.1/d": work("Experimental fluid-structure interaction"),
+            }),
+        )
+
+        self.config_path.write_text(
+            CONFIG.replace(
+                "  patterns:\n    - 'fluid[-\\\\s]+structure'\n",
+                "  patterns:\n"
+                "    - 'fluid[-\\\\s]+structure'\n"
+                "    - 'coupled[-\\\\s]+numerical'\n"
+                "  reject_patterns:\n"
+                "    - 'experimental'\n",
+            ),
+            encoding="utf-8",
+        )
+        config = load_config(self.config_path)
+        before = self.snapshot()
+        provider = FakeWorkProvider({
+            "10.1/a": work("Fluid-structure interaction model"),
+            "10.1/b": work("Coupled numerical model"),
+            "10.1/c": work("Experimental benchmark study"),
+            "10.1/d": work("Experimental fluid-structure interaction"),
+        })
+
+        rescreen = plan_project_init_rescreen(
+            config,
+            provider=provider,
+        )
+
+        self.assertEqual(before, self.snapshot())
+        self.assertEqual(provider.calls, ["10.1/a", "10.1/b", "10.1/c", "10.1/d"])
+        self.assertEqual(rescreen.screened, 4)
+        self.assertEqual(rescreen.queued, 2)
+        self.assertEqual(rescreen.review, 1)
+        self.assertEqual(rescreen.rejected, 1)
+        self.assertEqual(rescreen.unchanged, 1)
+        self.assertEqual(rescreen.retryable, 0)
+        self.assertEqual(rescreen.preserved, 0)
+        self.assertEqual(
+            [(item.doi, item.previous, item.proposed) for item in rescreen.changes],
+            [
+                ("10.1/b", "review", "queued"),
+                ("10.1/c", "review", "rejected"),
+                ("10.1/d", "queued", "review"),
+            ],
+        )
+
+        apply_project_init_rescreen(rescreen)
+
+        self.assertEqual(
+            config.paths.pending.read_text(encoding="utf-8"),
+            "doi:10.1/a\ndoi:10.1/b\n",
+        )
+        self.assertEqual(
+            config.paths.review.read_text(encoding="utf-8"),
+            "doi:10.1/d\n",
+        )
+        self.assertEqual(
+            config.paths.rejected.read_text(encoding="utf-8"),
+            "doi:10.1/c\n",
+        )
+        status = project_init_status(config)
+        self.assertEqual(status.queued, 2)
+        self.assertEqual(status.review, 1)
+        self.assertEqual(status.rejected, 1)
+        self.assertEqual(status.current_batch, "batch-0001")
+
+    def test_current_batch_rescreen_preserves_explicit_human_queue_move(self):
+        plan = plan_project_init_batch(
+            self.config,
+            candidates=("10.1/a",),
+        )
+        apply_project_init_plan(plan)
+        execute_project_init_batch(
+            self.config,
+            batch_id=plan.batch.id,
+            provider=FakeWorkProvider({
+                "10.1/a": work("Another coupled model"),
+            }),
+        )
+
+        self.config.paths.review.write_text("", encoding="utf-8")
+        self.config.paths.pending.write_text("doi:10.1/a\n", encoding="utf-8")
+        provider = FakeWorkProvider({
+            "10.1/a": work("Experimental fluid-structure interaction"),
+        })
+
+        rescreen = plan_project_init_rescreen(
+            self.config,
+            provider=provider,
+        )
+
+        self.assertEqual(provider.calls, [])
+        self.assertEqual(rescreen.screened, 0)
+        self.assertEqual(rescreen.preserved, 1)
+        self.assertEqual(rescreen.changes, ())
+        self.assertFalse(rescreen.changed)
 
     def test_status_is_derived_from_persisted_state(self):
         plan = plan_project_init_batch(
