@@ -86,6 +86,23 @@ bibreview init --status --json
 The status includes total candidates, unscreened, pending, manual-review,
 staged, merged, rejected, skipped, retryable, failed, and batch progress.
 
+When project relevance rules change while the current batch is still open,
+re-evaluate only its machine-screened pending/review candidates before
+continuing:
+
+~~~bash
+bibreview --dry-run init --rescreen-current
+bibreview init --rescreen-current
+~~~
+
+The dry-run performs the provider lookups and reports proposed
+`pending`/`review`/`rejected` changes without writing any project state.
+Apply mode updates the ordinary queues and initialization report consistently.
+Candidates already staged, merged, rejected, or skipped are never resurrected.
+If a candidate has been moved between pending and review since its original
+machine-screening outcome, BibReview treats that mismatch as an explicit human
+decision and preserves it.
+
 A new campaign refuses to start over a non-empty canonical bibliography,
 non-empty staging, or pre-existing acquisition queues. Existing initialization
 campaigns remain resumable after canonical records begin to accumulate.
