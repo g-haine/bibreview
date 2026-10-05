@@ -484,8 +484,9 @@ class ConfigTests(unittest.TestCase):
 
     def test_rejects_invalid_relevance_reject_regex(self):
         _, path = self.write(BASE.replace(
-            "  unmatched: manual-review\n",
-            "  reject_patterns:\n    - '[broken'\n  unmatched: manual-review\n",
+            "  patterns:\n    - 'fluid[-\\\\s]+structure'\n",
+            "  patterns:\n    - 'fluid[-\\\\s]+structure'\n"
+            "  reject_patterns:\n    - '[broken'\n",
         ))
         with self.assertRaisesRegex(ConfigError, "relevance.reject_patterns"):
             load_config(path)
