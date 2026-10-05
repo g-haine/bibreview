@@ -207,6 +207,70 @@ class ProjectInitExecution:
         )
 
 
+@dataclass(frozen=True)
+class InitRescreenChange:
+    """One proposed initialization relevance reclassification."""
+
+    doi: str
+    previous: str
+    proposed: str
+
+    def data(self) -> dict[str, str]:
+        return {
+            "doi": self.doi,
+            "previous": self.previous,
+            "proposed": self.proposed,
+        }
+
+
+@dataclass(frozen=True)
+class ProjectInitRescreenPlan:
+    """Read-only provider-backed rescreen plan for the current open batch."""
+
+    batch_id: str
+    screened: int
+    queued: int
+    review: int
+    rejected: int
+    unchanged: int
+    retryable: int
+    preserved: int
+    changes: tuple[InitRescreenChange, ...]
+    campaign: Campaign
+    report: InitReport
+    outputs: Mapping[Path, bytes]
+
+    @property
+    def changed(self) -> bool:
+        return bool(self.outputs)
+
+    def data(self) -> dict[str, Any]:
+        return {
+            "batch_id": self.batch_id,
+            "screened": self.screened,
+            "queued": self.queued,
+            "review": self.review,
+            "rejected": self.rejected,
+            "unchanged": self.unchanged,
+            "retryable": self.retryable,
+            "preserved": self.preserved,
+            "changes": [change.data() for change in self.changes],
+        }
+
+    def summary(self) -> str:
+        return (
+            f"Initialization rescreen {self.batch_id}\n"
+            f"  Screened      : {self.screened}\n"
+            f"  Pending       : {self.queued}\n"
+            f"  Manual review : {self.review}\n"
+            f"  Rejected      : {self.rejected}\n"
+            f"  Unchanged     : {self.unchanged}\n"
+            f"  Retryable     : {self.retryable}\n"
+            f"  Preserved     : {self.preserved}\n"
+            f"  Changes       : {len(self.changes)}"
+        )
+
+
 def _campaign_items(campaign: Campaign) -> tuple[str, ...]:
     return tuple(item.key for item in campaign.items)
 
@@ -687,6 +751,171 @@ def _checkpoint(
 
 def _attempt_for(campaign: Campaign, doi: str) -> int:
     return next(item.attempts for item in campaign.items if item.key == doi)
+
+
+def plan_project_init_rescreen(
+    config: BibReviewConfig,
+    *,
+    provider: WorkProvider,
+    enrichment_lookup: EnrichmentLookup | None = None,
+    reporter: Reporter | None = None,
+) -> ProjectInitRescreenPlan:
+    """Re-evaluate machine-screened active candidates in the current batch.
+
+    The plan is read-only. Candidates already staged/merged/rejected are never
+    revisited. A queue/report mismatch is treated as an explicit human decision
+    and preserved rather than overwritten.
+    """
+    progress_reporter = reporter or Reporter()
+    campaign, report = _read_state(config)
+    campaign = _reconcile_open_batch(config, campaign, report)
+    batch = _current_open_batch(campaign)
+    if batch is None:
+        raise ProjectStateError(
+            "initialization campaign has no open batch to rescreen"
+        )
+
+    project = _project_sets(config)
+    entries = {entry.doi: entry for entry in report.entries}
+    pending = list(_queue_dois(config.paths.pending))
+    review_queue = list(_queue_dois(config.paths.review))
+    rejected = list(_queue_dois(config.paths.rejected))
+
+    screened = queued_count = review_count = rejected_count = 0
+    unchanged = retryable = preserved = 0
+    changes: list[InitRescreenChange] = []
+
+    for key in batch.keys:
+        item = next(candidate for candidate in campaign.items if candidate.key == key)
+        entry = entries.get(key)
+        if item.state != "active" or entry is None:
+            continue
+        if (
+            key in project["staged"]
+            or key in project["merged"]
+            or key in project["rejected"]
+        ):
+            continue
+
+        if key in project["queued"]:
+            previous = "queued"
+        elif key in project["review"]:
+            previous = "review"
+        else:
+            continue
+
+        if entry.outcome not in {"queued", "review"} or entry.outcome != previous:
+            preserved += 1
+            continue
+
+        progress_reporter.step(f"Rescreen {key}")
+        try:
+            result = discover_publications(
+                (key,),
+                provider=provider,
+                known=(),
+                rejected=(),
+                patterns=config.relevance.patterns,
+                reject_patterns=config.relevance.reject_patterns,
+                unmatched=config.relevance.unmatched,
+                accepted_types=config.discovery.accepted_types,
+                excluded_doi_substrings=(),
+                enrichment_lookup=enrichment_lookup,
+                reporter=progress_reporter,
+            )
+        except (HttpError, OSError, ValueError, TypeError):
+            retryable += 1
+            continue
+
+        if result.queued:
+            proposed = "queued"
+            queued_count += 1
+        elif result.review:
+            proposed = "review"
+            review_count += 1
+        elif result.rejected:
+            proposed = "rejected"
+            rejected_count += 1
+        else:
+            raise ProjectStateError(
+                f"{key}: rescreen produced no applicable initialization outcome"
+            )
+
+        screened += 1
+        if proposed == previous:
+            unchanged += 1
+            continue
+
+        pending = [doi for doi in pending if doi != key]
+        review_queue = [doi for doi in review_queue if doi != key]
+
+        if proposed == "queued":
+            _append_unique(pending, key)
+        elif proposed == "review":
+            _append_unique(review_queue, key)
+        else:
+            _append_unique(rejected, key)
+            try:
+                campaign = record_item_result(
+                    campaign,
+                    batch_id=batch.id,
+                    key=key,
+                    state="completed",
+                )
+            except CampaignError as error:
+                raise ProjectStateError(str(error)) from error
+
+        updated_entry = InitReportEntry(
+            doi=key,
+            batch_id=entry.batch_id,
+            attempt=entry.attempt,
+            outcome=proposed,
+        )
+        report = _replace_report_entry(report, updated_entry)
+        entries[key] = updated_entry
+        changes.append(
+            InitRescreenChange(
+                doi=key,
+                previous=previous,
+                proposed=proposed,
+            )
+        )
+
+    states = {item.key: item.state for item in campaign.items}
+    if not any(states[key] == "active" for key in batch.keys):
+        try:
+            campaign = close_batch(campaign, batch_id=batch.id)
+        except CampaignError as error:
+            raise ProjectStateError(str(error)) from error
+
+    _validate_report_against_campaign(campaign, report)
+    outputs = dict(_state_outputs(config, campaign, report))
+    _put_if_changed(outputs, config.paths.pending, _doi_bytes(pending))
+    _put_if_changed(outputs, config.paths.review, _doi_bytes(review_queue))
+    _put_if_changed(outputs, config.paths.rejected, _doi_bytes(rejected))
+
+    return ProjectInitRescreenPlan(
+        batch_id=batch.id,
+        screened=screened,
+        queued=queued_count,
+        review=review_count,
+        rejected=rejected_count,
+        unchanged=unchanged,
+        retryable=retryable,
+        preserved=preserved,
+        changes=tuple(changes),
+        campaign=campaign,
+        report=report,
+        outputs=MappingProxyType(outputs),
+    )
+
+
+def apply_project_init_rescreen(plan: ProjectInitRescreenPlan) -> None:
+    """Apply one previously reviewed current-batch rescreen plan."""
+    if not isinstance(plan, ProjectInitRescreenPlan):
+        raise ProjectStateError("plan must be a ProjectInitRescreenPlan")
+    if plan.outputs:
+        atomic_write_batch(plan.outputs)
 
 
 def project_init_status(config: BibReviewConfig) -> ProjectInitStatus:
