@@ -76,8 +76,10 @@ from .project_hygiene_apply import (
 )
 from .project_init import (
     apply_project_init_plan,
+    apply_project_init_rescreen,
     execute_project_init_batch,
     plan_project_init_batch,
+    plan_project_init_rescreen,
     project_init_status,
     validate_project_init_start,
 )
@@ -371,10 +373,19 @@ def _parser() -> argparse.ArgumentParser:
             "campaign default otherwise"
         ),
     )
-    initialize.add_argument(
+    initialize_actions = initialize.add_mutually_exclusive_group()
+    initialize_actions.add_argument(
         "--status",
         action="store_true",
         help="Show initialization progress without provider requests",
+    )
+    initialize_actions.add_argument(
+        "--rescreen-current",
+        action="store_true",
+        help=(
+            "Re-evaluate machine-screened pending/review candidates in the "
+            "current open batch using the current relevance rules"
+        ),
     )
     initialize.add_argument(
         "--json",
@@ -1768,6 +1779,51 @@ def main(argv: list[str] | None = None) -> int:
                 print(json.dumps(status.data(), ensure_ascii=False, indent=2))
             elif not args.quiet:
                 print(status.summary())
+            return 0
+
+        if args.rescreen_current:
+            try:
+                if args.batch_size is not None:
+                    raise ProjectStateError(
+                        "--batch-size cannot be used with init --rescreen-current"
+                    )
+                services = build_discovery_services(config, reporter=reporter)
+                plan = plan_project_init_rescreen(
+                    config,
+                    provider=services.provider,
+                    enrichment_lookup=services.enrichment_lookup,
+                    reporter=reporter,
+                )
+                if not args.dry_run:
+                    apply_project_init_rescreen(plan)
+            except (
+                OSError,
+                StorageError,
+                ProjectStateError,
+                ValueError,
+                TypeError,
+            ) as error:
+                print(f"bibreview init: {error}", file=sys.stderr)
+                return 1
+
+            payload = {
+                **plan.data(),
+                "dry_run": args.dry_run,
+                "campaign": str(config.initialization.campaign),
+                "report": str(config.initialization.report),
+            }
+            if not args.dry_run:
+                payload["status"] = project_init_status(config).data()
+
+            if args.json_output:
+                print(json.dumps(payload, ensure_ascii=False, indent=2))
+            elif not args.quiet:
+                prefix = "Dry run: " if args.dry_run else ""
+                print(prefix + plan.summary())
+                for change in plan.changes:
+                    print(
+                        f"  {change.doi}: {change.previous} -> {change.proposed}"
+                    )
             return 0
 
         services = None

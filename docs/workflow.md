@@ -47,6 +47,19 @@ bibreview init --status
 bibreview init
 ~~~
 
+If a pilot batch shows that the configured relevance rules need refinement,
+change the project rules and replay only the still-active machine-screened
+pending/review candidates:
+
+~~~bash
+bibreview --dry-run init --rescreen-current
+bibreview init --rescreen-current
+~~~
+
+Always inspect the dry-run changes first. Rescreening never revisits staged,
+merged, terminal rejected/skipped candidates and does not overwrite an explicit
+human pending/review queue move.
+
 This repeats until the campaign is complete. `init` coordinates batch scope
 only; it never promotes provider data or invokes collection/merge implicitly.
 

@@ -116,6 +116,13 @@ class InitCliTests(unittest.TestCase):
             enrichment_lookup=None,
         )
 
+    def snapshot(self):
+        return {
+            str(path.relative_to(self.root)): path.read_bytes()
+            for path in self.root.rglob("*")
+            if path.is_file()
+        }
+
     def test_dry_run_freezes_candidate_plan_without_writing_or_screening(self):
         services = self.services()
         stdout = StringIO()
@@ -213,6 +220,76 @@ class InitCliTests(unittest.TestCase):
             stdout.getvalue(),
         )
         self.assertNotIn("Would initialize", stdout.getvalue())
+
+    def test_rescreen_current_dry_run_uses_providers_without_mutating_state(self):
+        services = self.services()
+        with patch(
+            "bibreview.cli.build_discovery_services",
+            return_value=services,
+        ), redirect_stdout(StringIO()), redirect_stderr(StringIO()):
+            self.assertEqual(
+                main([
+                    "--config",
+                    str(self.config_path),
+                    "init",
+                    "--batch-size",
+                    "2",
+                ]),
+                0,
+            )
+
+        self.config_path.write_text(
+            CONFIG.replace(
+                "  unmatched: manual-review\n",
+                "  reject_patterns:\n"
+                "    - 'another[-\\s]+coupled'\n"
+                "  unmatched: manual-review\n",
+            ),
+            encoding="utf-8",
+        )
+        before = self.snapshot()
+        rescreen_services = self.services()
+        stdout = StringIO()
+        stderr = StringIO()
+
+        with patch(
+            "bibreview.cli.build_discovery_services",
+            return_value=rescreen_services,
+        ), redirect_stdout(stdout), redirect_stderr(stderr):
+            code = main([
+                "--config",
+                str(self.config_path),
+                "--dry-run",
+                "init",
+                "--rescreen-current",
+                "--json",
+            ])
+
+        self.assertEqual(code, 0, stderr.getvalue())
+        self.assertEqual(before, self.snapshot())
+        self.assertEqual(
+            rescreen_services.discovery_provider.calls,
+            [],
+        )
+        self.assertEqual(
+            rescreen_services.provider.calls,
+            ["10.1/a", "10.1/b"],
+        )
+        payload = json.loads(stdout.getvalue())
+        self.assertTrue(payload["dry_run"])
+        self.assertEqual(payload["batch_id"], "batch-0001")
+        self.assertEqual(payload["screened"], 2)
+        self.assertEqual(payload["rejected"], 1)
+        self.assertEqual(
+            payload["changes"],
+            [
+                {
+                    "doi": "10.1/b",
+                    "previous": "review",
+                    "proposed": "rejected",
+                }
+            ],
+        )
 
     def test_dry_run_reports_openalex_discovery_diagnostics(self):
         services = SimpleNamespace(
