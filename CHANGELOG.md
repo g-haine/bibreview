@@ -4,6 +4,12 @@ All notable BibReview releases are documented here.
 
 ## Unreleased
 
+- add `bibreview init --rescreen-current` so an open initialization pilot
+  batch can be safely re-evaluated after relevance-rule changes; dry-run performs
+  provider screening without mutation, apply mode reconciles pending/review/
+  rejected queues, terminal/staged records are never resurrected, and explicit
+  human queue moves are preserved;
+
 - add explicit `relevance.reject_patterns` for conservative three-way
   relevance triage: accept-only matches are queued, reject-only matches are
   rejected, conflicting matches require manual review, and unmatched works keep
