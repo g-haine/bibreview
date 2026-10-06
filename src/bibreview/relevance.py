@@ -326,6 +326,28 @@ def _ratio(numerator: int, denominator: int) -> float | None:
     return numerator / denominator if denominator else None
 
 
+def _promotion_ready(
+    *,
+    support: int,
+    precision: float,
+    wilson_lower: float,
+    batch_count: int,
+) -> bool:
+    """Return whether evidence is strong enough to present as automation-ready.
+
+    This is intentionally conservative: a candidate needs repeated support,
+    near-perfect observed agreement, a non-trivial confidence lower bound, and
+    evidence spanning several independent campaign batches.
+    """
+
+    return (
+        support >= 6
+        and precision >= 0.95
+        and wilson_lower >= 0.60
+        and batch_count >= 3
+    )
+
+
 def _wilson_lower(successes: int, total: int, *, z: float = 1.96) -> float:
     if total <= 0:
         return 0.0
@@ -567,9 +589,16 @@ def _signal_candidates(
                 if review_base[label]
                 else None
             )
+            promotion_ready = _promotion_ready(
+                support=review_support,
+                precision=review_precision,
+                wilson_lower=review_lower,
+                batch_count=len(review_batches[feature]),
+            )
             candidates[direction].append(
                 {
                     "phrase": feature,
+                    "promotion_ready": promotion_ready,
                     "support": support,
                     "keep": counter["keep"],
                     "reject": counter["reject"],
@@ -792,8 +821,15 @@ def _contextual_signal_candidates(
             if batch_count < 2 or batch_agreement < 0.75:
                 continue
 
+            promotion_ready = _promotion_ready(
+                support=support,
+                precision=precision,
+                wilson_lower=_wilson_lower(successes, support),
+                batch_count=batch_count,
+            )
             data = {
                 "signals": list(pair),
+                "promotion_ready": promotion_ready,
                 "regex": _contextual_regex(*pair),
                 "review_support": support,
                 "review_keep": counts["keep"],
@@ -1026,8 +1062,10 @@ def format_relevance_analysis(analysis: Mapping[str, Any]) -> str:
             lines.append("  (insufficient discriminative evidence)")
             continue
         for item in signals[:10]:
+            readiness = "ready" if item["promotion_ready"] else "exploratory"
             lines.append(
                 "  "
+                + f"[{readiness}] "
                 + repr(item["phrase"])
                 + f": review support {item['review_support']}; "
                 + f"review precision {item['review_precision']:.3f}; "
@@ -1038,13 +1076,24 @@ def format_relevance_analysis(analysis: Mapping[str, Any]) -> str:
 
 
     for heading, key in (
-        ("Candidate contextual accept rules", "accept"),
-        ("Candidate contextual reject rules", "reject"),
+        ("Promotion-ready contextual accept rules", "accept"),
+        ("Promotion-ready contextual reject rules", "reject"),
     ):
         lines.extend(["", heading])
-        candidates = analysis["contextual_signals"][key]
+        all_candidates = analysis["contextual_signals"][key]
+        candidates = [item for item in all_candidates if item["promotion_ready"]]
         if not candidates:
-            lines.append("  (insufficient co-occurrence evidence)")
+            exploratory = len(all_candidates)
+            suffix = (
+                f"; {exploratory} exploratory candidate(s) below threshold"
+                if exploratory
+                else ""
+            )
+            lines.append(
+                "  (no contextual rule meets the conservative promotion threshold"
+                + suffix
+                + ")"
+            )
             continue
         for item in candidates[:10]:
             first, second = item["signals"]
