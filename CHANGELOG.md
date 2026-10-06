@@ -10,7 +10,10 @@ All notable BibReview releases are documented here.
   replay current accept/reject rules offline, report per-rule support/precision/
   unique coverage/conflicts, and rank interpretable n-gram signals with support
   and conservative Wilson confidence bounds without automatically changing
-  project relevance configuration;
+  project relevance configuration; additionally mine bounded two-signal
+  co-occurrence candidates from the current manual-review gap and emit
+  deterministic two-lookahead regex suggestions revalidated against all
+  retained labels;
 - add `bibreview relevance --backfill-evidence` as an explicit compatibility
   path for projects created before relevance evidence persistence; rebuild
   accepted DOI evidence locally from canonical bibliography first and use
