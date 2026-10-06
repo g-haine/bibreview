@@ -104,8 +104,23 @@ class AuthorMappingTests(unittest.TestCase):
                 ),
             ),
         )
+        known_publication = Publication(
+            id=new_publication_id(),
+            identifiers={"doi": "10.1/known"},
+            title="Known Yin Hong paper",
+            authors=(
+                Author(
+                    given="Yin",
+                    family="Hong",
+                    source_fields={
+                        "ORCID": "https://orcid.org/0000-0009-8765-4321",
+                        "affiliation": [{"name": "Known Institute"}],
+                    },
+                ),
+            ),
+        )
         cases = author_review_cases(
-            (publication,),
+            (publication, known_publication),
             {"yin-hong": ["Yin Hong"]},
         )
         self.assertEqual(len(cases), 1)
@@ -119,9 +134,15 @@ class AuthorMappingTests(unittest.TestCase):
             "https://orcid.org/0000-0001-2345-6789",
         )
         self.assertEqual(case.occurrences[0].affiliations, ("Example University",))
+        candidate_occurrences = case.possible_match_occurrences["yin-hong"]
+        self.assertEqual(len(candidate_occurrences), 1)
+        self.assertEqual(candidate_occurrences[0].doi, "10.1/known")
+        self.assertEqual(candidate_occurrences[0].affiliations, ("Known Institute",))
         report = format_author_review_case(case, index=1, total=1)
         self.assertIn("Example FSI paper", report)
         self.assertIn("Example University", report)
+        self.assertIn("Known Yin Hong paper", report)
+        self.assertIn("Known Institute", report)
 
     def test_explicit_manual_assignment_can_merge_or_create_but_rejects_conflicts(self):
         mapping = {"yin-hong": ["Yin Hong"]}
