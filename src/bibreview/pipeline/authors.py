@@ -352,7 +352,11 @@ def format_author_review_case(
         lines.append("Possible existing identities: none")
     lines.append("Unresolved-name publications:")
     for occurrence in case.occurrences:
-        identifier = f"DOI {occurrence.doi}" if occurrence.doi else occurrence.publication_id
+        identifier = (
+            f"DOI {_format_review_doi(occurrence.doi, hyperlinks=hyperlinks)}"
+            if occurrence.doi
+            else occurrence.publication_id
+        )
         lines.append(f"  - {identifier}: {occurrence.title or '(untitled)'}")
         if occurrence.orcid:
             lines.append(f"    ORCID: {occurrence.orcid}")
