@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 from dataclasses import dataclass, replace
 import html
+from itertools import combinations
 import math
 from pathlib import Path
 import re
@@ -604,6 +605,245 @@ def _signal_candidates(
         candidates[direction] = candidates[direction][:limit]
     return candidates
 
+
+def _phrase_regex(phrase: str) -> str:
+    """Render one normalized statistical phrase as a conservative regex atom."""
+
+    words: list[str] = []
+    for token in phrase.split():
+        pieces = [piece for piece in token.split("-") if piece]
+        if not pieces:
+            continue
+        words.append(r"[-\s]+".join(re.escape(piece) for piece in pieces))
+    return r"[-\s]+".join(words)
+
+
+def _contextual_regex(first: str, second: str) -> str:
+    """Render a deterministic two-signal co-occurrence rule."""
+
+    return (
+        r"(?is)"
+        + r"(?=.*\b"
+        + _phrase_regex(first)
+        + r"\b)"
+        + r"(?=.*\b"
+        + _phrase_regex(second)
+        + r"\b)"
+    )
+
+
+def _redundant_context(first: str, second: str) -> bool:
+    """Reject pairs where one phrase is wholly contained in the other."""
+
+    first_tokens = tuple(first.split())
+    second_tokens = tuple(second.split())
+    short, long = (
+        (first_tokens, second_tokens)
+        if len(first_tokens) <= len(second_tokens)
+        else (second_tokens, first_tokens)
+    )
+    width = len(short)
+    return any(
+        long[index : index + width] == short
+        for index in range(len(long) - width + 1)
+    )
+
+
+def _contextual_signal_candidates(
+    labeled: tuple[tuple[RelevanceEvidence, str, str], ...],
+    *,
+    accept_patterns: tuple[str, ...],
+    reject_patterns: tuple[str, ...],
+    unmatched: str,
+    limit: int = 20,
+    pool_limit: int = 80,
+) -> dict[str, list[dict[str, Any]]]:
+    """Mine bounded two-signal rules that specifically resolve the review gap."""
+
+    review_items: list[tuple[RelevanceEvidence, str, str, set[str]]] = []
+    review_feature_counts: Counter[str] = Counter()
+    keep_review = reject_review = 0
+
+    for entry, label, source in labeled:
+        outcome, _, _ = _replay_outcome(
+            entry,
+            accept_patterns=accept_patterns,
+            reject_patterns=reject_patterns,
+            unmatched=unmatched,
+        )
+        if outcome != "review":
+            continue
+        features = _feature_set(entry)
+        review_items.append((entry, label, source, features))
+        review_feature_counts.update(features)
+        if label == "keep":
+            keep_review += 1
+        else:
+            reject_review += 1
+
+    review_total = len(review_items)
+    if review_total < 2:
+        return {"accept": [], "reject": []}
+
+    base_keep = keep_review / review_total
+    base_reject = reject_review / review_total
+
+    # Bound pair mining to informative/recurrent features. The pool combines
+    # recurrence with deviation from the current review-set class balance.
+    feature_labels: dict[str, Counter[str]] = defaultdict(Counter)
+    for _, label, _, features in review_items:
+        for feature in features:
+            feature_labels[feature][label] += 1
+
+    ranked_features: list[tuple[float, int, str]] = []
+    for feature, support in review_feature_counts.items():
+        if support < 2:
+            continue
+        counts = feature_labels[feature]
+        keep_precision = counts["keep"] / support
+        reject_precision = counts["reject"] / support
+        discrimination = max(
+            abs(keep_precision - base_keep),
+            abs(reject_precision - base_reject),
+        )
+        score = discrimination * math.log1p(support)
+        ranked_features.append((score, support, feature))
+
+    ranked_features.sort(reverse=True)
+    pool = {
+        feature
+        for _, _, feature in ranked_features[:pool_limit]
+    }
+
+    pair_counts: dict[tuple[str, str], Counter[str]] = defaultdict(Counter)
+    pair_dois: dict[tuple[str, str], dict[str, list[str]]] = defaultdict(
+        lambda: {"keep": [], "reject": []}
+    )
+    pair_batches: dict[tuple[str, str], set[str]] = defaultdict(set)
+    pair_human: dict[tuple[str, str], Counter[str]] = defaultdict(Counter)
+
+    for entry, label, source, features in review_items:
+        selected = sorted(features & pool)
+        for first, second in combinations(selected, 2):
+            if _redundant_context(first, second):
+                continue
+            pair = (first, second)
+            pair_counts[pair][label] += 1
+            if len(pair_dois[pair][label]) < 5:
+                pair_dois[pair][label].append(entry.doi)
+            if entry.batch_id:
+                pair_batches[pair].add(entry.batch_id)
+            if source == "human":
+                pair_human[pair][label] += 1
+
+    prelim: dict[str, list[tuple[tuple[str, str], dict[str, Any]]]] = {
+        "accept": [],
+        "reject": [],
+    }
+    for pair, counts in pair_counts.items():
+        support = counts["keep"] + counts["reject"]
+        if support < 2:
+            continue
+        for direction, label, baseline in (
+            ("accept", "keep", base_keep),
+            ("reject", "reject", base_reject),
+        ):
+            successes = counts[label]
+            precision = successes / support
+            if precision <= baseline:
+                continue
+            data = {
+                "signals": list(pair),
+                "regex": _contextual_regex(*pair),
+                "review_support": support,
+                "review_keep": counts["keep"],
+                "review_reject": counts["reject"],
+                "review_precision": precision,
+                "review_wilson_lower": _wilson_lower(successes, support),
+                "review_batch_count": len(pair_batches[pair]),
+                "human_keep": pair_human[pair]["keep"],
+                "human_reject": pair_human[pair]["reject"],
+                "review_supporting_dois": pair_dois[pair][label],
+                "review_contradicting_dois": pair_dois[pair][
+                    "reject" if label == "keep" else "keep"
+                ],
+            }
+            prelim[direction].append((pair, data))
+
+    # Keep a wider shortlist before the more expensive all-history validation.
+    for direction in prelim:
+        prelim[direction].sort(
+            key=lambda item: (
+                item[1]["review_wilson_lower"],
+                item[1]["review_support"],
+                item[1]["review_precision"],
+                item[0],
+            ),
+            reverse=True,
+        )
+        prelim[direction] = prelim[direction][: max(limit * 5, 50)]
+
+    all_features = {
+        entry.doi: _feature_set(entry)
+        for entry, _, _ in labeled
+    }
+    labels_by_doi = {
+        entry.doi: (label, source, entry.batch_id)
+        for entry, label, source in labeled
+    }
+
+    result: dict[str, list[dict[str, Any]]] = {"accept": [], "reject": []}
+    for direction, target_label in (("accept", "keep"), ("reject", "reject")):
+        for pair, data in prelim[direction]:
+            support = keep = reject = 0
+            batches: set[str] = set()
+            supporting: list[str] = []
+            contradicting: list[str] = []
+            for doi, features in all_features.items():
+                if pair[0] not in features or pair[1] not in features:
+                    continue
+                label, _source, batch_id = labels_by_doi[doi]
+                support += 1
+                if label == "keep":
+                    keep += 1
+                else:
+                    reject += 1
+                if batch_id:
+                    batches.add(batch_id)
+                bucket = supporting if label == target_label else contradicting
+                if len(bucket) < 5:
+                    bucket.append(doi)
+
+            successes = keep if target_label == "keep" else reject
+            data.update(
+                {
+                    "support": support,
+                    "keep": keep,
+                    "reject": reject,
+                    "precision": _ratio(successes, support),
+                    "wilson_lower": _wilson_lower(successes, support),
+                    "batch_count": len(batches),
+                    "supporting_dois": supporting,
+                    "contradicting_dois": contradicting,
+                }
+            )
+            result[direction].append(data)
+
+        result[direction].sort(
+            key=lambda item: (
+                item["review_wilson_lower"],
+                item["review_support"],
+                item["review_precision"],
+                item["wilson_lower"],
+                item["support"],
+                tuple(item["signals"]),
+            ),
+            reverse=True,
+        )
+        result[direction] = result[direction][:limit]
+
+    return result
+
 def analyze_relevance(
     entries: Iterable[RelevanceEvidence],
     labels: Mapping[str, tuple[str, str]],
@@ -662,6 +902,12 @@ def analyze_relevance(
         "accept_patterns": _rule_diagnostics(labeled, accept, reject),
         "reject_patterns": _rule_diagnostics(labeled, reject, accept),
         "signals": _signal_candidates(
+            labeled,
+            accept_patterns=accept,
+            reject_patterns=reject,
+            unmatched=unmatched,
+        ),
+        "contextual_signals": _contextual_signal_candidates(
             labeled,
             accept_patterns=accept,
             reject_patterns=reject,
@@ -743,5 +989,27 @@ def format_relevance_analysis(analysis: Mapping[str, Any]) -> str:
                 + f"overall {item['support']} @ {item['precision']:.3f}; "
                 + f"review batches {item['review_batch_count']}"
             )
+
+
+    for heading, key in (
+        ("Candidate contextual accept rules", "accept"),
+        ("Candidate contextual reject rules", "reject"),
+    ):
+        lines.extend(["", heading])
+        candidates = analysis["contextual_signals"][key]
+        if not candidates:
+            lines.append("  (insufficient co-occurrence evidence)")
+            continue
+        for item in candidates[:10]:
+            first, second = item["signals"]
+            lines.append(
+                f"  {first!r} AND {second!r}: "
+                + f"review support {item['review_support']}; "
+                + f"review precision {item['review_precision']:.3f}; "
+                + f"review Wilson lower {item['review_wilson_lower']:.3f}; "
+                + f"overall {item['support']} @ {_format_ratio(item['precision'])}; "
+                + f"review batches {item['review_batch_count']}"
+            )
+            lines.append(f"    regex: {item['regex']}")
 
     return "\n".join(lines)
