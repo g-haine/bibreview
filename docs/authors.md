@@ -71,7 +71,9 @@ BibReview presents one exact source-visible name at a time, together with:
 - preserved ORCID and affiliation source fields on both sides when available.
 
 Those source fields are **evidence for the human reviewer only**. They are not
-automatic identity keys.
+automatic identity keys. On an interactive terminal, every displayed DOI is an
+OSC 8 hyperlink to its `https://doi.org/` resolver; non-interactive output
+keeps the same plain DOI text.
 
 For each case, the prompt accepts:
 
