@@ -969,6 +969,14 @@ pairs where one phrase is wholly contained in the other, and requires the
 conjunction to improve review-gap precision by at least 0.10 over the better
 single constituent. Candidates must span at least two initialization batches
 and remain directionally stable in at least 75% of the represented batches.
+
+BibReview then distinguishes exploratory evidence from promotion-ready evidence.
+A candidate is promotion-ready only when its review-gap support is at least 6,
+observed agreement is at least 0.95, the Wilson lower confidence bound is at
+least 0.60, and the evidence spans at least 3 batches. Candidates below those
+thresholds remain available in JSON for inspection but are not presented as
+rules ready to promote.
+
 The report includes review-gap support, precision gain, confidence, batch
 agreement, and all-history validation. The emitted regex uses two positive
 lookaheads; it is a copyable proposal, not executable project mutation.
