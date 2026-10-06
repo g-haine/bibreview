@@ -138,34 +138,58 @@ class RelevanceEvidenceTests(unittest.TestCase):
         self.assertNotIn("title", all_phrases)
         self.assertNotIn("jats title", all_phrases)
 
-        contextual_accept = analysis["contextual_signals"]["accept"]
-        contextual_reject = analysis["contextual_signals"]["reject"]
-        self.assertTrue(contextual_accept)
-        self.assertTrue(contextual_reject)
+        # Single signals are already perfectly predictive in this toy
+        # dataset, so adding a conjunction must not create a redundant rule.
+        self.assertEqual(analysis["contextual_signals"]["accept"], [])
+        self.assertEqual(analysis["contextual_signals"]["reject"], [])
 
-        accept_pairs = {
-            tuple(item["signals"]): item for item in contextual_accept
-        }
-        reject_pairs = {
-            tuple(item["signals"]): item for item in contextual_reject
-        }
-        immersed_pair = next(
-            item
-            for pair, item in accept_pairs.items()
-            if "immersed" in pair and "boundary" in pair
+    def test_contextual_rules_require_real_predictive_gain(self):
+        entries = (
+            self.evidence("10.2/k1", "mesh coupling solver", batch="batch-0001"),
+            self.evidence("10.2/k2", "mesh coupling formulation", batch="batch-0002"),
+            self.evidence("10.2/k3", "mesh coupling algorithm", batch="batch-0003"),
+            self.evidence("10.2/r1", "mesh application study", batch="batch-0004"),
+            self.evidence("10.2/r2", "coupling application study", batch="batch-0005"),
+            self.evidence("10.2/r3", "thermal design study", batch="batch-0001"),
+            self.evidence("10.2/r4", "thermal design application", batch="batch-0002"),
+            self.evidence("10.2/r5", "thermal design performance", batch="batch-0003"),
+            self.evidence("10.2/k4", "thermal formulation method", batch="batch-0004"),
+            self.evidence("10.2/k5", "design formulation method", batch="batch-0005"),
         )
-        self.assertEqual(immersed_pair["review_support"], 2)
-        self.assertEqual(immersed_pair["review_precision"], 1.0)
-        self.assertIn("(?=.*\\bimmersed\\b)", immersed_pair["regex"])
-        self.assertIn("(?=.*\\bboundary\\b)", immersed_pair["regex"])
+        labels = {
+            "10.2/k1": ("keep", "human"),
+            "10.2/k2": ("keep", "human"),
+            "10.2/k3": ("keep", "human"),
+            "10.2/r1": ("reject", "human"),
+            "10.2/r2": ("reject", "human"),
+            "10.2/r3": ("reject", "human"),
+            "10.2/r4": ("reject", "human"),
+            "10.2/r5": ("reject", "human"),
+            "10.2/k4": ("keep", "human"),
+            "10.2/k5": ("keep", "human"),
+        }
 
-        temperature_pair = next(
+        analysis = analyze_relevance(entries, labels)
+
+        accept = next(
             item
-            for pair, item in reject_pairs.items()
-            if "temperature" in pair and "gas" in pair
+            for item in analysis["contextual_signals"]["accept"]
+            if set(item["signals"]) == {"mesh", "coupling"}
         )
-        self.assertEqual(temperature_pair["review_support"], 2)
-        self.assertEqual(temperature_pair["review_precision"], 1.0)
+        self.assertEqual(accept["review_support"], 3)
+        self.assertEqual(accept["review_precision"], 1.0)
+        self.assertAlmostEqual(accept["review_precision_gain"], 0.25)
+        self.assertEqual(accept["review_batch_agreement"], 1.0)
+
+        reject = next(
+            item
+            for item in analysis["contextual_signals"]["reject"]
+            if set(item["signals"]) == {"thermal", "design"}
+        )
+        self.assertEqual(reject["review_support"], 3)
+        self.assertEqual(reject["review_precision"], 1.0)
+        self.assertAlmostEqual(reject["review_precision_gain"], 0.25)
+        self.assertEqual(reject["review_batch_agreement"], 1.0)
 
     def test_small_sample_reports_statistics_without_claiming_automation(self):
         entry = self.evidence(
