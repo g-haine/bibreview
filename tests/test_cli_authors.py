@@ -103,7 +103,21 @@ class AuthorCliTests(unittest.TestCase):
                         },
                     ),
                 ),
-            )
+            ),
+            Publication(
+                id=new_publication_id(),
+                identifiers={"doi": "10.1/yin-hong"},
+                title="Known Yin Hong paper",
+                authors=(
+                    Author(
+                        given="Yin",
+                        family="Hong",
+                        source_fields={
+                            "affiliation": [{"name": "Known Institute"}],
+                        },
+                    ),
+                ),
+            ),
         ]
         if include_second:
             publications.append(
@@ -173,6 +187,9 @@ class AuthorCliTests(unittest.TestCase):
         self.assertIn("DOI 10.1/hong: Hong FSI paper", stdout)
         self.assertIn("ORCID: https://orcid.org/0000-0001-2345-6789", stdout)
         self.assertIn("Affiliation: Example University", stdout)
+        self.assertIn("Canonical publications:", stdout)
+        self.assertIn("DOI 10.1/yin-hong: Known Yin Hong paper", stdout)
+        self.assertIn("Affiliation: Known Institute", stdout)
         self.assertIn("no decisions were recorded", stdout)
         self.assertEqual(before, self.snapshot())
 
