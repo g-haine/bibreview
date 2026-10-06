@@ -939,14 +939,26 @@ terminal state.
   accept/reject conflicts;
 - the same replay restricted to explicitly human-reviewed examples;
 - per-pattern support, class counts, precision, unique coverage, and conflicts;
-- interpretable unigram/bigram/trigram signals ranked by support and a
-  conservative Wilson lower confidence bound.
+- interpretable unigram/bigram/trigram signals ranked specifically by their
+  ability to resolve candidates that the **current rules would still send to
+  manual review**, using support and a conservative Wilson lower confidence
+  bound.
+
+Statistical feature extraction strips HTML/JATS/XML wrapper syntax before
+tokenization so provider markup names cannot become candidate scientific
+signals. This cleanup is analysis-only: current-rule replay still uses the exact
+retained screening surface.
 
 Machine-readable output is available with:
 
 ~~~bash
 bibreview --config bibreview.yml relevance --analyze --json
 ~~~
+
+Candidate-signal ranking deliberately focuses on the current review gap rather
+than already-automated publications. A phrase that perfectly describes papers
+already covered by existing rules is therefore not promoted merely because it
+has high global precision.
 
 The statistical signals are suggestions only. BibReview never writes
 `relevance.patterns` or `relevance.reject_patterns` automatically, and no
