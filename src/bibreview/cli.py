@@ -28,7 +28,11 @@ from .backfill_resolution import (
 )
 from .campaign import campaign_progress
 from .config import ConfigError, load_config
-from .pipeline.authors import author_mapping_plan_data, format_author_mapping_plan
+from .pipeline.authors import (
+    author_mapping_plan_data,
+    format_author_mapping_plan,
+    format_author_review_case,
+)
 from .pipeline.backfill import BACKFILL_FIELDS
 from .provider_diagnostics import diagnose_providers, format_provider_diagnostics
 from .pipeline.merge import MergeError
@@ -47,13 +51,16 @@ from .hygiene_resolution import (
 from .project import (
     ProjectStateError,
     apply_project_author_mappings,
+    apply_project_author_review_decision,
     apply_project_collection,
     apply_project_discovery,
     apply_project_merge,
     plan_project_author_mappings,
+    plan_project_author_review_decision,
     plan_project_collection,
     plan_project_discovery,
     plan_project_merge,
+    project_author_review_cases,
 )
 from .project_arxiv import apply_project_arxiv, plan_project_arxiv
 from .project_import import (
@@ -466,11 +473,17 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Apply completed safe refresh decisions to collected staging",
     )
-    authors = commands.add_parser("authors", help="Inspect author identities and optionally apply safe mappings")
-    authors.add_argument(
+    authors = commands.add_parser("authors", help="Inspect and review author identities")
+    author_actions = authors.add_mutually_exclusive_group()
+    author_actions.add_argument(
         "--apply-safe",
         action="store_true",
         help="Add unique new authors with no plausible existing match",
+    )
+    author_actions.add_argument(
+        "--review",
+        action="store_true",
+        help="Interactively resolve ambiguous author identities with canonical evidence",
     )
     authors.add_argument(
         "--json",
@@ -482,6 +495,138 @@ def _parser() -> argparse.ArgumentParser:
     commands.add_parser("render", help="Render and reconcile configured static-site artifacts")
     commands.add_parser("arxiv", help="Refresh the optional configured arXiv cache")
     return parser
+
+
+def _run_author_review(config, args) -> int:
+    """Run resumable interactive review for ambiguous author identities."""
+    if args.quiet:
+        raise ProjectStateError("--quiet cannot be used with interactive authors --review")
+    if args.json_output:
+        raise ProjectStateError("--json cannot be used with interactive authors --review")
+
+    cases = project_author_review_cases(config)
+    if not cases:
+        print("No unresolved author identities require manual review.")
+        return 0
+
+    if args.dry_run:
+        for index, case in enumerate(cases, start=1):
+            print(
+                format_author_review_case(
+                    case,
+                    index=index,
+                    total=len(cases),
+                    hyperlinks=sys.stdout.isatty(),
+                )
+            )
+            print()
+        print(
+            f"Dry run: {len(cases)} author identity decision(s) require human review; "
+            "no decisions were recorded."
+        )
+        return 0
+
+    _enable_interactive_line_editing()
+    initial_names = tuple(case.name for case in cases)
+    applied = 0
+    deferred = 0
+
+    for position, name in enumerate(initial_names, start=1):
+        current = {case.name: case for case in project_author_review_cases(config)}
+        case = current.get(name)
+        if case is None:
+            continue
+
+        print(
+            format_author_review_case(
+                case,
+                index=position,
+                total=len(initial_names),
+                hyperlinks=sys.stdout.isatty(),
+            )
+        )
+        possible = tuple(case.possible_matches)
+        numbered = f"1-{len(possible)}/" if possible else ""
+        prompt = (
+            f"Decision [{numbered}m SLUG/n [SLUG]/s/q]: "
+        )
+
+        while True:
+            try:
+                raw = input(prompt).strip()
+            except (EOFError, KeyboardInterrupt):
+                print()
+                remaining = len(project_author_review_cases(config))
+                print(
+                    "Author review stopped; previous decisions are preserved. "
+                    f"Remaining manual review: {remaining}."
+                )
+                return 0
+
+            choice = raw.lower()
+            if choice in {"s", "skip"}:
+                deferred += 1
+                break
+            if choice in {"q", "quit"}:
+                remaining = len(project_author_review_cases(config))
+                print(
+                    f"Applied {applied} manual author decision(s); "
+                    f"deferred {deferred}; remaining manual review: {remaining}."
+                )
+                return 0
+
+            create_new = False
+            slug = ""
+            if raw.isdigit():
+                selected = int(raw)
+                if 1 <= selected <= len(possible):
+                    slug = possible[selected - 1]
+            elif choice == "m" or choice.startswith("m "):
+                slug = raw[1:].strip()
+                if not slug:
+                    try:
+                        slug = input("Existing identity slug: ").strip()
+                    except (EOFError, KeyboardInterrupt):
+                        print()
+                        print(
+                            "Author review stopped; previous decisions are preserved."
+                        )
+                        return 0
+            elif choice == "n" or choice.startswith("n "):
+                create_new = True
+                slug = raw[1:].strip() or case.slug
+
+            if not slug:
+                print(
+                    "Choose a numbered possible match, m SLUG for another existing "
+                    "identity, n [SLUG] for a new identity, s to defer, or q to quit."
+                )
+                continue
+
+            try:
+                plan = plan_project_author_review_decision(
+                    config,
+                    name=case.name,
+                    slug=slug,
+                    create_new=create_new,
+                )
+                apply_project_author_review_decision(plan)
+            except (OSError, StorageError, ValueError, TypeError) as error:
+                print(f"Invalid author decision: {error}")
+                continue
+
+            action = "Created" if create_new else "Mapped"
+            print(f"{action}: {case.name} -> {slug}")
+            applied += 1
+            break
+        print()
+
+    remaining = len(project_author_review_cases(config))
+    print(
+        f"Applied {applied} manual author decision(s); deferred {deferred}; "
+        f"remaining manual review: {remaining}."
+    )
+    return 0
 
 
 def _hygiene_field(args) -> str:
@@ -2270,6 +2415,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "authors":
         try:
+            if args.review:
+                return _run_author_review(config, args)
             plan = plan_project_author_mappings(config, apply_safe=args.apply_safe)
             if args.apply_safe and not args.dry_run:
                 apply_project_author_mappings(plan)

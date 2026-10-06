@@ -21,7 +21,10 @@ from .identifier_state import (
 from .identity import STRONG_IDENTIFIER_NAMES
 from .pipeline.authors import (
     AuthorMappingPlan,
+    AuthorReviewCase,
     apply_safe_author_mappings as apply_safe_author_mapping_data,
+    assign_author_mapping,
+    author_review_cases,
     plan_author_mappings,
 )
 from .pipeline.collect import (
@@ -136,6 +139,22 @@ class ProjectAuthorMappingPlan:
     @property
     def changed(self) -> bool:
         """Whether applying this plan would update project mapping state."""
+        return bool(self.outputs)
+
+
+@dataclass(frozen=True)
+class ProjectAuthorReviewDecisionPlan:
+    """Read-only description of one explicit human author identity decision."""
+
+    name: str
+    slug: str
+    created_identity: bool
+    outputs: Mapping[Path, bytes]
+    remaining_review: int
+
+    @property
+    def changed(self) -> bool:
+        """Whether applying this decision would update author mapping state."""
         return bool(self.outputs)
 
 
@@ -445,6 +464,65 @@ def apply_project_author_mappings(plan: ProjectAuthorMappingPlan) -> None:
     """Apply a previously prepared safe author-mapping plan."""
     if not isinstance(plan, ProjectAuthorMappingPlan):
         raise ProjectStateError("plan must be a ProjectAuthorMappingPlan")
+    if plan.outputs:
+        atomic_write_batch(plan.outputs)
+
+
+def project_author_review_cases(config: BibReviewConfig) -> tuple[AuthorReviewCase, ...]:
+    """Return unresolved manual author cases with canonical publication evidence."""
+    publications = _optional_bibliography(config.paths.bibliography)
+    mapping = (
+        read_json(config.paths.author_mappings, dict)
+        if config.paths.author_mappings.exists()
+        else {}
+    )
+    return author_review_cases(publications, mapping)
+
+
+def plan_project_author_review_decision(
+    config: BibReviewConfig,
+    *,
+    name: str,
+    slug: str,
+    create_new: bool,
+) -> ProjectAuthorReviewDecisionPlan:
+    """Plan one explicit human author mapping decision without writing state."""
+    publications = _optional_bibliography(config.paths.bibliography)
+    mapping = (
+        read_json(config.paths.author_mappings, dict)
+        if config.paths.author_mappings.exists()
+        else {}
+    )
+    cases = author_review_cases(publications, mapping)
+    if name not in {case.name for case in cases}:
+        raise ProjectStateError(
+            f"author name {name!r} does not currently require manual review"
+        )
+
+    updated = assign_author_mapping(
+        mapping,
+        name=name,
+        slug=slug,
+        create_new=create_new,
+    )
+    after = plan_author_mappings(publications, updated)
+    outputs: dict[Path, bytes] = {}
+    _put_if_changed(outputs, config.paths.author_mappings, json_bytes(updated))
+    return ProjectAuthorReviewDecisionPlan(
+        name=name,
+        slug=slug,
+        created_identity=create_new,
+        outputs=MappingProxyType(outputs),
+        remaining_review=sum(len(item.names) for item in after.review),
+    )
+
+
+def apply_project_author_review_decision(
+    plan: ProjectAuthorReviewDecisionPlan,
+) -> None:
+    """Apply one previously planned explicit author identity decision."""
+    if not isinstance(plan, ProjectAuthorReviewDecisionPlan):
+        raise ProjectStateError("plan must be a ProjectAuthorReviewDecisionPlan")
     if plan.outputs:
         atomic_write_batch(plan.outputs)
 

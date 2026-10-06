@@ -147,6 +147,7 @@ bibreview merge
 
 bibreview authors
 bibreview authors --apply-safe
+bibreview authors --review
 
 bibreview render
 ~~~

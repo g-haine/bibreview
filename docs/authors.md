@@ -53,32 +53,56 @@ bibreview --config bibreview.yml authors --apply-safe
 
 Only safe proposals are written. Ambiguous cases remain untouched.
 
-## Resolve an ambiguous variant
+## Resolve ambiguous variants interactively
 
-Suppose the report says:
+After applying safe mappings, resolve the residual ambiguous names with:
 
-~~~text
-? a-lovelace: A. Lovelace
-  Possible match: ada-lovelace (Ada Lovelace)
+~~~bash
+bibreview --config bibreview.yml authors --review
 ~~~
 
-If it is the same person, append the exact variant to the existing identity:
+BibReview presents one exact source-visible name at a time, together with:
 
-~~~json
-{
-  "ada-lovelace": [
-    "Ada Lovelace",
-    "A. Lovelace"
-  ]
-}
+- its proposed stable slug;
+- the reason manual review is required;
+- plausible existing identities and all their known variants;
+- canonical publications already attached to each possible existing identity;
+- every canonical publication in which the unresolved name occurs;
+- preserved ORCID and affiliation source fields on both sides when available.
+
+Those source fields are **evidence for the human reviewer only**. They are not
+automatic identity keys. On an interactive terminal, every displayed DOI is an
+OSC 8 hyperlink to its `https://doi.org/` resolver; non-interactive output
+keeps the same plain DOI text.
+
+For each case, the prompt accepts:
+
+- **1..N** — map the exact source name to one of the displayed possible identities;
+- **m SLUG** — map it explicitly to another existing identity;
+- **n** — create a new identity using the proposed slug;
+- **n SLUG** — create a new identity using an explicit distinct slug;
+- **s** — defer the case without changing it;
+- **q** — stop cleanly.
+
+Every accepted human decision is written immediately through BibReview's author
+mapping layer. Therefore **q**, Ctrl-C, EOF, or a later invocation naturally
+resume from the remaining unresolved names; no separate resolution file is needed.
+
+Creating a new identity with a slug that already exists is refused. Mapping to
+an identity that does not exist is also refused. Each exact source-visible name
+may still belong to only one identity.
+
+To preview all residual cases and their evidence without prompting or writing:
+
+~~~bash
+bibreview --config bibreview.yml --dry-run authors --review
 ~~~
 
-Do not create a second slug for the same person.
+Interactive `--review` is intentionally incompatible with `--json` and
+`--quiet`. The existing `authors --json` command remains the machine-readable
+analysis surface.
 
-If it is a genuinely different person, create a distinct stable slug and assign
-the source name to that slug.
-
-Then rerun:
+After review, rerun:
 
 ~~~bash
 bibreview --config bibreview.yml authors

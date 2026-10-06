@@ -4,6 +4,10 @@ All notable BibReview releases are documented here.
 
 ## Unreleased
 
+- add first-class resumable `bibreview authors --review` for residual
+  ambiguous author identities, showing canonical publication context plus
+  preserved ORCID/affiliation evidence and requiring explicit human merge/new/
+  defer decisions without direct `author_mappings.json` editing;
 - add `bibreview init --rescreen-current` so an open initialization pilot
   batch can be safely re-evaluated after relevance-rule changes; dry-run performs
   provider screening without mutation, apply mode reconciles pending/review/

@@ -1251,14 +1251,27 @@ Apply only unambiguous proposals:
 bibreview --config bibreview.yml authors --apply-safe
 ~~~
 
+Review the remaining ambiguous identities interactively:
+
+~~~bash
+bibreview --config bibreview.yml authors --review
+~~~
+
+Preview the same residual evidence without writing or prompting:
+
+~~~bash
+bibreview --config bibreview.yml --dry-run authors --review
+~~~
+
 Machine-readable analysis:
 
 ~~~bash
 bibreview --config bibreview.yml authors --json
 ~~~
 
-Ambiguous proposals are never applied automatically. See
-[Author identities](authors.md).
+Ambiguous proposals are never applied automatically. Interactive review
+requires an explicit human choice for every mapping or new identity and writes
+only `author_mappings.json`. See [Author identities](authors.md).
 
 ## render
 
