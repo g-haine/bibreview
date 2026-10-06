@@ -24,8 +24,13 @@ from .project_init import (
     project_init_review_context,
 )
 from .providers.base import Enrichment
+from .relevance import (
+    read_relevance_evidence,
+    record_human_relevance_decision,
+    relevance_evidence_data,
+)
 from .reporting import Reporter
-from .storage import atomic_write_batch
+from .storage import atomic_write_batch, json_bytes
 
 
 @dataclass(frozen=True)
@@ -280,6 +285,19 @@ def plan_project_relevance_review_decision(
     _put_if_changed(outputs, config.paths.rejected, _doi_bytes(rejected))
     if init_transition is not None:
         outputs.update(init_transition.outputs)
+
+    evidence_before = read_relevance_evidence(config.relevance.evidence)
+    evidence_after = record_human_relevance_decision(
+        evidence_before,
+        doi=normalized,
+        decision=normalized_decision,
+    )
+    if evidence_after != evidence_before:
+        _put_if_changed(
+            outputs,
+            config.relevance.evidence,
+            json_bytes(relevance_evidence_data(evidence_after)),
+        )
 
     return ProjectRelevanceReviewDecisionPlan(
         doi=normalized,
