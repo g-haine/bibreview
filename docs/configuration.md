@@ -200,12 +200,18 @@ metadata through CrossRef.
 
 ~~~yaml
 relevance:
+  evidence: audit/relevance/evidence.json
   patterns:
     - 'fluid[-\s]+structure'
   reject_patterns:
     - 'experimental[-\s]+test[-\s]+bench'
   unmatched: manual-review
 ~~~
+
+The `evidence` path stores the versioned, non-canonical title/abstract/keyword
+snapshot that BibReview already had in memory while screening each supported
+DOI. Retaining that evidence does not trigger an additional provider request.
+It exists so later relevance analysis can be completely offline.
 
 Both `patterns` and `reject_patterns` are case-insensitive regular
 expressions evaluated against the same title/abstract/keyword screening text.
@@ -225,6 +231,21 @@ Triage is deliberately conservative:
 Omitting `reject_patterns` preserves the previous behavior. Prefer narrow,
 high-confidence rejection rules; conflicting evidence is intentionally surfaced
 for human review instead of being auto-rejected.
+
+Explicit decisions made through `bibreview review` are also annotated in the
+relevance evidence ledger. This lets offline analysis distinguish a human KEEP
+or REJECT decision from an automatic historical queue/rejection state.
+
+For projects created before evidence persistence, a one-time compatibility pass
+can reconstruct accepted evidence from the canonical bibliography and retrieve
+only still-missing rejected DOI evidence:
+
+~~~bash
+bibreview --dry-run relevance --backfill-evidence
+bibreview relevance --backfill-evidence
+~~~
+
+New projects do not need this migration step.
 
 ## Initialization state
 
