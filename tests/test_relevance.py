@@ -56,7 +56,7 @@ class RelevanceEvidenceTests(unittest.TestCase):
         self.assertEqual(merged[0].batch_id, "batch-0001")
         self.assertEqual(merged[0].attempt, 1)
 
-    def test_analysis_replays_rules_and_discovers_signals(self):
+    def test_analysis_replays_rules_and_discovers_review_gap_signals(self):
         entries = (
             self.evidence(
                 "10.1/k1",
@@ -66,28 +66,42 @@ class RelevanceEvidenceTests(unittest.TestCase):
             ),
             self.evidence(
                 "10.1/k2",
-                "Partitioned coupling method for fluid structure interaction",
+                "Immersed boundary formulation for deformable flow coupling",
                 outcome="review",
                 batch="batch-0002",
+            ),
+            self.evidence(
+                "10.1/k3",
+                "Immersed boundary solver for moving elastic interfaces",
+                outcome="review",
+                batch="batch-0003",
             ),
             self.evidence(
                 "10.1/r1",
                 "Experimental test bench for offshore turbine design",
-                outcome="review",
+                outcome="rejected",
                 batch="batch-0001",
             ),
             self.evidence(
                 "10.1/r2",
-                "Experimental test bench for pump performance",
-                outcome="rejected",
+                "<jats:title>Temperature gas pipeline performance</jats:title>",
+                outcome="review",
                 batch="batch-0002",
+            ),
+            self.evidence(
+                "10.1/r3",
+                "&lt;jats:title&gt;Temperature gas turbine performance&lt;/jats:title&gt;",
+                outcome="review",
+                batch="batch-0003",
             ),
         )
         labels = {
             "10.1/k1": ("keep", "canonical"),
             "10.1/k2": ("keep", "human"),
-            "10.1/r1": ("reject", "human"),
-            "10.1/r2": ("reject", "terminal"),
+            "10.1/k3": ("keep", "human"),
+            "10.1/r1": ("reject", "terminal"),
+            "10.1/r2": ("reject", "human"),
+            "10.1/r3": ("reject", "human"),
         }
         analysis = analyze_relevance(
             entries,
@@ -97,22 +111,32 @@ class RelevanceEvidenceTests(unittest.TestCase):
             unmatched="manual-review",
         )
 
-        self.assertEqual(analysis["summary"]["labeled"], 4)
-        self.assertEqual(analysis["summary"]["human_labeled"], 2)
-        self.assertEqual(analysis["current_rules"]["auto_accept"], 2)
-        self.assertEqual(analysis["current_rules"]["auto_reject"], 2)
-        self.assertEqual(analysis["current_rules"]["manual_review"], 0)
+        self.assertEqual(analysis["summary"]["labeled"], 6)
+        self.assertEqual(analysis["summary"]["human_labeled"], 4)
+        self.assertEqual(analysis["current_rules"]["auto_accept"], 1)
+        self.assertEqual(analysis["current_rules"]["auto_reject"], 1)
+        self.assertEqual(analysis["current_rules"]["manual_review"], 4)
         self.assertEqual(analysis["current_rules"]["accept_false_positives"], 0)
         self.assertEqual(analysis["current_rules"]["reject_false_negatives"], 0)
 
-        accept_phrases = {
-            item["phrase"] for item in analysis["signals"]["accept"]
+        accept = {
+            item["phrase"]: item for item in analysis["signals"]["accept"]
         }
-        reject_phrases = {
-            item["phrase"] for item in analysis["signals"]["reject"]
+        reject = {
+            item["phrase"]: item for item in analysis["signals"]["reject"]
         }
-        self.assertIn("partitioned coupling", accept_phrases)
-        self.assertIn("experimental test", reject_phrases)
+        self.assertIn("immersed boundary", accept)
+        self.assertEqual(accept["immersed boundary"]["review_support"], 2)
+        self.assertEqual(accept["immersed boundary"]["review_precision"], 1.0)
+
+        self.assertIn("temperature gas", reject)
+        self.assertEqual(reject["temperature gas"]["review_support"], 2)
+        self.assertEqual(reject["temperature gas"]["review_precision"], 1.0)
+
+        all_phrases = set(accept) | set(reject)
+        self.assertNotIn("jats", all_phrases)
+        self.assertNotIn("title", all_phrases)
+        self.assertNotIn("jats title", all_phrases)
 
     def test_small_sample_reports_statistics_without_claiming_automation(self):
         entry = self.evidence(
