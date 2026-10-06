@@ -689,10 +689,10 @@ def _run_relevance_review(config, args) -> int:
 
     reporter = Reporter(args.verbose)
     services = build_discovery_services(
-                config,
-                reporter=reporter,
-                cache_mode=_cache_mode(args),
-            )
+        config,
+        reporter=reporter,
+        cache_mode=_cache_mode(args),
+    )
     cases = project_relevance_review_cases(
         config,
         provider=services.provider,
@@ -2122,10 +2122,10 @@ def main(argv: list[str] | None = None) -> int:
                         "--batch-size cannot be used with init --rescreen-current"
                     )
                 services = build_discovery_services(
-                config,
-                reporter=reporter,
-                cache_mode=_cache_mode(args),
-            )
+                    config,
+                    reporter=reporter,
+                    cache_mode=_cache_mode(args),
+                )
                 plan = plan_project_init_rescreen(
                     config,
                     provider=services.provider,
@@ -2178,10 +2178,10 @@ def main(argv: list[str] | None = None) -> int:
             if not campaign_exists:
                 validate_project_init_start(config)
                 services = build_discovery_services(
-                config,
-                reporter=reporter,
-                cache_mode=_cache_mode(args),
-            )
+                    config,
+                    reporter=reporter,
+                    cache_mode=_cache_mode(args),
+                )
                 detailed_discovery = getattr(
                     services.discovery_provider,
                     "discover_detailed",
@@ -2269,10 +2269,10 @@ def main(argv: list[str] | None = None) -> int:
 
             if services is None:
                 services = build_discovery_services(
-                config,
-                reporter=reporter,
-                cache_mode=_cache_mode(args),
-            )
+                    config,
+                    reporter=reporter,
+                    cache_mode=_cache_mode(args),
+                )
             execution = execute_project_init_batch(
                 config,
                 batch_id=plan.batch.id,
@@ -2505,10 +2505,10 @@ def main(argv: list[str] | None = None) -> int:
                 )
             else:
                 services = build_collection_services(
-                config,
-                reporter=reporter,
-                cache_mode=_cache_mode(args),
-            )
+                    config,
+                    reporter=reporter,
+                    cache_mode=_cache_mode(args),
+                )
                 plan = plan_project_backfill(
                     config,
                     provider=services.provider,
