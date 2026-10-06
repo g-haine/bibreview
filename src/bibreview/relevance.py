@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import Counter, defaultdict
 from dataclasses import dataclass, replace
+import html
 import math
 from pathlib import Path
 import re
@@ -326,8 +327,22 @@ def _wilson_lower(successes: int, total: int, *, z: float = 1.96) -> float:
     return max(0.0, (center - margin) / denominator)
 
 
+def _feature_text(entry: RelevanceEvidence) -> str:
+    """Return a markup-neutral text surface used only for statistical features."""
+
+    text = relevance_text(entry)
+    for _ in range(2):
+        decoded = html.unescape(text)
+        if decoded == text:
+            break
+        text = decoded
+    text = _COMMENT.sub(" ", text)
+    text = _TAG_LIKE.sub(" ", text)
+    return _normalized_text(text).casefold()
+
+
 def _feature_set(entry: RelevanceEvidence) -> set[str]:
-    text = _normalized_text(relevance_text(entry)).casefold()
+    text = _feature_text(entry)
     tokens = [
         token
         for token in _WORD.findall(text)
@@ -447,14 +462,24 @@ def _replay_metrics(
 def _signal_candidates(
     labeled: tuple[tuple[RelevanceEvidence, str, str], ...],
     *,
+    accept_patterns: tuple[str, ...],
+    reject_patterns: tuple[str, ...],
+    unmatched: str,
     limit: int = 20,
 ) -> dict[str, list[dict[str, Any]]]:
+    """Rank signals by their ability to resolve the current manual-review gap."""
+
     counts: dict[str, Counter[str]] = defaultdict(Counter)
+    review_counts: dict[str, Counter[str]] = defaultdict(Counter)
     dois: dict[str, dict[str, list[str]]] = defaultdict(
+        lambda: {"keep": [], "reject": []}
+    )
+    review_dois: dict[str, dict[str, list[str]]] = defaultdict(
         lambda: {"keep": [], "reject": []}
     )
     human_counts: dict[str, Counter[str]] = defaultdict(Counter)
     batches: dict[str, set[str]] = defaultdict(set)
+    review_batches: dict[str, set[str]] = defaultdict(set)
 
     keep_total = sum(label == "keep" for _, label, _ in labeled)
     reject_total = sum(label == "reject" for _, label, _ in labeled)
@@ -464,7 +489,17 @@ def _signal_candidates(
         "reject": reject_total / total if total else 0.0,
     }
 
+    review_items: list[tuple[RelevanceEvidence, str, str]] = []
     for entry, label, source in labeled:
+        replay, _, _ = _replay_outcome(
+            entry,
+            accept_patterns=accept_patterns,
+            reject_patterns=reject_patterns,
+            unmatched=unmatched,
+        )
+        if replay == "review":
+            review_items.append((entry, label, source))
+
         for feature in _feature_set(entry):
             counts[feature][label] += 1
             if len(dois[feature][label]) < 5:
@@ -474,18 +509,54 @@ def _signal_candidates(
             if entry.batch_id:
                 batches[feature].add(entry.batch_id)
 
+            if replay == "review":
+                review_counts[feature][label] += 1
+                if len(review_dois[feature][label]) < 5:
+                    review_dois[feature][label].append(entry.doi)
+                if entry.batch_id:
+                    review_batches[feature].add(entry.batch_id)
+
+    review_total = len(review_items)
+    review_base = {
+        "keep": (
+            sum(label == "keep" for _, label, _ in review_items) / review_total
+            if review_total
+            else 0.0
+        ),
+        "reject": (
+            sum(label == "reject" for _, label, _ in review_items) / review_total
+            if review_total
+            else 0.0
+        ),
+    }
+
     candidates: dict[str, list[dict[str, Any]]] = {"accept": [], "reject": []}
     for feature, counter in counts.items():
         support = counter["keep"] + counter["reject"]
         if support < 2:
             continue
+
+        gap_counter = review_counts[feature]
+        review_support = gap_counter["keep"] + gap_counter["reject"]
+        if review_support < 2:
+            continue
+
         for direction, label in (("accept", "keep"), ("reject", "reject")):
             successes = counter[label]
             precision = successes / support
-            if precision <= base[label]:
+            gap_successes = gap_counter[label]
+            review_precision = gap_successes / review_support
+            if review_precision <= review_base[label]:
                 continue
+
             lower = _wilson_lower(successes, support)
+            review_lower = _wilson_lower(gap_successes, review_support)
             lift = precision / base[label] if base[label] else None
+            review_lift = (
+                review_precision / review_base[label]
+                if review_base[label]
+                else None
+            )
             candidates[direction].append(
                 {
                     "phrase": feature,
@@ -495,11 +566,22 @@ def _signal_candidates(
                     "precision": precision,
                     "wilson_lower": lower,
                     "lift": lift,
+                    "review_support": review_support,
+                    "review_keep": gap_counter["keep"],
+                    "review_reject": gap_counter["reject"],
+                    "review_precision": review_precision,
+                    "review_wilson_lower": review_lower,
+                    "review_lift": review_lift,
                     "human_keep": human_counts[feature]["keep"],
                     "human_reject": human_counts[feature]["reject"],
                     "batch_count": len(batches[feature]),
+                    "review_batch_count": len(review_batches[feature]),
                     "supporting_dois": dois[feature][label],
                     "contradicting_dois": dois[feature][
+                        "reject" if label == "keep" else "keep"
+                    ],
+                    "review_supporting_dois": review_dois[feature][label],
+                    "review_contradicting_dois": review_dois[feature][
                         "reject" if label == "keep" else "keep"
                     ],
                 }
@@ -508,16 +590,17 @@ def _signal_candidates(
     for direction in candidates:
         candidates[direction].sort(
             key=lambda item: (
+                item["review_wilson_lower"],
+                item["review_support"],
+                item["review_precision"],
                 item["wilson_lower"],
                 item["support"],
-                item["precision"],
                 item["phrase"],
             ),
             reverse=True,
         )
         candidates[direction] = candidates[direction][:limit]
     return candidates
-
 
 def analyze_relevance(
     entries: Iterable[RelevanceEvidence],
@@ -576,7 +659,12 @@ def analyze_relevance(
         ),
         "accept_patterns": _rule_diagnostics(labeled, accept, reject),
         "reject_patterns": _rule_diagnostics(labeled, reject, accept),
-        "signals": _signal_candidates(labeled),
+        "signals": _signal_candidates(
+            labeled,
+            accept_patterns=accept,
+            reject_patterns=reject,
+            unmatched=unmatched,
+        ),
     }
 
 
@@ -590,6 +678,10 @@ def format_relevance_analysis(analysis: Mapping[str, Any]) -> str:
     summary = analysis["summary"]
     current = analysis["current_rules"]
     human = analysis["human_reviewed_rules"]
+    provenance = ", ".join(
+        f"{name}={count}"
+        for name, count in summary["label_sources"].items()
+    ) or "none"
     lines = [
         "Offline relevance analysis",
         f"  Evidence snapshots : {summary['evidence']}",
@@ -597,6 +689,7 @@ def format_relevance_analysis(analysis: Mapping[str, Any]) -> str:
         f"  KEEP                : {summary['keep']}",
         f"  REJECT              : {summary['reject']}",
         f"  Human-reviewed      : {summary['human_labeled']}",
+        f"  Label provenance    : {provenance}",
         f"  Unresolved evidence : {summary['unresolved_evidence']}",
         f"  Batches represented : {summary['batches']}",
         "",
@@ -610,7 +703,14 @@ def format_relevance_analysis(analysis: Mapping[str, Any]) -> str:
         f"  Accept false pos.   : {current['accept_false_positives']}",
         f"  Reject false neg.   : {current['reject_false_negatives']}",
     ]
-    if human:
+    if current["false_accept_dois"] or current["false_reject_dois"]:
+        lines.extend(["", "Current-rule errors"])
+        for doi in current["false_accept_dois"]:
+            lines.append(f"  false accept: {doi}")
+        for doi in current["false_reject_dois"]:
+            lines.append(f"  false reject: {doi}")
+
+    if summary["human_labeled"] > 0:
         lines.extend(
             [
                 "",
@@ -623,8 +723,8 @@ def format_relevance_analysis(analysis: Mapping[str, Any]) -> str:
         )
 
     for heading, key in (
-        ("Candidate accept signals", "accept"),
-        ("Candidate reject signals", "reject"),
+        ("Candidate accept signals for current review gap", "accept"),
+        ("Candidate reject signals for current review gap", "reject"),
     ):
         lines.extend(["", heading])
         signals = analysis["signals"][key]
@@ -635,11 +735,11 @@ def format_relevance_analysis(analysis: Mapping[str, Any]) -> str:
             lines.append(
                 "  "
                 + repr(item["phrase"])
-                + f": support {item['support']}; "
-                + f"precision {item['precision']:.3f}; "
-                + f"Wilson lower {item['wilson_lower']:.3f}; "
-                + f"human {item['human_keep']}/{item['human_reject']}; "
-                + f"batches {item['batch_count']}"
+                + f": review support {item['review_support']}; "
+                + f"review precision {item['review_precision']:.3f}; "
+                + f"review Wilson lower {item['review_wilson_lower']:.3f}; "
+                + f"overall {item['support']} @ {item['precision']:.3f}; "
+                + f"review batches {item['review_batch_count']}"
             )
 
     return "\n".join(lines)
