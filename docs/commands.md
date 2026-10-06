@@ -965,10 +965,13 @@ has high global precision.
 
 Contextual candidates combine two independently recurring textual signals. Pair
 mining is bounded to a compact pool of recurrent/discriminative features, skips
-pairs where one phrase is wholly contained in the other, and reports review-gap
-support, class agreement, confidence, batch coverage, and all-history
-validation. The emitted regex uses two positive lookaheads; it is a copyable
-proposal, not executable project mutation.
+pairs where one phrase is wholly contained in the other, and requires the
+conjunction to improve review-gap precision by at least 0.10 over the better
+single constituent. Candidates must span at least two initialization batches
+and remain directionally stable in at least 75% of the represented batches.
+The report includes review-gap support, precision gain, confidence, batch
+agreement, and all-history validation. The emitted regex uses two positive
+lookaheads; it is a copyable proposal, not executable project mutation.
 
 The statistical signals are suggestions only. BibReview never writes
 `relevance.patterns` or `relevance.reject_patterns` automatically, and no
