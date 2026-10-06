@@ -53,10 +53,19 @@ def _normalized_text(value: str) -> str:
     return "".join("-" if unicodedata.category(character) == "Pd" else character for character in value)
 
 
+def matching_patterns(value: str, patterns: Iterable[str]) -> tuple[str, ...]:
+    """Return configured case-insensitive regular expressions matching ``value``."""
+    text = _normalized_text(value)
+    return tuple(
+        pattern
+        for pattern in patterns
+        if re.search(pattern, text, re.IGNORECASE) is not None
+    )
+
+
 def is_relevant(value: str, patterns: Iterable[str]) -> bool:
     """Return whether any configured case-insensitive regular expression matches."""
-    text = _normalized_text(value)
-    return any(re.search(pattern, text, re.IGNORECASE) is not None for pattern in patterns)
+    return bool(matching_patterns(value, patterns))
 
 
 def _title(message: Mapping[str, Any]) -> str:
