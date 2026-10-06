@@ -4,7 +4,10 @@ import unittest
 
 import requests
 
+from bibreview.config import load_config
+from bibreview.project import plan_project_collection
 from bibreview.providers.cache import CachedTransport, ProviderResponseCache, _request_key
+from bibreview.providers.crossref import CrossRefProvider
 from bibreview.providers.http import HttpError
 from bibreview.reporting import Reporter
 
@@ -171,6 +174,52 @@ class ProviderResponseCacheTests(unittest.TestCase):
         self.assertEqual(transport.request(url).status_code, 403)
         self.assertEqual(transport.request(url).status_code, 403)
         self.assertEqual(len(network.calls), 2)
+
+    def test_repeated_collection_plan_reuses_cached_crossref_response(self):
+        project = self.root / "project"
+        project.mkdir()
+        config_path = project / "bibreview.yml"
+        config_path.write_text(
+            "schema_version: 1\n"
+            "project:\n"
+            "  name: Cache integration\n"
+            "  slug: cache-integration\n"
+            "paths:\n"
+            "  pending: data/newID.txt\n"
+            "site:\n"
+            "  enabled: false\n",
+            encoding="utf-8",
+        )
+        config = load_config(config_path)
+        config.paths.pending.parent.mkdir(parents=True, exist_ok=True)
+        config.paths.pending.write_text("doi:10.1/cache-test\n", encoding="utf-8")
+
+        url = "https://api.crossref.org/works/10.1%2Fcache-test"
+        payload = {
+            "status": "ok",
+            "message": {
+                "DOI": "10.1/cache-test",
+                "type": "journal-article",
+                "title": ["Cached publication"],
+                "author": [{"given": "Ada", "family": "Lovelace"}],
+                "container-title": ["Journal"],
+                "created": {"date-parts": [[2026, 10, 6]]},
+                "published-print": {"date-parts": [[2026]]},
+            },
+        }
+        network = FakeTransport([
+            response(url, __import__("json").dumps(payload).encode("utf-8")),
+        ])
+        provider = CrossRefProvider(
+            CachedTransport(network, cache=self.cache),
+        )
+
+        first = plan_project_collection(config, provider=provider)
+        second = plan_project_collection(config, provider=provider)
+
+        self.assertEqual(len(first.result.items), 1)
+        self.assertEqual(len(second.result.items), 1)
+        self.assertEqual(len(network.calls), 1)
 
     def test_json_post_is_cached_but_form_post_is_not(self):
         post_url = "https://api.example.test/batch"
