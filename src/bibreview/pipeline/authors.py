@@ -58,6 +58,7 @@ class AuthorReviewCase:
     reasons: tuple[str, ...]
     possible_matches: Mapping[str, tuple[str, ...]]
     occurrences: tuple[AuthorReviewOccurrence, ...]
+    possible_match_occurrences: Mapping[str, tuple[AuthorReviewOccurrence, ...]]
 
 
 def author_name(author: Author) -> str:
@@ -226,6 +227,25 @@ def author_review_cases(
                             affiliations=_author_affiliations(author),
                         )
                     )
+            possible_match_occurrences: dict[str, tuple[AuthorReviewOccurrence, ...]] = {}
+            for candidate_slug, candidate_names in review.possible_matches.items():
+                candidate_occurrences: list[AuthorReviewOccurrence] = []
+                candidate_name_set = set(candidate_names)
+                for publication in items:
+                    for author in publication.authors:
+                        if author_name(author) not in candidate_name_set:
+                            continue
+                        candidate_occurrences.append(
+                            AuthorReviewOccurrence(
+                                publication_id=publication.id,
+                                doi=publication.doi,
+                                title=publication.title,
+                                orcid=_author_orcid(author),
+                                affiliations=_author_affiliations(author),
+                            )
+                        )
+                possible_match_occurrences[candidate_slug] = tuple(candidate_occurrences)
+
             cases.append(
                 AuthorReviewCase(
                     name=name,
@@ -233,6 +253,9 @@ def author_review_cases(
                     reasons=review.reasons,
                     possible_matches=review.possible_matches,
                     occurrences=tuple(occurrences),
+                    possible_match_occurrences=MappingProxyType(
+                        possible_match_occurrences
+                    ),
                 )
             )
     return tuple(cases)
@@ -297,9 +320,27 @@ def format_author_review_case(
         lines.append("Possible existing identities:")
         for number, (slug, names) in enumerate(case.possible_matches.items(), start=1):
             lines.append(f"  {number}. {slug}: {', '.join(names)}")
+            candidate_occurrences = case.possible_match_occurrences.get(slug, ())
+            if candidate_occurrences:
+                lines.append("     Canonical publications:")
+                for occurrence in candidate_occurrences:
+                    identifier = (
+                        f"DOI {occurrence.doi}"
+                        if occurrence.doi
+                        else occurrence.publication_id
+                    )
+                    lines.append(
+                        f"       - {identifier}: {occurrence.title or '(untitled)'}"
+                    )
+                    if occurrence.orcid:
+                        lines.append(f"         ORCID: {occurrence.orcid}")
+                    for affiliation in occurrence.affiliations:
+                        lines.append(f"         Affiliation: {affiliation}")
+            else:
+                lines.append("     Canonical publications: none found")
     else:
         lines.append("Possible existing identities: none")
-    lines.append("Publications:")
+    lines.append("Unresolved-name publications:")
     for occurrence in case.occurrences:
         identifier = f"DOI {occurrence.doi}" if occurrence.doi else occurrence.publication_id
         lines.append(f"  - {identifier}: {occurrence.title or '(untitled)'}")
