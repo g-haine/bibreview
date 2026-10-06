@@ -177,11 +177,13 @@ After canonical additions or contributor changes:
 ~~~bash
 bibreview authors
 bibreview authors --apply-safe
+bibreview authors --review
 bibreview authors
 ~~~
 
 Safe mappings may be applied automatically. Remaining ambiguous identities are
-human decisions; edit `data/author_mappings.json` as needed.
+explicit human decisions handled by the resumable interactive reviewer; direct
+editing of `data/author_mappings.json` is not required.
 
 See [Author identities](authors.md).
 
