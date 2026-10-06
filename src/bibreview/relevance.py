@@ -23,8 +23,7 @@ _STOPWORDS = frozenset(
     """
     a an and are as at be been being by for from has have in into is it its
     of on or that the their this to using via was were with within without
-    we our can may method methods model models numerical study studies
-    analysis analyses approach approaches results based new
+    we our can may
     """.split()
 )
 _WORD = re.compile(r"[^\W_]+(?:[-'][^\W_]+)*", re.UNICODE)
