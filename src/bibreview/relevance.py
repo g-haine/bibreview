@@ -948,8 +948,8 @@ def format_relevance_analysis(analysis: Mapping[str, Any]) -> str:
         f"  Accept state agreement : {_format_ratio(current['accept_precision'])}",
         f"  Reject state agreement : {_format_ratio(current['reject_precision'])}",
         f"  Automatic coverage  : {_format_ratio(current['automatic_coverage'])}",
-        f"  Accept false pos.   : {current['accept_false_positives']}",
-        f"  Reject false neg.   : {current['reject_false_negatives']}",
+        f"  Accept disagreements: {current['accept_false_positives']}",
+        f"  Reject disagreements: {current['reject_false_negatives']}",
     ]
     if current["false_accept_dois"] or current["false_reject_dois"]:
         lines.extend(["", "Current-rule / project-state disagreements"])
