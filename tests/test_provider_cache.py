@@ -79,6 +79,19 @@ class ProviderResponseCacheTests(unittest.TestCase):
         self.assertEqual(len(network.calls), 1)
         self.assertEqual(path.stat().st_mtime, before)
 
+    def test_cached_response_does_not_persist_redirect_query_string(self):
+        url = "https://doi.org/10.1/test"
+        final = "https://publisher.example/article?signed_token=secret#fragment"
+        network = FakeTransport([response(final, b"article")])
+        transport = CachedTransport(network, cache=self.cache)
+
+        first = transport.request(url)
+        second = transport.request(url)
+
+        self.assertEqual(first.url, final)
+        self.assertEqual(second.url, "https://publisher.example/article")
+        self.assertEqual(len(network.calls), 1)
+
     def test_expired_entry_is_refetched_and_replaced(self):
         url = "https://api.example.test/item"
         network = FakeTransport([
