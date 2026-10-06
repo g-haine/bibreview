@@ -511,7 +511,14 @@ def _run_author_review(config, args) -> int:
 
     if args.dry_run:
         for index, case in enumerate(cases, start=1):
-            print(format_author_review_case(case, index=index, total=len(cases)))
+            print(
+                format_author_review_case(
+                    case,
+                    index=index,
+                    total=len(cases),
+                    hyperlinks=sys.stdout.isatty(),
+                )
+            )
             print()
         print(
             f"Dry run: {len(cases)} author identity decision(s) require human review; "
@@ -530,7 +537,14 @@ def _run_author_review(config, args) -> int:
         if case is None:
             continue
 
-        print(format_author_review_case(case, index=position, total=len(initial_names)))
+        print(
+            format_author_review_case(
+                case,
+                index=position,
+                total=len(initial_names),
+                hyperlinks=sys.stdout.isatty(),
+            )
+        )
         possible = tuple(case.possible_matches)
         numbered = f"1-{len(possible)}/" if possible else ""
         prompt = (
