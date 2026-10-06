@@ -106,6 +106,7 @@ bibreview --config bibreview.yml authors
 ~~~
 
 Continue until the report is acceptable.
+
 ## Same exact display name for two different people
 
 The current mapping model requires one exact name string to map to one identity.
