@@ -29,10 +29,13 @@ In JSON mode they distinguish:
 A large campaign `progress.total` alone must not be interpreted as the full
 OpenAlex result count.
 
-The current batch is screened into the ordinary DOI queues. Review
-`checkID.txt`, then use the existing collection and merge boundary:
+The current batch is screened into the ordinary DOI queues. Resolve any
+manual relevance cases with the first-class reviewer, then use the existing
+collection and merge boundary:
 
 ~~~bash
+bibreview --dry-run review
+bibreview review
 bibreview collect
 bibreview --dry-run merge
 bibreview merge
@@ -101,8 +104,21 @@ BibReview writes DOI candidates into typed state files:
 - `data/checkID.txt` — requires human relevance review;
 - `data/badID.txt` — deliberately rejected.
 
-Review `checkID.txt` manually and move each `doi:` token to the
-appropriate file.
+Resolve `checkID.txt` through BibReview rather than editing queue files
+directly:
+
+~~~bash
+bibreview --dry-run review
+bibreview review
+~~~
+
+The reviewer refreshes provider metadata, displays the title, type, abstract,
+keywords and current accept/reject-pattern matches, and requires an explicit
+**KEEP**, **REJECT**, or defer decision. KEEP moves the DOI to `newID.txt`;
+REJECT moves it to `badID.txt`; defer leaves it in `checkID.txt`. Decisions
+are persisted one at a time, so interruption and later resume are safe. When a
+candidate belongs to the current initialization batch, the same decision also
+reconciles the initialization report/campaign state.
 
 Collect accepted DOI values:
 
