@@ -187,6 +187,15 @@ def _enable_interactive_line_editing() -> None:
         return
 
 
+def _cache_mode(args) -> str:
+    """Return the provider cache mode selected by global CLI controls."""
+    if args.no_cache:
+        return "no-cache"
+    if args.refresh_cache:
+        return "refresh"
+    return "normal"
+
+
 def _print_collection_failures(plan) -> None:
     """Print candidate-local collection failures that require human review."""
     for failure in plan.result.invalid:
@@ -213,6 +222,17 @@ def _parser() -> argparse.ArgumentParser:
     output.add_argument("-v", "--verbose", action="count", default=0)
     output.add_argument("-q", "--quiet", action="store_true")
     parser.add_argument("--dry-run", action="store_true", help="Validate and plan mutating commands without writing files")
+    cache = parser.add_mutually_exclusive_group()
+    cache.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Bypass provider cache reads and writes for this command",
+    )
+    cache.add_argument(
+        "--refresh-cache",
+        action="store_true",
+        help="Bypass provider cache reads and replace entries after successful live requests",
+    )
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("validate", help="Validate project configuration/state")
     commands.add_parser("status", help="Show the current project configuration summary")
@@ -668,7 +688,11 @@ def _run_relevance_review(config, args) -> int:
         return 0
 
     reporter = Reporter(args.verbose)
-    services = build_discovery_services(config, reporter=reporter)
+    services = build_discovery_services(
+                config,
+                reporter=reporter,
+                cache_mode=_cache_mode(args),
+            )
     cases = project_relevance_review_cases(
         config,
         provider=services.provider,
@@ -1416,6 +1440,12 @@ def main(argv: list[str] | None = None) -> int:
             print("Providers: " + (", ".join(enabled) if enabled else "none"))
             print(f"Bibliography: {config.paths.bibliography}")
             print(f"Collected staging: {config.paths.collected}")
+            cache_status = (
+                f"enabled ({config.cache.ttl_hours:g}h TTL)"
+                if config.cache.enabled
+                else "disabled"
+            )
+            print(f"Provider cache: {cache_status}")
             arxiv_status = (
                 f"enabled → {config.arxiv.output}"
                 if config.arxiv.enabled
@@ -1762,7 +1792,11 @@ def main(argv: list[str] | None = None) -> int:
                     print(f"Report: {config.audit.report}")
                 return 0
 
-            services = build_audit_services(config, reporter=reporter)
+            services = build_audit_services(
+                config,
+                reporter=reporter,
+                cache_mode=_cache_mode(args),
+            )
             execution = execute_project_audit_batch(
                 config,
                 batch_id=plan.batch.id,
@@ -2008,7 +2042,11 @@ def main(argv: list[str] | None = None) -> int:
                     print(f"Report: {config.references.report}")
                 return 0
 
-            services = build_reference_services(config, reporter=reporter)
+            services = build_reference_services(
+                config,
+                reporter=reporter,
+                cache_mode=_cache_mode(args),
+            )
             execution = execute_project_references_batch(
                 config,
                 batch_id=plan.batch.id,
@@ -2083,7 +2121,11 @@ def main(argv: list[str] | None = None) -> int:
                     raise ProjectStateError(
                         "--batch-size cannot be used with init --rescreen-current"
                     )
-                services = build_discovery_services(config, reporter=reporter)
+                services = build_discovery_services(
+                config,
+                reporter=reporter,
+                cache_mode=_cache_mode(args),
+            )
                 plan = plan_project_init_rescreen(
                     config,
                     provider=services.provider,
@@ -2135,7 +2177,11 @@ def main(argv: list[str] | None = None) -> int:
 
             if not campaign_exists:
                 validate_project_init_start(config)
-                services = build_discovery_services(config, reporter=reporter)
+                services = build_discovery_services(
+                config,
+                reporter=reporter,
+                cache_mode=_cache_mode(args),
+            )
                 detailed_discovery = getattr(
                     services.discovery_provider,
                     "discover_detailed",
@@ -2222,7 +2268,11 @@ def main(argv: list[str] | None = None) -> int:
                 return 0
 
             if services is None:
-                services = build_discovery_services(config, reporter=reporter)
+                services = build_discovery_services(
+                config,
+                reporter=reporter,
+                cache_mode=_cache_mode(args),
+            )
             execution = execute_project_init_batch(
                 config,
                 batch_id=plan.batch.id,
@@ -2289,7 +2339,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "discover":
         reporter = Reporter(-1 if args.quiet else args.verbose)
         try:
-            services = build_discovery_services(config, reporter=reporter)
+            services = build_discovery_services(
+                config,
+                reporter=reporter,
+                cache_mode=_cache_mode(args),
+            )
             plan = plan_project_discovery(
                 config,
                 discovery_provider=services.discovery_provider,
@@ -2314,7 +2368,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "collect":
         reporter = Reporter(-1 if args.quiet else args.verbose)
         try:
-            services = build_collection_services(config, reporter=reporter)
+            services = build_collection_services(
+                config,
+                reporter=reporter,
+                cache_mode=_cache_mode(args),
+            )
             plan = plan_project_collection(
                 config,
                 provider=services.provider,
@@ -2446,7 +2504,11 @@ def main(argv: list[str] | None = None) -> int:
                     manual=True,
                 )
             else:
-                services = build_collection_services(config, reporter=reporter)
+                services = build_collection_services(
+                config,
+                reporter=reporter,
+                cache_mode=_cache_mode(args),
+            )
                 plan = plan_project_backfill(
                     config,
                     provider=services.provider,
@@ -2545,7 +2607,11 @@ def main(argv: list[str] | None = None) -> int:
 
         reporter = Reporter(-1 if args.quiet else args.verbose)
         try:
-            services = build_collection_services(config, reporter=reporter)
+            services = build_collection_services(
+                config,
+                reporter=reporter,
+                cache_mode=_cache_mode(args),
+            )
             plan = plan_project_refresh(
                 config,
                 provider=services.provider,
