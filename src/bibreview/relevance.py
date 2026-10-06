@@ -26,6 +26,13 @@ _STOPWORDS = frozenset(
     a an and are as at be been being by for from has have in into is it its
     of on or that the their this to using via was were with within without
     we our can may
+    about above after again against all also am among an another any around
+    because before below between both but could did do does doing down during
+    each few further had having he her here hers herself him himself his how
+    if itself just more most no nor not now off once only other ought out over
+    own same she should so some such than then there these they those through
+    too under until up very what when where which while who whom why will would
+    you your yours yourself yourselves
     """.split()
 )
 _WORD = re.compile(r"[^\W_]+(?:[-'][^\W_]+)*", re.UNICODE)
@@ -657,8 +664,9 @@ def _contextual_signal_candidates(
     unmatched: str,
     limit: int = 20,
     pool_limit: int = 80,
+    min_precision_gain: float = 0.10,
 ) -> dict[str, list[dict[str, Any]]]:
-    """Mine bounded two-signal rules that specifically resolve the review gap."""
+    """Mine bounded two-signal rules that add information beyond either signal."""
 
     review_items: list[tuple[RelevanceEvidence, str, str, set[str]]] = []
     review_feature_counts: Counter[str] = Counter()
@@ -688,12 +696,13 @@ def _contextual_signal_candidates(
     base_keep = keep_review / review_total
     base_reject = reject_review / review_total
 
-    # Bound pair mining to informative/recurrent features. The pool combines
-    # recurrence with deviation from the current review-set class balance.
     feature_labels: dict[str, Counter[str]] = defaultdict(Counter)
-    for _, label, _, features in review_items:
+    feature_batches: dict[str, set[str]] = defaultdict(set)
+    for entry, label, _, features in review_items:
         for feature in features:
             feature_labels[feature][label] += 1
+            if entry.batch_id:
+                feature_batches[feature].add(entry.batch_id)
 
     ranked_features: list[tuple[float, int, str]] = []
     for feature, support in review_feature_counts.items():
@@ -710,16 +719,16 @@ def _contextual_signal_candidates(
         ranked_features.append((score, support, feature))
 
     ranked_features.sort(reverse=True)
-    pool = {
-        feature
-        for _, _, feature in ranked_features[:pool_limit]
-    }
+    pool = {feature for _, _, feature in ranked_features[:pool_limit]}
 
     pair_counts: dict[tuple[str, str], Counter[str]] = defaultdict(Counter)
     pair_dois: dict[tuple[str, str], dict[str, list[str]]] = defaultdict(
         lambda: {"keep": [], "reject": []}
     )
     pair_batches: dict[tuple[str, str], set[str]] = defaultdict(set)
+    pair_batch_labels: dict[
+        tuple[str, str], dict[str, Counter[str]]
+    ] = defaultdict(lambda: defaultdict(Counter))
     pair_human: dict[tuple[str, str], Counter[str]] = defaultdict(Counter)
 
     for entry, label, source, features in review_items:
@@ -733,6 +742,7 @@ def _contextual_signal_candidates(
                 pair_dois[pair][label].append(entry.doi)
             if entry.batch_id:
                 pair_batches[pair].add(entry.batch_id)
+                pair_batch_labels[pair][entry.batch_id][label] += 1
             if source == "human":
                 pair_human[pair][label] += 1
 
@@ -742,16 +752,46 @@ def _contextual_signal_candidates(
     }
     for pair, counts in pair_counts.items():
         support = counts["keep"] + counts["reject"]
-        if support < 2:
+        if support < 3:
             continue
+
+        first, second = pair
+        first_counts = feature_labels[first]
+        second_counts = feature_labels[second]
+        first_support = first_counts["keep"] + first_counts["reject"]
+        second_support = second_counts["keep"] + second_counts["reject"]
+
         for direction, label, baseline in (
             ("accept", "keep", base_keep),
             ("reject", "reject", base_reject),
         ):
             successes = counts[label]
             precision = successes / support
-            if precision <= baseline:
+            first_precision = first_counts[label] / first_support
+            second_precision = second_counts[label] / second_support
+            best_single_precision = max(first_precision, second_precision)
+            precision_gain = precision - best_single_precision
+
+            # A contextual rule must add information. If one constituent is
+            # already equally predictive, the conjunction is statistical noise.
+            if precision <= baseline or precision_gain < min_precision_gain:
                 continue
+
+            batch_labels = pair_batch_labels[pair]
+            target_pure_batches = 0
+            for batch_counts in batch_labels.values():
+                opposite = "reject" if label == "keep" else "keep"
+                if batch_counts[label] > 0 and batch_counts[opposite] == 0:
+                    target_pure_batches += 1
+            batch_count = len(pair_batches[pair])
+            batch_agreement = (
+                target_pure_batches / batch_count
+                if batch_count
+                else 0.0
+            )
+            if batch_count < 2 or batch_agreement < 0.75:
+                continue
+
             data = {
                 "signals": list(pair),
                 "regex": _contextual_regex(*pair),
@@ -760,7 +800,12 @@ def _contextual_signal_candidates(
                 "review_reject": counts["reject"],
                 "review_precision": precision,
                 "review_wilson_lower": _wilson_lower(successes, support),
-                "review_batch_count": len(pair_batches[pair]),
+                "review_batch_count": batch_count,
+                "review_batch_agreement": batch_agreement,
+                "first_review_precision": first_precision,
+                "second_review_precision": second_precision,
+                "best_single_review_precision": best_single_precision,
+                "review_precision_gain": precision_gain,
                 "human_keep": pair_human[pair]["keep"],
                 "human_reject": pair_human[pair]["reject"],
                 "review_supporting_dois": pair_dois[pair][label],
@@ -770,13 +815,13 @@ def _contextual_signal_candidates(
             }
             prelim[direction].append((pair, data))
 
-    # Keep a wider shortlist before the more expensive all-history validation.
     for direction in prelim:
         prelim[direction].sort(
             key=lambda item: (
+                item[1]["review_precision_gain"],
                 item[1]["review_wilson_lower"],
                 item[1]["review_support"],
-                item[1]["review_precision"],
+                item[1]["review_batch_agreement"],
                 item[0],
             ),
             reverse=True,
@@ -831,9 +876,10 @@ def _contextual_signal_candidates(
 
         result[direction].sort(
             key=lambda item: (
+                item["review_precision_gain"],
                 item["review_wilson_lower"],
                 item["review_support"],
-                item["review_precision"],
+                item["review_batch_agreement"],
                 item["wilson_lower"],
                 item["support"],
                 tuple(item["signals"]),
@@ -1007,6 +1053,8 @@ def format_relevance_analysis(analysis: Mapping[str, Any]) -> str:
                 + f"review support {item['review_support']}; "
                 + f"review precision {item['review_precision']:.3f}; "
                 + f"review Wilson lower {item['review_wilson_lower']:.3f}; "
+                + f"gain {item['review_precision_gain']:+.3f}; "
+                + f"batch agreement {item['review_batch_agreement']:.3f}; "
                 + f"overall {item['support']} @ {_format_ratio(item['precision'])}; "
                 + f"review batches {item['review_batch_count']}"
             )
