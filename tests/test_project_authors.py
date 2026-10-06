@@ -5,7 +5,13 @@ import unittest
 from bibreview.config import load_config
 from bibreview.identity import new_publication_id
 from bibreview.model import Author, Publication
-from bibreview.project import apply_project_author_mappings, plan_project_author_mappings
+from bibreview.project import (
+    apply_project_author_mappings,
+    apply_project_author_review_decision,
+    plan_project_author_mappings,
+    plan_project_author_review_decision,
+    project_author_review_cases,
+)
 from bibreview.storage import read_json, write_bibliography, write_json
 
 
@@ -97,6 +103,47 @@ class ProjectAuthorMappingTests(unittest.TestCase):
             read_json(self.config.paths.author_mappings, dict),
             {"example-consortium": ["Example Consortium"]},
         )
+
+
+    def test_manual_review_decision_is_planned_then_applied(self):
+        write_bibliography(
+            self.config.paths.bibliography,
+            [
+                Publication(
+                    id=new_publication_id(),
+                    identifiers={"doi": "10.1/hong"},
+                    title="Reviewed evidence",
+                    authors=(Author(given="Y.", family="Hong"),),
+                )
+            ],
+        )
+        write_json(
+            self.config.paths.author_mappings,
+            {"yin-hong": ["Yin Hong"]},
+        )
+
+        before = self.snapshot()
+        cases = project_author_review_cases(self.config)
+        self.assertEqual(len(cases), 1)
+        self.assertEqual(cases[0].name, "Y. Hong")
+        self.assertEqual(before, self.snapshot())
+
+        plan = plan_project_author_review_decision(
+            self.config,
+            name="Y. Hong",
+            slug="yin-hong",
+            create_new=False,
+        )
+        self.assertEqual(before, self.snapshot())
+        self.assertTrue(plan.changed)
+        self.assertEqual(plan.remaining_review, 0)
+
+        apply_project_author_review_decision(plan)
+        self.assertEqual(
+            read_json(self.config.paths.author_mappings, dict),
+            {"yin-hong": ["Yin Hong", "Y. Hong"]},
+        )
+        self.assertEqual(project_author_review_cases(self.config), ())
 
 
 if __name__ == "__main__":
