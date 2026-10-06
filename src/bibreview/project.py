@@ -42,6 +42,11 @@ from .pipeline.discover import (
     discover as discover_publications,
 )
 from .pipeline.merge import MergeResult, merge_publications
+from .relevance import (
+    merge_relevance_evidence,
+    read_relevance_evidence,
+    relevance_evidence_data,
+)
 from .reporting import Reporter
 from .storage import (
     BibliographyDocument,
@@ -397,12 +402,22 @@ def plan_project_discovery(
     pending = _append_unique(pending, result.queued)
     rejected = _append_unique(rejected, result.rejected)
     review = _append_unique(review, result.review)
+    evidence = merge_relevance_evidence(
+        read_relevance_evidence(config.relevance.evidence),
+        result.evidence,
+    )
 
     outputs: dict[Path, bytes] = {}
     if result.candidates or paths.pending.exists() or paths.rejected.exists() or paths.review.exists():
         _put_if_changed(outputs, paths.pending, _doi_tokens_bytes(pending))
         _put_if_changed(outputs, paths.rejected, _doi_tokens_bytes(rejected))
         _put_if_changed(outputs, paths.review, _doi_tokens_bytes(review))
+    if result.evidence or config.relevance.evidence.exists():
+        _put_if_changed(
+            outputs,
+            config.relevance.evidence,
+            json_bytes(relevance_evidence_data(evidence)),
+        )
 
     return ProjectDiscoveryPlan(
         result=result,
