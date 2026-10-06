@@ -935,9 +935,9 @@ terminal state.
 
 - labeled KEEP/REJECT evidence and label provenance;
 - a replay of the **current** accept/reject rules over retained evidence;
-- automatic coverage, accept/reject precision, false positives/negatives, and
-  accept/reject conflicts;
-- the same replay restricted to explicitly human-reviewed examples;
+- automatic coverage plus agreement/disagreement with current project state;
+- the same replay restricted to explicitly human-reviewed examples, where
+  precision is a genuine human-label metric;
 - per-pattern support, class counts, precision, unique coverage, and conflicts;
 - interpretable unigram/bigram/trigram signals ranked specifically by their
   ability to resolve candidates that the **current rules would still send to
