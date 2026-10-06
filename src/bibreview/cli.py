@@ -655,7 +655,16 @@ def _run_relevance_review(config, args) -> int:
 
     dois = project_relevance_review_dois(config)
     if not dois:
-        print("No DOI candidates require manual relevance review.")
+        if args.dry_run and args.json_output:
+            print(
+                json.dumps(
+                    {"dry_run": True, "cases": []},
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+        else:
+            print("No DOI candidates require manual relevance review.")
         return 0
 
     reporter = Reporter(args.verbose)
