@@ -699,18 +699,18 @@ def format_relevance_analysis(analysis: Mapping[str, Any]) -> str:
         f"  Auto accept         : {current['auto_accept']}",
         f"  Auto reject         : {current['auto_reject']}",
         f"  Manual review       : {current['manual_review']}",
-        f"  Accept precision    : {_format_ratio(current['accept_precision'])}",
-        f"  Reject precision    : {_format_ratio(current['reject_precision'])}",
+        f"  Accept state agreement : {_format_ratio(current['accept_precision'])}",
+        f"  Reject state agreement : {_format_ratio(current['reject_precision'])}",
         f"  Automatic coverage  : {_format_ratio(current['automatic_coverage'])}",
         f"  Accept false pos.   : {current['accept_false_positives']}",
         f"  Reject false neg.   : {current['reject_false_negatives']}",
     ]
     if current["false_accept_dois"] or current["false_reject_dois"]:
-        lines.extend(["", "Current-rule errors"])
+        lines.extend(["", "Current-rule / project-state disagreements"])
         for doi in current["false_accept_dois"]:
-            lines.append(f"  false accept: {doi}")
+            lines.append(f"  auto accept vs project REJECT: {doi}")
         for doi in current["false_reject_dois"]:
-            lines.append(f"  false reject: {doi}")
+            lines.append(f"  auto reject vs project KEEP: {doi}")
 
     if summary["human_labeled"] > 0:
         lines.extend(
