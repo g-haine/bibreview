@@ -28,6 +28,8 @@ _STOPWORDS = frozenset(
     """.split()
 )
 _WORD = re.compile(r"[^\W_]+(?:[-'][^\W_]+)*", re.UNICODE)
+_TAG_LIKE = re.compile(r"</?[A-Za-z][^<>]*>")
+_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
 
 
 @dataclass(frozen=True)
