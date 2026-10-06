@@ -88,6 +88,8 @@ references:
   batch_size: 50
 
 relevance:
+  # Screening evidence is retained once so later rule analysis is fully offline.
+  evidence: audit/relevance/evidence.json
   patterns:
     - 'fluid[-\\s]+structure'
   reject_patterns: []
