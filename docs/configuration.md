@@ -52,6 +52,51 @@ the process environment override values from the dotenv file.
 
 Do not commit **.env**.
 
+## Provider response cache
+
+Provider-backed workflows can share a short-lived user-level cache of provider
+responses:
+
+~~~yaml
+cache:
+  enabled: true
+  ttl_hours: 6
+~~~
+
+The cache is disabled when the block is omitted. When enabled, `ttl_hours` must
+be greater than zero. Cache files live in the platform user cache directory
+(for example **~/.cache/bibreview/providers-v1/** on Linux, or the corresponding
+XDG location) and never inside the project repository.
+
+The cache is an optimization of provider evidence retrieval, not bibliographic
+state. An identical deterministic request reuses a fresh entry until its
+original network timestamp reaches the configured TTL. Reading an entry does
+**not** renew that timestamp. A missing or expired entry requires a live provider
+request; stale data is never used silently as fallback after a failed refresh.
+
+Successful provider payloads and deterministic not-found responses may be
+cached. Authentication/access failures, rate limits, server failures, transport
+errors, and OAuth/form token exchanges do not replace cache entries. A failed
+refresh therefore preserves any older entry physically without using it for the
+current command.
+
+Two global controls override normal cache use for one invocation:
+
+~~~bash
+bibreview --no-cache collect
+bibreview --refresh-cache collect
+~~~
+
+`--no-cache` bypasses both reads and writes. `--refresh-cache` bypasses reads,
+performs live requests, and replaces entries only after cacheable responses.
+The options are mutually exclusive. They apply across provider-backed workflows
+such as discovery, initialization screening, relevance review, collection,
+refresh, backfill, audit, and reference maintenance.
+
+`bibreview providers --check` always performs live diagnostics and bypasses this
+cache. The optional arXiv display cache is a separate feature with separate
+state and semantics.
+
 ## Project paths
 
 ~~~yaml

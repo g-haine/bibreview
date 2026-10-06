@@ -116,6 +116,37 @@ class ConfigTests(unittest.TestCase):
         _, path = self.write()
         self.assertIsNone(load_config(path).environment.file)
 
+    def test_provider_cache_defaults_to_disabled(self):
+        _, path = self.write()
+        config = load_config(path)
+        self.assertFalse(config.cache.enabled)
+        self.assertEqual(config.cache.ttl_hours, 6.0)
+
+    def test_loads_provider_cache_configuration(self):
+        _, path = self.write(BASE.replace(
+            "project:\n",
+            "cache:\n"
+            "  enabled: true\n"
+            "  ttl_hours: 2.5\n"
+            "project:\n",
+            1,
+        ))
+        config = load_config(path)
+        self.assertTrue(config.cache.enabled)
+        self.assertEqual(config.cache.ttl_hours, 2.5)
+
+    def test_enabled_provider_cache_requires_positive_ttl(self):
+        _, path = self.write(BASE.replace(
+            "project:\n",
+            "cache:\n"
+            "  enabled: true\n"
+            "  ttl_hours: 0\n"
+            "project:\n",
+            1,
+        ))
+        with self.assertRaisesRegex(ConfigError, "cache.ttl_hours"):
+            load_config(path)
+
     def test_loads_optional_arxiv_configuration(self):
         root, path = self.write(BASE.replace(
             "  slug: example-review\n",

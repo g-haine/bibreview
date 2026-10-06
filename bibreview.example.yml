@@ -3,6 +3,12 @@ schema_version: 1
 environment:
   file: .env
 
+# Optional user-level cache for deterministic provider responses. Cache files
+# live outside the project repository and never become canonical project state.
+cache:
+  enabled: true
+  ttl_hours: 6
+
 project:
   name: Example Review
   slug: example-review

@@ -4,6 +4,13 @@ All notable BibReview releases are documented here.
 
 ## Unreleased
 
+- add an optional project-configured user-level provider-response cache shared
+  across deterministic provider-backed workflows, so fresh provider evidence
+  can be reused between operations such as dry-run and apply without repeating
+  network requests; preserve the original cache timestamp on hits, refresh only
+  after cacheable live responses, keep failures from overwriting prior entries,
+  leave OAuth/form exchanges and `providers --check` live, and add mutually
+  exclusive global `--no-cache` / `--refresh-cache` controls;
 - add first-class resumable `bibreview review` for DOI candidates in
   `checkID.txt`: refresh provider evidence, show title/type/abstract/keywords
   plus current accept/reject-pattern diagnostics and initialization context,

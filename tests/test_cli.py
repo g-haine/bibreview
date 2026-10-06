@@ -288,6 +288,30 @@ class CliTests(unittest.TestCase):
             "@article{new}\n",
         )
 
+    def test_collect_global_cache_controls_reach_runtime_services(self):
+        self.config.paths.pending.write_text("10.1/new\n", encoding="utf-8")
+
+        for flag, expected in (
+            ("--no-cache", "no-cache"),
+            ("--refresh-cache", "refresh"),
+        ):
+            with self.subTest(flag=flag):
+                with patch(
+                    "bibreview.cli.build_collection_services",
+                    return_value=self.collection_services(),
+                ) as build:
+                    code = main([
+                        "--config", str(self.config_path),
+                        flag,
+                        "--dry-run",
+                        "collect",
+                    ])
+                self.assertEqual(code, 0)
+                self.assertEqual(
+                    build.call_args.kwargs["cache_mode"],
+                    expected,
+                )
+
     def test_collect_reports_invalid_metadata_with_doi_and_continues(self):
         write_bibliography(self.config.paths.collected, [])
         self.config.paths.pending.write_text(

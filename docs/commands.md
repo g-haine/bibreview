@@ -3,7 +3,7 @@
 Global syntax:
 
 ~~~text
-bibreview [--config PATH] [-v|-q] [--dry-run] COMMAND
+bibreview [--config PATH] [-v|-q] [--dry-run] [--no-cache|--refresh-cache] COMMAND
 ~~~
 
 When the configuration file is named **bibreview.yml** and the command is run
@@ -25,7 +25,14 @@ Global options:
 | **-v**, **--verbose** | Increase progress output. Can be repeated. |
 | **-q**, **--quiet** | Suppress normal output. |
 | **--dry-run** | Plan a mutating command without writing project files. |
+| **--no-cache** | Bypass provider-cache reads and writes for this invocation. |
+| **--refresh-cache** | Bypass provider-cache reads and refresh entries after successful live requests. |
 | **--version** | Print the BibReview version. |
+
+`--no-cache` and `--refresh-cache` are mutually exclusive global options. They
+affect provider-backed workflows when the project cache is enabled. Provider
+diagnostics with `providers --check` remain live and bypass the provider cache;
+the arXiv display cache is separate.
 
 ## init
 
@@ -59,7 +66,8 @@ An initialization batch remains open while any of its candidates are:
 Resolve those candidates with the ordinary project workflow:
 
 ~~~bash
-# Review checkID.txt and move each DOI to newID.txt or badID.txt.
+bibreview --dry-run review
+bibreview review
 bibreview collect
 bibreview --dry-run merge
 bibreview merge

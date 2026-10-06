@@ -262,6 +262,13 @@ bibreview providers --check
 Provider failures are reported as evidence/availability problems, not silently
 converted into bibliographic rejection.
 
+Provider-backed workflows can optionally reuse a project-configured, time-bounded
+cache of provider responses stored outside the repository. This avoids repeating
+identical network calls between operations such as a dry-run and its real
+execution. Global `--no-cache` and `--refresh-cache` controls provide explicit
+live-request overrides, while `providers --check` always remains live. See
+[Configuration](docs/configuration.md) for the cache policy.
+
 ## Static-site rendering
 
 BibReview can render bibliography content into an existing Jekyll project.

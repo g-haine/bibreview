@@ -261,6 +261,14 @@ class RelevanceConfig:
 
 
 @dataclass(frozen=True)
+class CacheConfig:
+    """Project policy for the user-level provider response cache."""
+
+    enabled: bool = False
+    ttl_hours: float = 6.0
+
+
+@dataclass(frozen=True)
 class ProviderConfig:
     enabled: bool = True
     api_key_env: str = ""
@@ -315,6 +323,7 @@ class BibReviewConfig:
     source: Path
     schema_version: int
     environment: EnvironmentConfig
+    cache: CacheConfig
     project: ProjectConfig
     arxiv: ArxivConfig
     paths: PathsConfig
@@ -365,6 +374,21 @@ def load_config(path: str | Path = "bibreview.yml") -> BibReviewConfig:
     environment = EnvironmentConfig(
         file=_optional_path(base, environment_raw.get("file"), "environment.file"),
     )
+
+    cache_raw = _mapping(raw.get("cache"), "cache")
+    cache = CacheConfig(
+        enabled=_boolean(cache_raw.get("enabled"), "cache.enabled", False),
+        ttl_hours=_number(
+            cache_raw.get("ttl_hours"),
+            "cache.ttl_hours",
+            6.0,
+            minimum=0.0,
+        ),
+    )
+    if cache.enabled and cache.ttl_hours <= 0:
+        raise ConfigError(
+            "cache.ttl_hours must be greater than zero when cache is enabled"
+        )
 
     project_raw = _mapping(raw.get("project"), "project")
     name = _string(project_raw.get("name"), "project.name", required=True)
@@ -738,6 +762,7 @@ def load_config(path: str | Path = "bibreview.yml") -> BibReviewConfig:
         source=source,
         schema_version=schema_version,
         environment=environment,
+        cache=cache,
         project=project,
         arxiv=arxiv,
         paths=paths,
