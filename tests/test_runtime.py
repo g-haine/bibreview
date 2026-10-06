@@ -9,6 +9,7 @@ from bibreview.providers.audit import (
     OpenAlexAuditSource,
     SemanticScholarAuditSource,
 )
+from bibreview.providers.cache import CachedTransport
 from bibreview.providers.crossref import CrossRefProvider
 from bibreview.providers.openalex import OpenAlexProvider
 from bibreview.providers.http import RateLimitedTransport
@@ -118,6 +119,53 @@ class RuntimeTests(unittest.TestCase):
         self.assertTrue(callable(services.citation_lookup))
         self.assertTrue(callable(services.bibtex_lookup))
         self.assertEqual(stream.getvalue(), "")
+
+    def test_enabled_cache_wraps_provider_rate_limiters(self):
+        config = self.config(CONFIG.replace(
+            "project:\n",
+            "cache:\n"
+            "  enabled: true\n"
+            "  ttl_hours: 2\n"
+            "project:\n",
+            1,
+        ))
+        services = build_collection_services(
+            config,
+            reporter=Reporter(stream=StringIO()),
+            environ={
+                "OPENALEX_KEY": "openalex-secret",
+                "ELSEVIER_KEY": "elsevier-secret",
+                "IEEE_KEY": "ieee-secret",
+                "MENDELEY_CLIENT_ID": "mendeley-id",
+                "MENDELEY_CLIENT_SECRET": "mendeley-secret",
+            },
+        )
+        self.assertIsInstance(services.provider.transport, CachedTransport)
+        self.assertIsInstance(
+            services.provider.transport.transport,
+            RateLimitedTransport,
+        )
+        self.assertEqual(
+            services.provider.transport.transport.min_interval_seconds,
+            0.2,
+        )
+
+    def test_no_cache_mode_leaves_provider_transport_uncached(self):
+        config = self.config(CONFIG.replace(
+            "project:\n",
+            "cache:\n"
+            "  enabled: true\n"
+            "  ttl_hours: 2\n"
+            "project:\n",
+            1,
+        ))
+        services = build_collection_services(
+            config,
+            reporter=Reporter(stream=StringIO()),
+            environ={},
+            cache_mode="no-cache",
+        )
+        self.assertIsInstance(services.provider.transport, RateLimitedTransport)
 
     def test_discovery_services_compose_openalex_crossref_and_discovery_enrichment(self):
         stream = StringIO()
