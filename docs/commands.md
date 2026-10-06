@@ -915,6 +915,97 @@ bibreview --config bibreview.yml discover
 
 Use **--dry-run** to inspect the discovery plan without writing queue files.
 
+## relevance
+
+Analyze accumulated relevance evidence without changing bibliography or
+relevance configuration:
+
+~~~bash
+bibreview --config bibreview.yml relevance --analyze
+~~~
+
+Ordinary discovery and initialization screening persist the exact
+title/abstract/keyword evidence already available during screening. This
+retention does not perform an additional provider request. Explicit KEEP/REJECT
+choices made through `bibreview review` are annotated in the same evidence
+ledger, so later analysis can distinguish human decisions from automatic
+terminal state.
+
+`relevance --analyze` is fully offline and read-only. It reports:
+
+- labeled KEEP/REJECT evidence and label provenance;
+- a replay of the **current** accept/reject rules over retained evidence;
+- automatic coverage plus agreement/disagreement with current project state;
+- the same replay restricted to explicitly human-reviewed examples, where
+  precision is a genuine human-label metric;
+- per-pattern support, class counts, precision, unique coverage, and conflicts;
+- interpretable unigram/bigram/trigram signals ranked specifically by their
+  ability to resolve candidates that the **current rules would still send to
+  manual review**, using support and a conservative Wilson lower confidence
+  bound;
+- bounded two-signal co-occurrence candidates mined from that same review gap,
+  revalidated against all retained labels, with a deterministic two-lookahead
+  regex rendered for inspection/copying.
+
+Statistical feature extraction strips HTML/JATS/XML wrapper syntax before
+tokenization so provider markup names cannot become candidate scientific
+signals. This cleanup is analysis-only: current-rule replay still uses the exact
+retained screening surface.
+
+Machine-readable output is available with:
+
+~~~bash
+bibreview --config bibreview.yml relevance --analyze --json
+~~~
+
+Candidate-signal ranking deliberately focuses on the current review gap rather
+than already-automated publications. A phrase that perfectly describes papers
+already covered by existing rules is therefore not promoted merely because it
+has high global precision.
+
+Contextual candidates combine two independently recurring textual signals. Pair
+mining is bounded to a compact pool of recurrent/discriminative features, skips
+pairs where one phrase is wholly contained in the other, and requires the
+conjunction to improve review-gap precision by at least 0.10 over the better
+single constituent. Candidates must span at least two initialization batches
+and remain directionally stable in at least 75% of the represented batches.
+
+BibReview then distinguishes exploratory evidence from promotion-ready evidence.
+A candidate is promotion-ready only when its review-gap support is at least 6,
+observed agreement is at least 0.95, the Wilson lower confidence bound is at
+least 0.60, and the evidence spans at least 3 batches. Candidates below those
+thresholds remain available in JSON for inspection but are not presented as
+rules ready to promote.
+
+The report includes review-gap support, precision gain, confidence, batch
+agreement, and all-history validation. The emitted regex uses two positive
+lookaheads; it is a copyable proposal, not executable project mutation.
+
+The statistical signals are suggestions only. BibReview never writes
+`relevance.patterns` or `relevance.reject_patterns` automatically, and no
+classifier is introduced into screening. Maintainers can inspect the evidence,
+choose a narrow deterministic rule, edit `bibreview.yml`, and then use the
+ordinary rescreen/review workflow.
+
+For a brand-new project, start with a deliberately broad or minimal relevance
+policy, review the first small batches, then rerun `relevance --analyze` as
+human labels accumulate. Very small samples remain descriptive: one-off phrases
+are not promoted as high-confidence evidence merely because their observed
+precision is 100%.
+
+Projects created before persistent relevance evidence can run a one-time
+compatibility backfill:
+
+~~~bash
+bibreview --config bibreview.yml --dry-run relevance --backfill-evidence
+bibreview --config bibreview.yml relevance --backfill-evidence
+~~~
+
+Canonical accepted publications are reconstructed locally from
+`bibliography.json`; only rejected DOI records still missing evidence require
+provider lookup. The normal provider cache applies. This migration never changes
+canonical bibliography, DOI queues, or relevance decisions.
+
 ## review
 
 Resolve DOI values in the manual relevance queue (`data/checkID.txt`) with an

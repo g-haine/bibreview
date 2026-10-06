@@ -34,6 +34,13 @@ from .pipeline.discover import (
 )
 from .project import ProjectStateError
 from .providers.http import HttpError
+from .relevance import (
+    RelevanceEvidence,
+    merge_relevance_evidence,
+    read_relevance_evidence,
+    relevance_evidence_data,
+    with_relevance_context,
+)
 from .reporting import Reporter
 from .storage import atomic_write_batch, json_bytes, read_bibliography, read_json
 
@@ -863,11 +870,23 @@ def _checkpoint(
     pending: list[str],
     review_queue: list[str],
     rejected: list[str],
+    evidence_additions: Iterable[RelevanceEvidence] = (),
 ) -> None:
     outputs = dict(_state_outputs(config, campaign, report))
     _put_if_changed(outputs, config.paths.pending, _doi_bytes(pending))
     _put_if_changed(outputs, config.paths.review, _doi_bytes(review_queue))
     _put_if_changed(outputs, config.paths.rejected, _doi_bytes(rejected))
+    additions = tuple(evidence_additions)
+    if additions:
+        evidence = merge_relevance_evidence(
+            read_relevance_evidence(config.relevance.evidence),
+            additions,
+        )
+        _put_if_changed(
+            outputs,
+            config.relevance.evidence,
+            json_bytes(relevance_evidence_data(evidence)),
+        )
     if outputs:
         atomic_write_batch(outputs)
 
@@ -907,6 +926,7 @@ def plan_project_init_rescreen(
     screened = queued_count = review_count = rejected_count = 0
     unchanged = retryable = preserved = 0
     changes: list[InitRescreenChange] = []
+    evidence_additions: list[RelevanceEvidence] = []
 
     for key in batch.keys:
         item = next(candidate for candidate in campaign.items if candidate.key == key)
@@ -965,6 +985,14 @@ def plan_project_init_rescreen(
             )
 
         screened += 1
+        evidence_additions.extend(
+            with_relevance_context(
+                evidence,
+                batch_id=entry.batch_id,
+                attempt=entry.attempt,
+            )
+            for evidence in result.evidence
+        )
         if proposed == previous:
             unchanged += 1
             continue
@@ -1016,6 +1044,16 @@ def plan_project_init_rescreen(
     _put_if_changed(outputs, config.paths.pending, _doi_bytes(pending))
     _put_if_changed(outputs, config.paths.review, _doi_bytes(review_queue))
     _put_if_changed(outputs, config.paths.rejected, _doi_bytes(rejected))
+    if evidence_additions:
+        evidence = merge_relevance_evidence(
+            read_relevance_evidence(config.relevance.evidence),
+            evidence_additions,
+        )
+        _put_if_changed(
+            outputs,
+            config.relevance.evidence,
+            json_bytes(relevance_evidence_data(evidence)),
+        )
 
     return ProjectInitRescreenPlan(
         batch_id=batch.id,
@@ -1184,10 +1222,19 @@ def execute_project_init_batch(
                 f"{key}: discovery produced no initialization outcome"
             )
 
+        attempt = _attempt_for(campaign, key)
+        evidence_additions = tuple(
+            with_relevance_context(
+                evidence,
+                batch_id=batch.id,
+                attempt=attempt,
+            )
+            for evidence in result.evidence
+        )
         entry = InitReportEntry(
             doi=key,
             batch_id=batch.id,
-            attempt=_attempt_for(campaign, key),
+            attempt=attempt,
             outcome=outcome,
         )
         report = _replace_report_entry(report, entry)
@@ -1212,6 +1259,7 @@ def execute_project_init_batch(
             pending=pending,
             review_queue=review_queue,
             rejected=rejected,
+            evidence_additions=evidence_additions,
         )
 
     campaign = _reconcile_open_batch(config, campaign, report)

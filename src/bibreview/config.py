@@ -255,6 +255,7 @@ class ReferencesConfig:
 
 @dataclass(frozen=True)
 class RelevanceConfig:
+    evidence: Path
     patterns: tuple[str, ...] = ()
     reject_patterns: tuple[str, ...] = ()
     unmatched: str = "manual-review"
@@ -646,10 +647,25 @@ def load_config(path: str | Path = "bibreview.yml") -> BibReviewConfig:
     if unmatched not in {"manual-review", "reject"}:
         raise ConfigError("relevance.unmatched must be 'manual-review' or 'reject'")
     relevance = RelevanceConfig(
+        evidence=_path(
+            base,
+            relevance_raw.get("evidence"),
+            "audit/relevance/evidence.json",
+            "relevance.evidence",
+        ),
         patterns=patterns,
         reject_patterns=reject_patterns,
         unmatched=unmatched,
     )
+    relevance_reserved_paths = {
+        *references_reserved_paths,
+        references.campaign,
+        references.report,
+    }
+    if relevance.evidence in relevance_reserved_paths:
+        raise ConfigError(
+            "relevance.evidence must not overlap canonical/project/campaign state paths"
+        )
 
     providers_raw = _mapping(raw.get("providers"), "providers")
     providers: dict[str, ProviderConfig] = {}

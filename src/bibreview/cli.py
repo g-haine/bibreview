@@ -152,6 +152,11 @@ from .project_refresh_apply import (
     apply_project_refresh_apply,
     plan_project_refresh_apply,
 )
+from .project_relevance import (
+    apply_project_relevance_backfill,
+    plan_project_relevance_backfill,
+    project_relevance_analysis,
+)
 from .project_render import apply_project_render, plan_project_render
 from .project_review import (
     apply_project_relevance_review_decision,
@@ -169,6 +174,7 @@ from .refresh_resolution import (
     save_project_refresh_resolutions,
     unresolved_refresh_candidates,
 )
+from .relevance import format_relevance_analysis
 from .reporting import Reporter
 from .runtime import (
     build_audit_services,
@@ -428,6 +434,30 @@ def _parser() -> argparse.ArgumentParser:
         help="Print initialization status/result as JSON",
     )
     commands.add_parser("discover", help="Discover and screen new DOI candidates")
+    relevance = commands.add_parser(
+        "relevance",
+        help="Analyze reviewed relevance evidence and discover deterministic signals",
+    )
+    relevance_actions = relevance.add_mutually_exclusive_group(required=True)
+    relevance_actions.add_argument(
+        "--analyze",
+        action="store_true",
+        help="Analyze persisted relevance evidence entirely offline",
+    )
+    relevance_actions.add_argument(
+        "--backfill-evidence",
+        action="store_true",
+        help=(
+            "Reconstruct missing evidence for projects created before relevance "
+            "evidence persistence"
+        ),
+    )
+    relevance.add_argument(
+        "--json",
+        dest="json_output",
+        action="store_true",
+        help="Print relevance analysis/backfill output as JSON",
+    )
     review = commands.add_parser(
         "review",
         help="Interactively resolve DOI candidates awaiting human relevance review",
@@ -2321,6 +2351,53 @@ def main(argv: list[str] | None = None) -> int:
                     "Resolve the current batch with the ordinary relevance, "
                     "collect, and merge workflow before opening the next batch."
                 )
+        return 0
+
+    if args.command == "relevance":
+        try:
+            if args.analyze:
+                analysis = project_relevance_analysis(config)
+                if args.json_output:
+                    print(json.dumps(analysis, ensure_ascii=False, indent=2))
+                elif not args.quiet:
+                    print(format_relevance_analysis(analysis))
+                return 0
+
+            reporter = Reporter(-1 if args.quiet else args.verbose)
+            services = build_discovery_services(
+                config,
+                reporter=reporter,
+                cache_mode=_cache_mode(args),
+            )
+            plan = plan_project_relevance_backfill(
+                config,
+                provider=services.provider,
+                enrichment_lookup=services.enrichment_lookup,
+                reporter=reporter,
+            )
+            if not args.dry_run:
+                apply_project_relevance_backfill(plan)
+        except (
+            OSError,
+            StorageError,
+            ProjectStateError,
+            ValueError,
+            TypeError,
+        ) as error:
+            print(f"bibreview relevance: {error}", file=sys.stderr)
+            return 1
+
+        if args.json_output:
+            payload = {
+                **plan.data(),
+                "dry_run": args.dry_run,
+                "evidence": str(config.relevance.evidence),
+            }
+            print(json.dumps(payload, ensure_ascii=False, indent=2))
+        elif not args.quiet:
+            prefix = "Dry run: " if args.dry_run else ""
+            print(prefix + plan.summary())
+            print(f"Evidence: {config.relevance.evidence}")
         return 0
 
     if args.command == "review":

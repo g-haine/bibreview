@@ -12,6 +12,7 @@ from bibreview.project import (
     apply_project_discovery,
     plan_project_discovery,
 )
+from bibreview.relevance import read_relevance_evidence
 from bibreview.storage import write_bibliography
 
 
@@ -74,7 +75,7 @@ class ProjectDiscoveryTests(unittest.TestCase):
             if path.is_file()
         }
 
-    def test_plan_is_read_only_and_apply_updates_only_discovery_queues(self):
+    def test_plan_is_read_only_and_apply_updates_queues_and_relevance_evidence(self):
         existing = Publication(
             id=new_publication_id(),
             identifiers={"doi": "10.1/in-bibliography"},
@@ -151,6 +152,17 @@ class ProjectDiscoveryTests(unittest.TestCase):
         self.assertEqual(
             self.config.paths.bibliography.read_bytes(),
             before["data/bibliography.json"],
+        )
+        evidence = read_relevance_evidence(self.config.relevance.evidence)
+        self.assertEqual(
+            tuple(item.doi for item in evidence),
+            ("10.1/relevant", "10.1/review"),
+        )
+        self.assertEqual(evidence[0].screening_outcome, "queued")
+        self.assertEqual(evidence[1].screening_outcome, "review")
+        self.assertEqual(
+            evidence[0].accept_matches,
+            ("fluid[-\\s]+structure",),
         )
 
     def test_non_doi_identifier_is_rejected_from_discovery_queue(self):

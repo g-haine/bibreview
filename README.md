@@ -16,6 +16,7 @@ maintainable over time.
 It provides:
 
 - DOI discovery and relevance screening;
+- offline relevance diagnostics and deterministic rule discovery from reviewed evidence;
 - metadata collection from CrossRef with optional provider enrichment;
 - reviewed import of publications without a DOI;
 - persistent publication UUIDs independent of external identifiers;
@@ -109,6 +110,16 @@ outcomes and only then open the next stable batch.
 bibreview init --status
 ~~~
 
+As reviewed decisions accumulate, inspect project-specific relevance signals
+without any provider request:
+
+~~~bash
+bibreview relevance --analyze
+~~~
+
+BibReview reports current-rule performance and interpretable discriminative
+phrases; it never rewrites relevance configuration automatically.
+
 `init` never runs `collect`, `merge`, `authors`, or `render`
 automatically.
 
@@ -195,6 +206,7 @@ Routine maintenance is split into focused workflows rather than one destructive
 | `refresh` | Review safe fills for configured incomplete/stale records. |
 | `backfill` | Propose provider enrichment or request a reviewed manual value for a missing field. |
 | `hygiene` | Inspect and review structured-text/title/citation cleanup. |
+| `relevance` | Analyze retained screening evidence and discover deterministic rule signals offline. |
 | `review` | Resolve manual publication relevance decisions from `checkID.txt`. |
 | `authors` | Resolve contributor identity mappings. |
 | `render` | Reconcile generated Jekyll bibliography artifacts. |

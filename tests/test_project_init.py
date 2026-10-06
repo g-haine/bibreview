@@ -8,6 +8,7 @@ from bibreview.config import load_config
 from bibreview.identity import new_publication_id
 from bibreview.model import Author, Publication
 from bibreview.project import ProjectStateError
+from bibreview.relevance import read_relevance_evidence
 from bibreview.project_init import (
     apply_project_init_plan,
     apply_project_init_rescreen,
@@ -181,6 +182,10 @@ class ProjectInitTests(unittest.TestCase):
             self.config.paths.review.read_text(encoding="utf-8"),
             "doi:10.1/b\n",
         )
+        evidence = read_relevance_evidence(self.config.relevance.evidence)
+        self.assertEqual(tuple(item.doi for item in evidence), ("10.1/a", "10.1/b"))
+        self.assertTrue(all(item.batch_id == "batch-0001" for item in evidence))
+        self.assertTrue(all(item.attempt == 1 for item in evidence))
 
         waiting = plan_project_init_batch(self.config)
         self.assertEqual(waiting.batch.id, "batch-0001")
