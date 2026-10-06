@@ -10,6 +10,7 @@ from typing import Any, Callable, Protocol
 
 from ..identity import normalize_doi
 from ..providers.base import Enrichment
+from ..relevance import RelevanceEvidence
 from ..reporting import Reporter
 from .enrich import crossref_enrichment
 
@@ -42,6 +43,7 @@ class DiscoveryResult:
     review: tuple[str, ...]
     rejected: tuple[str, ...]
     skipped: tuple[str, ...]
+    evidence: tuple[RelevanceEvidence, ...] = ()
 
     @property
     def screened_count(self) -> int:
@@ -123,6 +125,7 @@ def discover(
     review: list[str] = []
     newly_rejected: list[str] = []
     skipped: list[str] = []
+    evidence: list[RelevanceEvidence] = []
 
     for index, doi in enumerate(unique, 1):
         if (
@@ -203,4 +206,5 @@ def discover(
         review=tuple(review),
         rejected=tuple(newly_rejected),
         skipped=tuple(skipped),
+        evidence=tuple(evidence),
     )
