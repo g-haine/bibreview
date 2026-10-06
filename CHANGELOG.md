@@ -4,6 +4,12 @@ All notable BibReview releases are documented here.
 
 ## Unreleased
 
+- add first-class resumable `bibreview review` for DOI candidates in
+  `checkID.txt`: refresh provider evidence, show title/type/abstract/keywords
+  plus current accept/reject-pattern diagnostics and initialization context,
+  require explicit KEEP/REJECT/defer decisions, update ordinary queues and init
+  state together, preserve completed decisions across interruption/resume, and
+  provide read-only dry-run/JSON evidence without collecting or merging;
 - add first-class resumable `bibreview authors --review` for residual
   ambiguous author identities, showing canonical publication context plus
   preserved ORCID/affiliation evidence and requiring explicit human merge/new/
