@@ -159,25 +159,43 @@ def discover(
             )
             if part
         )
-        accepted_by_pattern = is_relevant(text, relevance_patterns)
-        rejected_by_pattern = is_relevant(text, relevance_reject_patterns)
-        if accepted_by_pattern and rejected_by_pattern:
+        accept_matches = matching_patterns(text, relevance_patterns)
+        reject_matches = matching_patterns(text, relevance_reject_patterns)
+        if accept_matches and reject_matches:
+            outcome = "review"
             review.append(doi)
             progress.detail(
                 f"{doi}: queued for manual relevance check (accept/reject conflict)"
             )
-        elif accepted_by_pattern:
+        elif accept_matches:
+            outcome = "queued"
             queued.append(doi)
             progress.detail(f"{doi}: queued for collection")
-        elif rejected_by_pattern:
+        elif reject_matches:
+            outcome = "rejected"
             newly_rejected.append(doi)
             progress.detail(f"{doi}: rejected by configured relevance pattern")
         elif unmatched == "manual-review":
+            outcome = "review"
             review.append(doi)
             progress.detail(f"{doi}: queued for manual relevance check")
         else:
+            outcome = "rejected"
             newly_rejected.append(doi)
             progress.detail(f"{doi}: rejected by relevance policy")
+
+        evidence.append(
+            RelevanceEvidence(
+                doi=doi,
+                title=_title(message),
+                abstract=enrichment.abstract,
+                keywords=enrichment.keywords,
+                work_type=str(work_type),
+                screening_outcome=outcome,
+                accept_matches=accept_matches,
+                reject_matches=reject_matches,
+            )
+        )
 
     return DiscoveryResult(
         candidates=tuple(unique),
