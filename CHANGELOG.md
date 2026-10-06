@@ -4,6 +4,19 @@ All notable BibReview releases are documented here.
 
 ## Unreleased
 
+- add first-class `bibreview relevance --analyze` for provider-free relevance
+  diagnostics: persist the title/abstract/keyword evidence already available
+  during discovery/init screening, retain explicit human KEEP/REJECT provenance,
+  replay current accept/reject rules offline, report per-rule support/precision/
+  unique coverage/conflicts, and rank interpretable n-gram signals with support
+  and conservative Wilson confidence bounds without automatically changing
+  project relevance configuration;
+- add `bibreview relevance --backfill-evidence` as an explicit compatibility
+  path for projects created before relevance evidence persistence; rebuild
+  accepted DOI evidence locally from canonical bibliography first and use
+  provider lookup only for rejected DOI records whose screening evidence is
+  still missing;
+
 - add an optional project-configured user-level provider-response cache shared
   across deterministic provider-backed workflows, so fresh provider evidence
   can be reused between operations such as dry-run and apply without repeating
