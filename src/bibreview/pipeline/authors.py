@@ -38,6 +38,28 @@ class AuthorMappingPlan:
     review: tuple[AuthorReviewItem, ...]
 
 
+@dataclass(frozen=True)
+class AuthorReviewOccurrence:
+    """Source evidence for one unresolved author name in one publication."""
+
+    publication_id: str
+    doi: str | None
+    title: str
+    orcid: str | None
+    affiliations: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class AuthorReviewCase:
+    """One exact unresolved display name with evidence for human review."""
+
+    name: str
+    slug: str
+    reasons: tuple[str, ...]
+    possible_matches: Mapping[str, tuple[str, ...]]
+    occurrences: tuple[AuthorReviewOccurrence, ...]
+
+
 def author_name(author: Author) -> str:
     """Return the source-provided display name without inventing missing parts."""
     if not isinstance(author, Author):
@@ -153,6 +175,139 @@ def plan_author_mappings(
         safe=MappingProxyType(safe),
         review=tuple(review),
     )
+
+
+def _author_affiliations(author: Author) -> tuple[str, ...]:
+    """Return human-readable affiliations preserved in source fields."""
+    raw = author.source_fields.get("affiliation", ())
+    if not isinstance(raw, (list, tuple)):
+        return ()
+    values: list[str] = []
+    for item in raw:
+        if isinstance(item, Mapping):
+            name = item.get("name")
+            if isinstance(name, str) and name.strip():
+                values.append(name.strip())
+        elif isinstance(item, str) and item.strip():
+            values.append(item.strip())
+    return tuple(values)
+
+
+def _author_orcid(author: Author) -> str | None:
+    """Return a preserved ORCID source field when present."""
+    for key in ("ORCID", "orcid"):
+        value = author.source_fields.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def author_review_cases(
+    publications: Iterable[Publication],
+    mapping: Mapping[str, object],
+) -> tuple[AuthorReviewCase, ...]:
+    """Return exact unresolved names plus local publication evidence."""
+    items = tuple(publications)
+    plan = plan_author_mappings(items, mapping)
+    cases: list[AuthorReviewCase] = []
+    for review in plan.review:
+        for name in review.names:
+            occurrences: list[AuthorReviewOccurrence] = []
+            for publication in items:
+                for author in publication.authors:
+                    if author_name(author) != name:
+                        continue
+                    occurrences.append(
+                        AuthorReviewOccurrence(
+                            publication_id=publication.id,
+                            doi=publication.doi,
+                            title=publication.title,
+                            orcid=_author_orcid(author),
+                            affiliations=_author_affiliations(author),
+                        )
+                    )
+            cases.append(
+                AuthorReviewCase(
+                    name=name,
+                    slug=slugify(name),
+                    reasons=review.reasons,
+                    possible_matches=review.possible_matches,
+                    occurrences=tuple(occurrences),
+                )
+            )
+    return tuple(cases)
+
+
+def assign_author_mapping(
+    mapping: Mapping[str, object],
+    *,
+    name: str,
+    slug: str,
+    create_new: bool,
+) -> dict[str, list[str]]:
+    """Apply one explicit human identity decision to author mapping data."""
+    canonical, reverse = validate_author_mappings(mapping)
+    exact_name = name.strip()
+    if not exact_name:
+        raise AuthorMappingError("author name must not be empty")
+    exact_slug = slug.strip()
+    if not exact_slug:
+        raise AuthorMappingError("author slug must not be empty")
+    try:
+        safe_component(exact_slug)
+    except ValueError as error:
+        raise AuthorMappingError(str(error)) from error
+
+    if exact_name in reverse:
+        raise AuthorMappingError(
+            f"author name {exact_name!r} is already assigned to {reverse[exact_name]!r}"
+        )
+    if create_new:
+        if exact_slug in canonical:
+            raise AuthorMappingError(
+                f"author identity {exact_slug!r} already exists; map to it explicitly instead"
+            )
+    elif exact_slug not in canonical:
+        raise AuthorMappingError(f"unknown author identity {exact_slug!r}")
+
+    result = {known_slug: list(names) for known_slug, names in canonical.items()}
+    if create_new:
+        result[exact_slug] = [exact_name]
+    else:
+        result[exact_slug].append(exact_name)
+    validate_author_mappings(result)
+    return result
+
+
+def format_author_review_case(
+    case: AuthorReviewCase,
+    *,
+    index: int | None = None,
+    total: int | None = None,
+) -> str:
+    """Render evidence for one explicit human author identity decision."""
+    lines: list[str] = []
+    if index is not None and total is not None:
+        lines.append(f"Author review {index}/{total}")
+    lines.append(f"Source name: {case.name}")
+    lines.append(f"Proposed slug: {case.slug}")
+    if case.reasons:
+        lines.append(f"Reason: {'; '.join(case.reasons)}")
+    if case.possible_matches:
+        lines.append("Possible existing identities:")
+        for number, (slug, names) in enumerate(case.possible_matches.items(), start=1):
+            lines.append(f"  {number}. {slug}: {', '.join(names)}")
+    else:
+        lines.append("Possible existing identities: none")
+    lines.append("Publications:")
+    for occurrence in case.occurrences:
+        identifier = f"DOI {occurrence.doi}" if occurrence.doi else occurrence.publication_id
+        lines.append(f"  - {identifier}: {occurrence.title or '(untitled)'}")
+        if occurrence.orcid:
+            lines.append(f"    ORCID: {occurrence.orcid}")
+        for affiliation in occurrence.affiliations:
+            lines.append(f"    Affiliation: {affiliation}")
+    return "\n".join(lines)
 
 
 def apply_safe_author_mappings(
