@@ -318,6 +318,43 @@ a trustworthy BibTeX record or add a reviewed explicit mechanism for creating
 one. Do not generate a citation merely to satisfy the renderer.
 
 
+## Relevance evidence ledger
+
+Relevance screening keeps a versioned non-canonical evidence ledger, by
+default:
+
+~~~text
+audit/relevance/evidence.json
+~~~
+
+Each entry retains only the information actually used for project relevance
+screening:
+
+- normalized DOI;
+- title;
+- abstract;
+- keywords;
+- provider work type;
+- screening outcome;
+- accept/reject patterns that matched at screening time;
+- initialization batch/attempt context when available;
+- explicit human KEEP/REJECT provenance when the DOI later passes through
+  `bibreview review`.
+
+The ledger does not store complete provider payloads and is not canonical
+bibliographic metadata. Its purpose is to make later rule diagnostics and
+statistical signal discovery completely offline.
+
+A later provider-backed rescreen replaces the DOI's screening snapshot while
+preserving any already-recorded human relevance decision and initialization
+context. This keeps the current evidence surface fresh without erasing the
+explicit human boundary.
+
+For projects created before this ledger existed,
+`bibreview relevance --backfill-evidence` reconstructs canonical accepted
+records locally from `bibliography.json`. Only rejected DOI records still
+missing evidence may require provider lookup.
+
 ## Initialization campaign state
 
 New-project initialization stores two versioned files, by default:
