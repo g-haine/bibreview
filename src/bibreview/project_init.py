@@ -838,6 +838,11 @@ def plan_project_init_review_transition(
                 key=context.doi,
                 state="completed",
             )
+            batch = _current_open_batch(campaign)
+            if batch is not None and batch.id == context.batch_id:
+                states = {item.key: item.state for item in campaign.items}
+                if not any(states[key] == "active" for key in batch.keys):
+                    campaign = close_batch(campaign, batch_id=batch.id)
         except CampaignError as error:
             raise ProjectStateError(str(error)) from error
 
