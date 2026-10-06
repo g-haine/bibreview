@@ -94,9 +94,11 @@ class RelevanceCliTests(unittest.TestCase):
         self.assertEqual(before, after)
 
     def test_relevance_requires_an_explicit_action(self):
-        code, _, stderr = self.run_cli("relevance")
-        self.assertEqual(code, 2)
-        self.assertIn("required", stderr)
+        stderr = StringIO()
+        with redirect_stderr(stderr), self.assertRaises(SystemExit) as raised:
+            main(["--config", str(self.config_path), "relevance"])
+        self.assertEqual(raised.exception.code, 2)
+        self.assertIn("required", stderr.getvalue())
 
 
 if __name__ == "__main__":
