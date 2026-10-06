@@ -942,7 +942,10 @@ terminal state.
 - interpretable unigram/bigram/trigram signals ranked specifically by their
   ability to resolve candidates that the **current rules would still send to
   manual review**, using support and a conservative Wilson lower confidence
-  bound.
+  bound;
+- bounded two-signal co-occurrence candidates mined from that same review gap,
+  revalidated against all retained labels, with a deterministic two-lookahead
+  regex rendered for inspection/copying.
 
 Statistical feature extraction strips HTML/JATS/XML wrapper syntax before
 tokenization so provider markup names cannot become candidate scientific
@@ -959,6 +962,13 @@ Candidate-signal ranking deliberately focuses on the current review gap rather
 than already-automated publications. A phrase that perfectly describes papers
 already covered by existing rules is therefore not promoted merely because it
 has high global precision.
+
+Contextual candidates combine two independently recurring textual signals. Pair
+mining is bounded to a compact pool of recurrent/discriminative features, skips
+pairs where one phrase is wholly contained in the other, and reports review-gap
+support, class agreement, confidence, batch coverage, and all-history
+validation. The emitted regex uses two positive lookaheads; it is a copyable
+proposal, not executable project mutation.
 
 The statistical signals are suggestions only. BibReview never writes
 `relevance.patterns` or `relevance.reject_patterns` automatically, and no
