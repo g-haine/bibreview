@@ -143,6 +143,22 @@ class AuthorMappingTests(unittest.TestCase):
         self.assertIn("Example University", report)
         self.assertIn("Known Yin Hong paper", report)
         self.assertIn("Known Institute", report)
+        self.assertNotIn("\x1b]8;;", report)
+
+        linked = format_author_review_case(
+            case,
+            index=1,
+            total=1,
+            hyperlinks=True,
+        )
+        self.assertIn(
+            "\x1b]8;;https://doi.org/10.1/known\x1b\\10.1/known\x1b]8;;\x1b\\",
+            linked,
+        )
+        self.assertIn(
+            "\x1b]8;;https://doi.org/10.1/example\x1b\\10.1/example\x1b]8;;\x1b\\",
+            linked,
+        )
 
     def test_explicit_manual_assignment_can_merge_or_create_but_rejects_conflicts(self):
         mapping = {"yin-hong": ["Yin Hong"]}
