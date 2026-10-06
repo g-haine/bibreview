@@ -33,6 +33,7 @@ from .providers.audit import (
     OpenAlexAuditSource,
     SemanticScholarAuditSource,
 )
+from .providers.cache import CachedTransport, ProviderResponseCache
 from .providers.crossref import CrossRefProvider
 from .providers.doi import DoiProvider
 from .providers.elsevier import ElsevierProvider
@@ -94,7 +95,7 @@ class AuditServices:
 
 @dataclass(frozen=True)
 class _CoreServices:
-    transport: HttpTransport
+    transport: HttpTransport | CachedTransport
     crossref: CrossRefProvider
     doi: DoiProvider
     openalex: OpenAlexProvider | None
@@ -106,15 +107,52 @@ def _provider(config: BibReviewConfig, name: str) -> ProviderConfig | None:
     return value if value is not None and value.enabled else None
 
 
+def _provider_cache(config: BibReviewConfig) -> ProviderResponseCache | None:
+    """Return the configured user-level cache without creating project state."""
+    if not config.cache.enabled:
+        return None
+    return ProviderResponseCache(ttl_hours=config.cache.ttl_hours)
+
+
+def _cached_transport(
+    transport: object,
+    *,
+    cache: ProviderResponseCache | None,
+    cache_mode: str,
+    reporter: Reporter,
+) -> object:
+    """Wrap one transport with the shared cache when enabled for the project."""
+    if cache_mode not in {"normal", "no-cache", "refresh"}:
+        raise ValueError(f"unsupported cache mode: {cache_mode}")
+    if cache is None or cache_mode == "no-cache":
+        return transport
+    return CachedTransport(
+        transport,
+        cache=cache,
+        mode=cache_mode,
+        reporter=reporter,
+    )
+
+
 def _provider_transport(
     transport: HttpTransport,
     provider: ProviderConfig | None,
-) -> HttpTransport | RateLimitedTransport:
-    """Return one provider-local transport honoring configured request spacing."""
+    *,
+    cache: ProviderResponseCache | None,
+    cache_mode: str,
+    reporter: Reporter,
+) -> object:
+    """Return one cached provider-local transport with request spacing underneath."""
     interval = provider.min_interval_seconds if provider is not None else 0.0
-    return RateLimitedTransport(
+    limited = RateLimitedTransport(
         transport,
         min_interval_seconds=interval,
+    )
+    return _cached_transport(
+        limited,
+        cache=cache,
+        cache_mode=cache_mode,
+        reporter=reporter,
     )
 
 
@@ -223,6 +261,7 @@ def _build_core_services(
     *,
     reporter: Reporter,
     environ: Mapping[str, str],
+    cache_mode: str = "normal",
 ) -> _CoreServices:
     crossref_config = config.providers.get("crossref")
     if crossref_config is not None and not crossref_config.enabled:
@@ -233,11 +272,24 @@ def _build_core_services(
         reporter=reporter,
         default_headers={"User-Agent": user_agent},
     )
+    cache = _provider_cache(config)
+    direct_transport = _cached_transport(
+        transport,
+        cache=cache,
+        cache_mode=cache_mode,
+        reporter=reporter,
+    )
     crossref = CrossRefProvider(
-        _provider_transport(transport, crossref_config),
+        _provider_transport(
+            transport,
+            crossref_config,
+            cache=cache,
+            cache_mode=cache_mode,
+            reporter=reporter,
+        ),
         mailto=config.project.contact_email,
     )
-    doi = DoiProvider(transport)
+    doi = DoiProvider(direct_transport)
 
     elsevier_config = _provider(config, "elsevier")
     springer_config = _provider(config, "springer")
@@ -265,9 +317,27 @@ def _build_core_services(
         reporter=reporter,
     )
 
-    elsevier = ElsevierProvider(_provider_transport(transport, elsevier_config), api_key=elsevier_key) if elsevier_key else None
-    springer = SpringerProvider(_provider_transport(transport, springer_config), api_key=springer_key) if springer_key else None
-    ieee = IeeeProvider(_provider_transport(transport, ieee_config), api_key=ieee_key) if ieee_key else None
+    elsevier = ElsevierProvider(_provider_transport(
+        transport,
+        elsevier_config,
+        cache=cache,
+        cache_mode=cache_mode,
+        reporter=reporter,
+    ), api_key=elsevier_key) if elsevier_key else None
+    springer = SpringerProvider(_provider_transport(
+        transport,
+        springer_config,
+        cache=cache,
+        cache_mode=cache_mode,
+        reporter=reporter,
+    ), api_key=springer_key) if springer_key else None
+    ieee = IeeeProvider(_provider_transport(
+        transport,
+        ieee_config,
+        cache=cache,
+        cache_mode=cache_mode,
+        reporter=reporter,
+    ), api_key=ieee_key) if ieee_key else None
 
     publisher = None
     if any(provider is not None for provider in (elsevier, springer, ieee)):
@@ -288,7 +358,13 @@ def _build_core_services(
     )
     openalex = (
         OpenAlexProvider(
-            _provider_transport(transport, openalex_config),
+            _provider_transport(
+                transport,
+                openalex_config,
+                cache=cache,
+                cache_mode=cache_mode,
+                reporter=reporter,
+            ),
             api_key=openalex_key,
         )
         if openalex_config is not None
@@ -304,7 +380,13 @@ def _build_core_services(
     )
     semantic = (
         SemanticScholarProvider(
-            _provider_transport(transport, semantic_config),
+            _provider_transport(
+                transport,
+                semantic_config,
+                cache=cache,
+                cache_mode=cache_mode,
+                reporter=reporter,
+            ),
             api_key=semantic_key,
         )
         if semantic_config is not None
@@ -327,7 +409,13 @@ def _build_core_services(
     )
     mendeley = (
         MendeleyProvider(
-            _provider_transport(transport, mendeley_config),
+            _provider_transport(
+                transport,
+                mendeley_config,
+                cache=cache,
+                cache_mode=cache_mode,
+                reporter=reporter,
+            ),
             client_id=mendeley_client_id,
             client_secret=mendeley_client_secret,
             user_agent=user_agent,
@@ -346,7 +434,7 @@ def _build_core_services(
         )
 
     return _CoreServices(
-        transport=transport,
+        transport=direct_transport,
         crossref=crossref,
         doi=doi,
         openalex=openalex,
@@ -363,6 +451,7 @@ def build_reference_services(
     *,
     reporter: Reporter | None = None,
     environ: Mapping[str, str] | None = None,
+    cache_mode: str = "normal",
 ) -> ReferenceServices:
     """Compose the minimal CrossRef service required by reference refresh."""
     progress = reporter or Reporter()
@@ -379,8 +468,15 @@ def build_reference_services(
         reporter=progress,
         default_headers={"User-Agent": f"BibReview/{__version__}"},
     )
+    cache = _provider_cache(config)
     crossref = CrossRefProvider(
-        _provider_transport(transport, crossref_config),
+        _provider_transport(
+            transport,
+            crossref_config,
+            cache=cache,
+            cache_mode=cache_mode,
+            reporter=progress,
+        ),
         mailto=config.project.contact_email,
     )
     return ReferenceServices(batch_provider=crossref)
@@ -391,6 +487,7 @@ def build_collection_services(
     *,
     reporter: Reporter | None = None,
     environ: Mapping[str, str] | None = None,
+    cache_mode: str = "normal",
 ) -> CollectionServices:
     """Compose configured network providers for one collection command run."""
     progress = reporter or Reporter()
@@ -399,7 +496,12 @@ def build_collection_services(
         environ=environ,
         reporter=progress,
     )
-    core = _build_core_services(config, reporter=progress, environ=environment)
+    core = _build_core_services(
+        config,
+        reporter=progress,
+        environ=environment,
+        cache_mode=cache_mode,
+    )
     return CollectionServices(
         provider=core.crossref,
         batch_provider=core.crossref,
@@ -415,6 +517,7 @@ def build_discovery_services(
     *,
     reporter: Reporter | None = None,
     environ: Mapping[str, str] | None = None,
+    cache_mode: str = "normal",
 ) -> DiscoveryServices:
     """Compose configured OpenAlex/CrossRef services for one discovery run."""
     progress = reporter or Reporter()
@@ -430,7 +533,12 @@ def build_discovery_services(
     if openalex_config is not None and not openalex_config.enabled:
         raise ValueError("OpenAlex must be enabled when selected for discovery")
 
-    core = _build_core_services(config, reporter=progress, environ=environment)
+    core = _build_core_services(
+        config,
+        reporter=progress,
+        environ=environment,
+        cache_mode=cache_mode,
+    )
     discovery_provider = core.openalex or OpenAlexProvider(core.transport)
     return DiscoveryServices(
         discovery_provider=discovery_provider,
@@ -444,6 +552,7 @@ def build_audit_services(
     *,
     reporter: Reporter | None = None,
     environ: Mapping[str, str] | None = None,
+    cache_mode: str = "normal",
 ) -> AuditServices:
     """Compose only the providers used by the non-destructive audit workflow."""
     progress = reporter or Reporter()
@@ -461,8 +570,15 @@ def build_audit_services(
         reporter=progress,
         default_headers={"User-Agent": f"BibReview/{__version__}"},
     )
+    cache = _provider_cache(config)
     crossref = CrossRefProvider(
-        _provider_transport(transport, crossref_config),
+        _provider_transport(
+            transport,
+            crossref_config,
+            cache=cache,
+            cache_mode=cache_mode,
+            reporter=progress,
+        ),
         mailto=config.project.contact_email,
     )
     sources: list[AuditEvidenceSource] = [
@@ -480,7 +596,13 @@ def build_audit_services(
         sources.append(
             OpenAlexAuditSource(
                 OpenAlexProvider(
-                    _provider_transport(transport, openalex_config),
+                    _provider_transport(
+                transport,
+                openalex_config,
+                cache=cache,
+                cache_mode=cache_mode,
+                reporter=progress,
+            ),
                     api_key=openalex_key,
                 )
             )
@@ -497,7 +619,13 @@ def build_audit_services(
         sources.append(
             SemanticScholarAuditSource(
                 SemanticScholarProvider(
-                    _provider_transport(transport, semantic_config),
+                    _provider_transport(
+                transport,
+                semantic_config,
+                cache=cache,
+                cache_mode=cache_mode,
+                reporter=progress,
+            ),
                     api_key=semantic_key,
                 )
             )
