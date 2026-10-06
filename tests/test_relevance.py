@@ -138,6 +138,35 @@ class RelevanceEvidenceTests(unittest.TestCase):
         self.assertNotIn("title", all_phrases)
         self.assertNotIn("jats title", all_phrases)
 
+        contextual_accept = analysis["contextual_signals"]["accept"]
+        contextual_reject = analysis["contextual_signals"]["reject"]
+        self.assertTrue(contextual_accept)
+        self.assertTrue(contextual_reject)
+
+        accept_pairs = {
+            tuple(item["signals"]): item for item in contextual_accept
+        }
+        reject_pairs = {
+            tuple(item["signals"]): item for item in contextual_reject
+        }
+        immersed_pair = next(
+            item
+            for pair, item in accept_pairs.items()
+            if "immersed" in pair and "boundary" in pair
+        )
+        self.assertEqual(immersed_pair["review_support"], 2)
+        self.assertEqual(immersed_pair["review_precision"], 1.0)
+        self.assertIn("(?=.*\\bimmersed\\b)", immersed_pair["regex"])
+        self.assertIn("(?=.*\\bboundary\\b)", immersed_pair["regex"])
+
+        temperature_pair = next(
+            item
+            for pair, item in reject_pairs.items()
+            if "temperature" in pair and "gas" in pair
+        )
+        self.assertEqual(temperature_pair["review_support"], 2)
+        self.assertEqual(temperature_pair["review_precision"], 1.0)
+
     def test_small_sample_reports_statistics_without_claiming_automation(self):
         entry = self.evidence(
             "10.1/one",
@@ -150,6 +179,8 @@ class RelevanceEvidenceTests(unittest.TestCase):
         self.assertEqual(analysis["summary"]["labeled"], 1)
         self.assertEqual(analysis["signals"]["accept"], [])
         self.assertEqual(analysis["signals"]["reject"], [])
+        self.assertEqual(analysis["contextual_signals"]["accept"], [])
+        self.assertEqual(analysis["contextual_signals"]["reject"], [])
 
 
 if __name__ == "__main__":
