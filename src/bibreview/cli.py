@@ -153,6 +153,13 @@ from .project_refresh_apply import (
     plan_project_refresh_apply,
 )
 from .project_render import apply_project_render, plan_project_render
+from .project_review import (
+    apply_project_relevance_review_decision,
+    format_relevance_review_case,
+    plan_project_relevance_review_decision,
+    project_relevance_review_cases,
+    project_relevance_review_dois,
+)
 from .refresh_resolution import (
     format_backfill_resolution_candidate as format_refresh_resolution_candidate,
     load_project_refresh_resolutions,
@@ -401,6 +408,16 @@ def _parser() -> argparse.ArgumentParser:
         help="Print initialization status/result as JSON",
     )
     commands.add_parser("discover", help="Discover and screen new DOI candidates")
+    review = commands.add_parser(
+        "review",
+        help="Interactively resolve DOI candidates awaiting human relevance review",
+    )
+    review.add_argument(
+        "--json",
+        dest="json_output",
+        action="store_true",
+        help="With --dry-run, print refreshed review evidence as JSON",
+    )
     commands.add_parser("collect", help="Collect pending DOI metadata into canonical staging state")
     manual_import = commands.add_parser(
         "import",
@@ -624,6 +641,140 @@ def _run_author_review(config, args) -> int:
     remaining = len(project_author_review_cases(config))
     print(
         f"Applied {applied} manual author decision(s); deferred {deferred}; "
+        f"remaining manual review: {remaining}."
+    )
+    return 0
+
+
+def _run_relevance_review(config, args) -> int:
+    """Run resumable explicit human relevance review over the ordinary DOI queues."""
+    if args.quiet:
+        raise ProjectStateError("--quiet cannot be used with relevance review")
+    if args.json_output and not args.dry_run:
+        raise ProjectStateError("--json requires --dry-run for relevance review")
+
+    dois = project_relevance_review_dois(config)
+    if not dois:
+        if args.dry_run and args.json_output:
+            print(
+                json.dumps(
+                    {"dry_run": True, "cases": []},
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+        else:
+            print("No DOI candidates require manual relevance review.")
+        return 0
+
+    reporter = Reporter(args.verbose)
+    services = build_discovery_services(config, reporter=reporter)
+    cases = project_relevance_review_cases(
+        config,
+        provider=services.provider,
+        enrichment_lookup=services.enrichment_lookup,
+        reporter=reporter,
+    )
+
+    if args.dry_run:
+        if args.json_output:
+            print(
+                json.dumps(
+                    {
+                        "dry_run": True,
+                        "cases": [case.data() for case in cases],
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+            return 0
+
+        for index, case in enumerate(cases, start=1):
+            print(
+                format_relevance_review_case(
+                    case,
+                    index=index,
+                    total=len(cases),
+                    hyperlinks=sys.stdout.isatty(),
+                )
+            )
+            print()
+        print(
+            f"Dry run: {len(cases)} relevance decision(s) require human review; "
+            "no decisions were recorded."
+        )
+        return 0
+
+    _enable_interactive_line_editing()
+    kept = 0
+    rejected = 0
+    deferred = 0
+
+    for position, case in enumerate(cases, start=1):
+        print(
+            format_relevance_review_case(
+                case,
+                index=position,
+                total=len(cases),
+                hyperlinks=sys.stdout.isatty(),
+            )
+        )
+
+        while True:
+            try:
+                raw = input("Decision [k=keep/r=reject/s=defer/q=quit]: ").strip().lower()
+            except (EOFError, KeyboardInterrupt):
+                print()
+                remaining = len(project_relevance_review_dois(config))
+                print(
+                    "Relevance review stopped; previous decisions are preserved. "
+                    f"Remaining manual review: {remaining}."
+                )
+                return 0
+
+            if raw in {"s", "skip", "defer"}:
+                deferred += 1
+                break
+            if raw in {"q", "quit"}:
+                remaining = len(project_relevance_review_dois(config))
+                print(
+                    f"Kept {kept}; rejected {rejected}; deferred {deferred}; "
+                    f"remaining manual review: {remaining}."
+                )
+                return 0
+
+            if raw in {"k", "keep"}:
+                decision = "keep"
+            elif raw in {"r", "reject"}:
+                decision = "reject"
+            else:
+                print("Please enter k, r, s, or q.")
+                continue
+
+            try:
+                plan = plan_project_relevance_review_decision(
+                    config,
+                    doi=case.doi,
+                    decision=decision,
+                )
+                apply_project_relevance_review_decision(plan)
+            except (OSError, StorageError, ValueError, TypeError) as error:
+                print(f"Invalid relevance decision: {error}")
+                continue
+
+            if decision == "keep":
+                kept += 1
+                print(f"KEEP: {case.doi} -> pending")
+            else:
+                rejected += 1
+                print(f"REJECT: {case.doi} -> rejected")
+            break
+        print()
+
+    remaining = len(project_relevance_review_dois(config))
+    print(
+        f"Kept {kept}; rejected {rejected}; deferred {deferred}; "
         f"remaining manual review: {remaining}."
     )
     return 0
@@ -2121,6 +2272,19 @@ def main(argv: list[str] | None = None) -> int:
                     "collect, and merge workflow before opening the next batch."
                 )
         return 0
+
+    if args.command == "review":
+        try:
+            return _run_relevance_review(config, args)
+        except (
+            OSError,
+            StorageError,
+            ProjectStateError,
+            ValueError,
+            TypeError,
+        ) as error:
+            print(f"bibreview review: {error}", file=sys.stderr)
+            return 1
 
     if args.command == "discover":
         reporter = Reporter(-1 if args.quiet else args.verbose)

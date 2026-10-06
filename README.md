@@ -138,8 +138,8 @@ Typical commands:
 
 ~~~bash
 bibreview discover
-
-# Review data/checkID.txt when required.
+bibreview --dry-run review
+bibreview review
 
 bibreview collect
 bibreview --dry-run merge
@@ -195,6 +195,7 @@ Routine maintenance is split into focused workflows rather than one destructive
 | `refresh` | Review safe fills for configured incomplete/stale records. |
 | `backfill` | Propose provider enrichment or request a reviewed manual value for a missing field. |
 | `hygiene` | Inspect and review structured-text/title/citation cleanup. |
+| `review` | Resolve manual publication relevance decisions from `checkID.txt`. |
 | `authors` | Resolve contributor identity mappings. |
 | `render` | Reconcile generated Jekyll bibliography artifacts. |
 | `arxiv` | Refresh the optional display-only arXiv cache. |

@@ -271,6 +271,36 @@ class ProjectInitRescreenPlan:
         )
 
 
+@dataclass(frozen=True)
+class ProjectInitReviewContext:
+    """Initialization context for one manual relevance-review candidate."""
+
+    doi: str
+    batch_id: str
+    attempt: int
+
+    def data(self) -> dict[str, Any]:
+        return {
+            "doi": self.doi,
+            "batch_id": self.batch_id,
+            "attempt": self.attempt,
+        }
+
+
+@dataclass(frozen=True)
+class ProjectInitReviewTransitionPlan:
+    """Initialization-state side of one explicit human relevance decision."""
+
+    doi: str
+    decision: str
+    batch_id: str
+    outputs: Mapping[Path, bytes]
+
+    @property
+    def changed(self) -> bool:
+        return bool(self.outputs)
+
+
 def _campaign_items(campaign: Campaign) -> tuple[str, ...]:
     return tuple(item.key for item in campaign.items)
 
@@ -729,6 +759,99 @@ def _replace_report_entry(
     return InitReport(
         campaign_items=report.campaign_items,
         entries=tuple(entries),
+    )
+
+
+def project_init_review_context(
+    config: BibReviewConfig,
+    doi: str,
+) -> ProjectInitReviewContext | None:
+    """Return current init context when a DOI awaits human relevance review."""
+    normalized = normalize_doi(doi)
+    campaign_exists = config.initialization.campaign.exists()
+    report_exists = config.initialization.report.exists()
+    if campaign_exists != report_exists:
+        raise ProjectStateError(
+            "initialization campaign and report must either both exist or both be absent"
+        )
+    if not campaign_exists:
+        return None
+
+    campaign, report = _read_state(config)
+    if normalized not in set(_campaign_items(campaign)):
+        return None
+
+    batch = _current_open_batch(campaign)
+    if batch is None or normalized not in batch.keys:
+        raise ProjectStateError(
+            f"{normalized}: manual review belongs to initialization state "
+            "outside the current open batch"
+        )
+
+    item = next(candidate for candidate in campaign.items if candidate.key == normalized)
+    entry = next((candidate for candidate in report.entries if candidate.doi == normalized), None)
+    if item.state != "active" or entry is None or entry.outcome != "review":
+        raise ProjectStateError(
+            f"{normalized}: initialization state does not currently require "
+            "manual relevance review"
+        )
+    return ProjectInitReviewContext(
+        doi=normalized,
+        batch_id=batch.id,
+        attempt=entry.attempt,
+    )
+
+
+def plan_project_init_review_transition(
+    config: BibReviewConfig,
+    *,
+    doi: str,
+    decision: str,
+) -> ProjectInitReviewTransitionPlan | None:
+    """Plan the initialization-state transition for one KEEP/REJECT decision."""
+    normalized_decision = decision.strip().lower()
+    if normalized_decision not in {"keep", "reject"}:
+        raise ProjectStateError("relevance review decision must be 'keep' or 'reject'")
+
+    context = project_init_review_context(config, doi)
+    if context is None:
+        return None
+
+    campaign, report = _read_state(config)
+    entry = next(item for item in report.entries if item.doi == context.doi)
+    outcome = "queued" if normalized_decision == "keep" else "rejected"
+    report = _replace_report_entry(
+        report,
+        InitReportEntry(
+            doi=entry.doi,
+            batch_id=entry.batch_id,
+            attempt=entry.attempt,
+            outcome=outcome,
+        ),
+    )
+
+    if normalized_decision == "reject":
+        try:
+            campaign = record_item_result(
+                campaign,
+                batch_id=context.batch_id,
+                key=context.doi,
+                state="completed",
+            )
+            batch = _current_open_batch(campaign)
+            if batch is not None and batch.id == context.batch_id:
+                states = {item.key: item.state for item in campaign.items}
+                if not any(states[key] == "active" for key in batch.keys):
+                    campaign = close_batch(campaign, batch_id=batch.id)
+        except CampaignError as error:
+            raise ProjectStateError(str(error)) from error
+
+    _validate_report_against_campaign(campaign, report)
+    return ProjectInitReviewTransitionPlan(
+        doi=context.doi,
+        decision=normalized_decision,
+        batch_id=context.batch_id,
+        outputs=_state_outputs(config, campaign, report),
     )
 
 
