@@ -907,6 +907,60 @@ bibreview --config bibreview.yml discover
 
 Use **--dry-run** to inspect the discovery plan without writing queue files.
 
+## review
+
+Resolve DOI values in the manual relevance queue (`data/checkID.txt`) with an
+explicit human decision:
+
+~~~bash
+bibreview --config bibreview.yml review
+~~~
+
+For each DOI, BibReview refreshes the configured discovery metadata and shows:
+
+- a clickable DOI resolver link on supporting terminals;
+- title and publication type;
+- abstract and its source when available;
+- keywords;
+- matches against the **current** `relevance.patterns` and
+  `relevance.reject_patterns`;
+- the current initialization batch and attempt when the DOI belongs to an open
+  `bibreview init` batch.
+
+The prompt accepts:
+
+- **k / keep** — move the DOI from review to pending collection;
+- **r / reject** — move it from review to the rejected queue;
+- **s / skip / defer** — leave it in review for a later session;
+- **q / quit** — stop cleanly.
+
+Each KEEP/REJECT decision is persisted immediately. Therefore Ctrl-C, EOF, or
+`q` preserves earlier decisions and a later `bibreview review` naturally
+resumes with the remaining DOI values. The command never collects metadata into
+`collected.json` and never merges anything into the canonical bibliography.
+
+For initialization candidates, KEEP changes the init report outcome from
+`review` to `queued` while leaving the campaign item active until normal
+collection/merge completes it. REJECT records a terminal rejected outcome and
+completes the campaign item; a fully resolved batch is closed immediately.
+
+Preview all current cases without prompting or writing:
+
+~~~bash
+bibreview --config bibreview.yml --dry-run review
+~~~
+
+Machine-readable refreshed evidence is available in dry-run mode:
+
+~~~bash
+bibreview --config bibreview.yml --dry-run review --json
+~~~
+
+Because queue state stores identifiers rather than a metadata snapshot, review
+evidence is refreshed from providers at review time. Pattern diagnostics
+therefore describe the **current** project relevance rules; the final
+KEEP/REJECT boundary remains explicitly human.
+
 ## collect
 
 Collect metadata for DOI values in the pending queue and write canonical staging
