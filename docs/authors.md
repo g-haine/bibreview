@@ -66,8 +66,9 @@ BibReview presents one exact source-visible name at a time, together with:
 - its proposed stable slug;
 - the reason manual review is required;
 - plausible existing identities and all their known variants;
+- canonical publications already attached to each possible existing identity;
 - every canonical publication in which the unresolved name occurs;
-- preserved ORCID and affiliation source fields when available.
+- preserved ORCID and affiliation source fields on both sides when available.
 
 Those source fields are **evidence for the human reviewer only**. They are not
 automatic identity keys.
