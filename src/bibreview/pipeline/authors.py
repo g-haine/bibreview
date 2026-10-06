@@ -6,6 +6,7 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Iterable, Mapping
+from urllib.parse import quote
 
 from unidecode import unidecode
 
@@ -302,11 +303,20 @@ def assign_author_mapping(
     return result
 
 
+def _format_review_doi(doi: str, *, hyperlinks: bool) -> str:
+    """Format one DOI, optionally as an OSC 8 terminal hyperlink."""
+    if not hyperlinks:
+        return doi
+    url = f"https://doi.org/{quote(doi, safe='/')}"
+    return f"\x1b]8;;{url}\x1b\\{doi}\x1b]8;;\x1b\\"
+
+
 def format_author_review_case(
     case: AuthorReviewCase,
     *,
     index: int | None = None,
     total: int | None = None,
+    hyperlinks: bool = False,
 ) -> str:
     """Render evidence for one explicit human author identity decision."""
     lines: list[str] = []
@@ -325,7 +335,7 @@ def format_author_review_case(
                 lines.append("     Canonical publications:")
                 for occurrence in candidate_occurrences:
                     identifier = (
-                        f"DOI {occurrence.doi}"
+                        f"DOI {_format_review_doi(occurrence.doi, hyperlinks=hyperlinks)}"
                         if occurrence.doi
                         else occurrence.publication_id
                     )
