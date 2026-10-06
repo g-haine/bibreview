@@ -11,7 +11,7 @@ from pathlib import Path
 import sys
 import tempfile
 from typing import Any, Callable
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlunsplit
 
 import requests
 
@@ -238,7 +238,11 @@ class CachedTransport:
         return {
             "kind": "response",
             "status_code": int(response.status_code),
-            "url": response.url if isinstance(response.url, str) else "",
+            "url": (
+                urlunsplit((*urlsplit(response.url)[:3], "", ""))
+                if isinstance(response.url, str)
+                else ""
+            ),
             "encoding": response.encoding or "",
             "content_b64": base64.b64encode(response.content).decode("ascii"),
         }
