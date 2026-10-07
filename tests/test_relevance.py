@@ -9,6 +9,7 @@ from bibreview.relevance import (
     record_human_relevance_decision,
     relevance_evidence_data,
     relevance_evidence_from_data,
+    relevance_text,
 )
 
 
@@ -86,17 +87,10 @@ class RelevanceEvidenceTests(unittest.TestCase):
             screening_outcome="review",
             human_decision="keep",
         )
-        analysis = analyze_relevance(
-            (entry,),
-            {"10.1/context": ("keep", "human")},
-        )
-        phrases = {
-            item["phrase"]
-            for direction in ("accept", "reject")
-            for item in analysis["signals"][direction]
-        }
-        self.assertNotIn("relevant author", phrases)
-        self.assertNotIn("fluid structure", phrases)
+        surface = relevance_text(entry)
+        self.assertEqual(surface, "Neutral coupled model")
+        self.assertNotIn("Highly Relevant Author", surface)
+        self.assertNotIn("Fluid Structure Interaction Journal", surface)
 
     def test_analysis_replays_rules_and_discovers_review_gap_signals(self):
         entries = (
