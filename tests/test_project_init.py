@@ -8,6 +8,10 @@ from bibreview.config import load_config
 from bibreview.identity import new_publication_id
 from bibreview.model import Author, Publication
 from bibreview.project import ProjectStateError
+from bibreview.project_review import (
+    apply_project_relevance_review_decision,
+    plan_project_relevance_review_decision,
+)
 from bibreview.relevance import read_relevance_evidence
 from bibreview.project_init import (
     apply_project_init_plan,
@@ -436,6 +440,45 @@ class ProjectInitTests(unittest.TestCase):
         self.assertEqual(rescreen.preserved, 1)
         self.assertEqual(rescreen.changes, ())
         self.assertFalse(rescreen.changed)
+
+    def test_current_batch_rescreen_preserves_recorded_human_keep(self):
+        plan = plan_project_init_batch(
+            self.config,
+            candidates=("10.1/a",),
+        )
+        apply_project_init_plan(plan)
+        execute_project_init_batch(
+            self.config,
+            batch_id=plan.batch.id,
+            provider=FakeWorkProvider({
+                "10.1/a": work("Another coupled model"),
+            }),
+        )
+
+        decision = plan_project_relevance_review_decision(
+            self.config,
+            doi="10.1/a",
+            decision="keep",
+        )
+        apply_project_relevance_review_decision(decision)
+
+        provider = FakeWorkProvider({
+            "10.1/a": work("Experimental fluid-structure interaction"),
+        })
+        rescreen = plan_project_init_rescreen(
+            self.config,
+            provider=provider,
+        )
+
+        self.assertEqual(provider.calls, [])
+        self.assertEqual(rescreen.screened, 0)
+        self.assertEqual(rescreen.preserved, 1)
+        self.assertEqual(rescreen.changes, ())
+        self.assertFalse(rescreen.changed)
+        self.assertEqual(
+            self.config.paths.pending.read_text(encoding="utf-8"),
+            "doi:10.1/a\n",
+        )
 
     def test_status_is_derived_from_persisted_state(self):
         plan = plan_project_init_batch(
