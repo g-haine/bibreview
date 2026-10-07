@@ -77,6 +77,40 @@ def _title(message: Mapping[str, Any]) -> str:
     return str(raw or "")
 
 
+def work_authors(message: Mapping[str, Any]) -> tuple[str, ...]:
+    """Return provider author names suitable for human review context."""
+    raw = message.get("author")
+    if not isinstance(raw, list):
+        return ()
+    names: list[str] = []
+    for item in raw:
+        if not isinstance(item, Mapping):
+            continue
+        literal = str(item.get("name") or "").strip()
+        if literal:
+            names.append(literal)
+            continue
+        name = " ".join(
+            part
+            for part in (
+                str(item.get("given") or "").strip(),
+                str(item.get("family") or "").strip(),
+            )
+            if part
+        )
+        if name:
+            names.append(name)
+    return tuple(names)
+
+
+def work_container_title(message: Mapping[str, Any]) -> str:
+    """Return the provider journal/container title for human review context."""
+    raw = message.get("container-title")
+    if isinstance(raw, list):
+        return str(raw[0]) if raw else ""
+    return str(raw or "")
+
+
 def discover(
     candidates: Iterable[str],
     *,
@@ -194,6 +228,8 @@ def discover(
                 abstract=enrichment.abstract,
                 keywords=enrichment.keywords,
                 work_type=str(work_type),
+                authors=work_authors(message),
+                container_title=work_container_title(message),
                 screening_outcome=outcome,
                 accept_matches=accept_matches,
                 reject_matches=reject_matches,

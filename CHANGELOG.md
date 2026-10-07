@@ -4,6 +4,10 @@ All notable BibReview releases are documented here.
 
 ## Unreleased
 
+- expose provider authors and journal/publication venue in first-class relevance
+  review and retain them in relevance evidence without feeding them into
+  automatic rule mining;
+
 - add first-class `bibreview relevance --analyze` for provider-free relevance
   diagnostics: persist the title/abstract/keyword evidence already available
   during discovery/init screening, retain explicit human KEEP/REJECT provenance,

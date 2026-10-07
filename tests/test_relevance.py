@@ -9,6 +9,7 @@ from bibreview.relevance import (
     record_human_relevance_decision,
     relevance_evidence_data,
     relevance_evidence_from_data,
+    relevance_text,
 )
 
 
@@ -48,13 +49,48 @@ class RelevanceEvidenceTests(unittest.TestCase):
             abstract="Updated abstract",
             keywords=("fsi",),
             work_type="journal-article",
+            authors=("Ada Lovelace",),
+            container_title="Journal of Examples",
             screening_outcome="queued",
         )
         merged = merge_relevance_evidence(decided, (refreshed,))
         self.assertEqual(merged[0].title, "Updated provider title")
+        self.assertEqual(merged[0].authors, ("Ada Lovelace",))
+        self.assertEqual(merged[0].container_title, "Journal of Examples")
         self.assertEqual(merged[0].human_decision, "keep")
         self.assertEqual(merged[0].batch_id, "batch-0001")
         self.assertEqual(merged[0].attempt, 1)
+
+    def test_schema_v1_evidence_remains_readable(self):
+        legacy = relevance_evidence_data(
+            (self.evidence("10.1/legacy", "Legacy evidence"),)
+        )
+        legacy["schema_version"] = 1
+        entry = legacy["entries"][0]
+        del entry["authors"]
+        del entry["container_title"]
+
+        loaded = relevance_evidence_from_data(legacy)
+
+        self.assertEqual(loaded[0].authors, ())
+        self.assertEqual(loaded[0].container_title, "")
+
+    def test_author_and_venue_context_do_not_enter_rule_mining(self):
+        entry = RelevanceEvidence(
+            doi="10.1/context",
+            title="Neutral coupled model",
+            abstract="",
+            keywords=(),
+            work_type="journal-article",
+            authors=("Highly Relevant Author",),
+            container_title="Fluid Structure Interaction Journal",
+            screening_outcome="review",
+            human_decision="keep",
+        )
+        surface = relevance_text(entry)
+        self.assertEqual(surface, "Neutral coupled model")
+        self.assertNotIn("Highly Relevant Author", surface)
+        self.assertNotIn("Fluid Structure Interaction Journal", surface)
 
     def test_analysis_replays_rules_and_discovers_review_gap_signals(self):
         entries = (

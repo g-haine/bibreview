@@ -16,7 +16,8 @@ from .identity import normalize_doi
 from .storage import StorageError, read_json
 
 
-RELEVANCE_EVIDENCE_SCHEMA_VERSION = 1
+RELEVANCE_EVIDENCE_SCHEMA_VERSION = 2
+_SUPPORTED_RELEVANCE_EVIDENCE_SCHEMA_VERSIONS = frozenset({1, 2})
 _SCREENING_OUTCOMES = frozenset({"queued", "review", "rejected", "unknown"})
 _HUMAN_DECISIONS = frozenset({"", "keep", "reject"})
 _EVIDENCE_SOURCES = frozenset({"screening", "backfill", "canonical-backfill"})
@@ -49,6 +50,8 @@ class RelevanceEvidence:
     abstract: str
     keywords: tuple[str, ...]
     work_type: str
+    authors: tuple[str, ...] = ()
+    container_title: str = ""
     screening_outcome: str = "unknown"
     accept_matches: tuple[str, ...] = ()
     reject_matches: tuple[str, ...] = ()
@@ -60,13 +63,24 @@ class RelevanceEvidence:
     def __post_init__(self) -> None:
         object.__setattr__(self, "doi", normalize_doi(self.doi))
         object.__setattr__(self, "keywords", tuple(self.keywords))
+        object.__setattr__(self, "authors", tuple(self.authors))
         object.__setattr__(self, "accept_matches", tuple(self.accept_matches))
         object.__setattr__(self, "reject_matches", tuple(self.reject_matches))
-        for name in ("title", "abstract", "work_type", "source", "batch_id", "human_decision"):
+        for name in (
+            "title",
+            "abstract",
+            "work_type",
+            "container_title",
+            "source",
+            "batch_id",
+            "human_decision",
+        ):
             if not isinstance(getattr(self, name), str):
                 raise ValueError(f"relevance evidence {name} must be a string")
         if any(not isinstance(item, str) for item in self.keywords):
             raise ValueError("relevance evidence keywords must contain strings")
+        if any(not isinstance(item, str) for item in self.authors):
+            raise ValueError("relevance evidence authors must contain strings")
         if any(not isinstance(item, str) for item in self.accept_matches):
             raise ValueError("relevance evidence accept_matches must contain strings")
         if any(not isinstance(item, str) for item in self.reject_matches):
@@ -97,6 +111,8 @@ def relevance_evidence_data(entries: Iterable[RelevanceEvidence]) -> dict[str, A
                 "abstract": entry.abstract,
                 "keywords": list(entry.keywords),
                 "work_type": entry.work_type,
+                "authors": list(entry.authors),
+                "container_title": entry.container_title,
                 "screening_outcome": entry.screening_outcome,
                 "accept_matches": list(entry.accept_matches),
                 "reject_matches": list(entry.reject_matches),
@@ -115,10 +131,11 @@ def relevance_evidence_from_data(value: Any) -> tuple[RelevanceEvidence, ...]:
 
     if not isinstance(value, Mapping):
         raise StorageError("relevance evidence must be an object")
-    if value.get("schema_version") != RELEVANCE_EVIDENCE_SCHEMA_VERSION:
+    schema_version = value.get("schema_version")
+    if schema_version not in _SUPPORTED_RELEVANCE_EVIDENCE_SCHEMA_VERSIONS:
         raise StorageError(
             "unsupported relevance evidence schema_version: "
-            f"{value.get('schema_version')!r}"
+            f"{schema_version!r}"
         )
     raw_entries = value.get("entries")
     if not isinstance(raw_entries, list):
@@ -142,8 +159,11 @@ def relevance_evidence_from_data(value: Any) -> tuple[RelevanceEvidence, ...]:
             "attempt",
             "human_decision",
         }
+        if schema_version >= 2:
+            required |= {"authors", "container_title"}
+        allowed = required | {"authors", "container_title"}
         missing = required - raw.keys()
-        unknown = raw.keys() - required
+        unknown = raw.keys() - allowed
         if missing:
             raise StorageError(
                 f"relevance evidence entry {index} missing fields: "
@@ -156,11 +176,23 @@ def relevance_evidence_from_data(value: Any) -> tuple[RelevanceEvidence, ...]:
             )
 
         keywords = raw["keywords"]
+        authors = raw.get("authors", [])
+        container_title = raw.get("container_title", "")
         accept_matches = raw["accept_matches"]
         reject_matches = raw["reject_matches"]
         if not isinstance(keywords, list) or any(not isinstance(item, str) for item in keywords):
             raise StorageError(
                 f"relevance evidence entry {index}.keywords must be a list of strings"
+            )
+        if not isinstance(authors, list) or any(
+            not isinstance(item, str) for item in authors
+        ):
+            raise StorageError(
+                f"relevance evidence entry {index}.authors must be a list of strings"
+            )
+        if not isinstance(container_title, str):
+            raise StorageError(
+                f"relevance evidence entry {index}.container_title must be a string"
             )
         if not isinstance(accept_matches, list) or any(
             not isinstance(item, str) for item in accept_matches
@@ -181,6 +213,8 @@ def relevance_evidence_from_data(value: Any) -> tuple[RelevanceEvidence, ...]:
                 abstract=raw["abstract"],
                 keywords=tuple(keywords),
                 work_type=raw["work_type"],
+                authors=tuple(authors),
+                container_title=container_title,
                 screening_outcome=raw["screening_outcome"],
                 accept_matches=tuple(accept_matches),
                 reject_matches=tuple(reject_matches),
@@ -274,7 +308,12 @@ def record_human_relevance_decision(
 
 
 def relevance_text(entry: RelevanceEvidence) -> str:
-    """Return the exact conceptual relevance surface used for offline analysis."""
+    """Return the exact conceptual relevance surface used for offline analysis.
+
+    Authors and container title are retained as human review context but are
+    deliberately excluded from deterministic rule mining to avoid overfitting
+    relevance policy to particular people or publication venues.
+    """
 
     return " ".join(
         part

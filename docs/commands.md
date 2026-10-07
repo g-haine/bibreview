@@ -68,6 +68,12 @@ Resolve those candidates with the ordinary project workflow:
 ~~~bash
 bibreview --dry-run review
 bibreview review
+
+The interactive relevance reviewer shows the DOI, title, provider authors,
+journal/publication venue, work type, abstract, keywords, current accept/reject
+pattern matches, and initialization context. Authors and venue are retained as
+human-review evidence but are deliberately excluded from automatic relevance
+rule mining.
 bibreview collect
 bibreview --dry-run merge
 bibreview merge

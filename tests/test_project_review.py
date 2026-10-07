@@ -54,10 +54,22 @@ class FakeWorkProvider:
         return self.records.get(doi)
 
 
-def work(title, *, abstract="", keywords=()):
+def work(
+    title,
+    *,
+    abstract="",
+    keywords=(),
+    authors=(("Ada", "Lovelace"),),
+    journal="Journal of Examples",
+):
     return {
         "type": "journal-article",
         "title": [title],
+        "author": [
+            {"given": given, "family": family}
+            for given, family in authors
+        ],
+        "container-title": [journal],
         "_abstract": abstract,
         "_keywords": tuple(keywords),
     }
@@ -104,6 +116,8 @@ class ProjectRelevanceReviewTests(unittest.TestCase):
         self.assertEqual(case.doi, "10.1/review")
         self.assertEqual(case.title, "Fluid-structure coupling")
         self.assertEqual(case.work_type, "journal-article")
+        self.assertEqual(case.authors, ("Ada Lovelace",))
+        self.assertEqual(case.container_title, "Journal of Examples")
         self.assertEqual(case.abstract, "A soil boundary example")
         self.assertEqual(case.keywords, ("fsi", "coupling"))
         self.assertEqual(case.accept_matches, ("fluid[-\\s]+structure",))
@@ -112,6 +126,8 @@ class ProjectRelevanceReviewTests(unittest.TestCase):
 
         plain = format_relevance_review_case(case)
         self.assertIn("DOI: 10.1/review", plain)
+        self.assertIn("Authors: Ada Lovelace", plain)
+        self.assertIn("Journal / venue: Journal of Examples", plain)
         self.assertIn("Current accept-pattern matches:", plain)
         self.assertNotIn("\x1b]8;;", plain)
 

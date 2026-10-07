@@ -55,6 +55,8 @@ def work(title, *, abstract=""):
     return {
         "type": "journal-article",
         "title": [title],
+        "author": [{"given": "Ada", "family": "Lovelace"}],
+        "container-title": ["Journal of Examples"],
         "_abstract": abstract,
     }
 
@@ -124,6 +126,8 @@ class RelevanceReviewCliTests(unittest.TestCase):
         self.assertIn("Relevance review 1/1", stdout)
         self.assertIn("DOI: 10.1/review", stdout)
         self.assertIn("Evidence for 10.1/review", stdout)
+        self.assertIn("Authors: Ada Lovelace", stdout)
+        self.assertIn("Journal / venue: Journal of Examples", stdout)
         self.assertIn("no decisions were recorded", stdout)
         self.assertEqual(before, self.snapshot())
 
@@ -142,6 +146,11 @@ class RelevanceReviewCliTests(unittest.TestCase):
         payload = json.loads(stdout)
         self.assertTrue(payload["dry_run"])
         self.assertEqual(payload["cases"][0]["doi"], "10.1/review")
+        self.assertEqual(payload["cases"][0]["authors"], ["Ada Lovelace"])
+        self.assertEqual(
+            payload["cases"][0]["container_title"],
+            "Journal of Examples",
+        )
         self.assertEqual(before, self.snapshot())
 
     def test_keep_then_quit_and_resume_with_reject(self):
