@@ -31,6 +31,11 @@ class DiscoveryTests(unittest.TestCase):
             "10.1/relevant-title": {
                 "type": "journal-article",
                 "title": ["Fluid-structure systems"],
+                "author": [
+                    {"given": "Ada", "family": "Lovelace"},
+                    {"name": "FSI Consortium"},
+                ],
+                "container-title": ["Journal of Coupled Systems"],
             },
             "10.1/relevant-extra": {
                 "type": "book-chapter",
@@ -95,6 +100,12 @@ class DiscoveryTests(unittest.TestCase):
         self.assertNotIn("10.1/known", provider.calls)
         self.assertNotIn("10.1/rejected", provider.calls)
         self.assertNotIn("10.1/zenodo-record", provider.calls)
+        evidence = next(
+            item for item in result.evidence
+            if item.doi == "10.1/relevant-title"
+        )
+        self.assertEqual(evidence.authors, ("Ada Lovelace", "FSI Consortium"))
+        self.assertEqual(evidence.container_title, "Journal of Coupled Systems")
 
     def test_explicit_reject_patterns_and_conflicts_are_triaged_conservatively(self):
         provider = FakeProvider({
