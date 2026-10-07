@@ -4,6 +4,9 @@ All notable BibReview releases are documented here.
 
 ## Unreleased
 
+- preserve explicit human relevance decisions during initialization rescreening,
+  preventing provider/rule refreshes from overriding reviewed KEEP decisions;
+
 - expose provider authors and journal/publication venue in first-class relevance
   review and retain them in relevance evidence without feeding them into
   automatic rule mining;
