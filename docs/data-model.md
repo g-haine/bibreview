@@ -339,16 +339,20 @@ screening:
 - accept/reject patterns that matched at screening time;
 - initialization batch/attempt context when available;
 - explicit human KEEP/REJECT provenance when the DOI later passes through
-  `bibreview review`.
+  `bibreview review`;
+- a distinct current correction decision, when `bibreview correct` reverses a
+  terminal KEEP/REJECT outcome.
 
 The ledger does not store complete provider payloads and is not canonical
 bibliographic metadata. Its purpose is to make later rule diagnostics and
 statistical signal discovery completely offline.
 
 A later provider-backed rescreen replaces the DOI's screening snapshot while
-preserving any already-recorded human relevance decision and initialization
-context. This keeps the current evidence surface fresh without erasing the
-explicit human boundary.
+preserving any already-recorded human relevance decision, correction, and
+initialization context. This keeps the current evidence surface fresh without
+erasing the explicit human boundary or a later audited correction. Offline
+analysis gives precedence to correction, then human decision, then terminal
+project state.
 
 For projects created before this ledger existed,
 `bibreview relevance --backfill-evidence` reconstructs canonical accepted

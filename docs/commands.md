@@ -937,6 +937,12 @@ choices made through `bibreview review` are annotated in the same evidence
 ledger, so later analysis can distinguish human decisions from automatic
 terminal state.
 
+An explicit terminal correction is retained separately from both the historical
+screening outcome and the initial human-review decision. Relevance analysis
+uses the corrected decision first, then the initial human decision, then the
+project's canonical/rejected terminal state. It still reports the provenance so
+rule analysis remains auditable.
+
 `relevance --analyze` is fully offline and read-only. It reports:
 
 - labeled KEEP/REJECT evidence and label provenance;
@@ -1065,6 +1071,47 @@ Because queue state stores identifiers rather than a metadata snapshot, review
 evidence is refreshed from providers at review time. Pattern diagnostics
 therefore describe the **current** project relevance rules; the final
 KEEP/REJECT boundary remains explicitly human.
+
+## correct
+
+Inspect the full current state of one DOI without provider access or mutation:
+
+~~~bash
+bibreview --config bibreview.yml correct 10.1234/example
+~~~
+
+The report locates the DOI in canonical bibliography, `ID.txt`, the pending,
+review and rejected queues, `collected.json`, and the relevance-evidence ledger.
+In particular, **pending + staged** is shown as a valid in-progress collection
+state; it is not mistaken for a terminal KEEP decision.
+
+Correct a relevance decision only after inspecting the plan:
+
+~~~bash
+bibreview --config bibreview.yml --dry-run correct 10.1234/example --keep
+bibreview --config bibreview.yml correct 10.1234/example --keep
+
+bibreview --config bibreview.yml --dry-run correct 10.1234/example --reject
+bibreview --config bibreview.yml correct 10.1234/example --reject
+~~~
+
+`--keep` changes a terminal REJECT into a pending DOI for the ordinary
+`collect` → inspect → `merge` workflow. `--reject` changes a canonical terminal
+KEEP into a rejected DOI: BibReview atomically records the correction, archives
+the current bibliography and any tracked BibTeX source, removes the canonical
+publication/registry entry, then queues the DOI in `badID.txt`. For a DOI still
+in `checkID.txt`, the command records the ordinary human decision instead. A
+pending DOI can be rejected and a `pending + staged` DOI can be safely cancelled
+to rejected before merge. The initial screening result and any original human
+review decision remain in relevance evidence; the explicit correction becomes
+the current effective label.
+
+The command treats an already-matching state as a read-only no-op and refuses
+contradictory queue states. Reversals or cancellations require retained
+relevance evidence; use `relevance --backfill-evidence` first for legacy
+projects lacking that evidence. When initialization is active, it reconciles
+the report without rewriting historical batch membership. `--json` provides
+the same inspection/plan data for scripts.
 
 ## collect
 

@@ -132,7 +132,18 @@ def project_relevance_labels(
     labels: dict[str, tuple[str, str]] = {}
 
     for entry in evidence:
-        if entry.human_decision:
+        if entry.correction_decision:
+            label = entry.correction_decision
+            if label == "keep" and entry.doi in rejected:
+                raise ProjectStateError(
+                    f"{entry.doi}: corrected KEEP evidence conflicts with rejected project state"
+                )
+            if label == "reject" and entry.doi in canonical:
+                raise ProjectStateError(
+                    f"{entry.doi}: corrected REJECT evidence conflicts with canonical project state"
+                )
+            labels[entry.doi] = (label, "correction")
+        elif entry.human_decision:
             label = entry.human_decision
             if label == "keep" and entry.doi in rejected:
                 raise ProjectStateError(

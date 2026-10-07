@@ -8,6 +8,11 @@ from bibreview.config import load_config
 from bibreview.identity import new_publication_id
 from bibreview.model import Author, Publication
 from bibreview.project import ProjectStateError
+from bibreview.project_correction import (
+    apply_project_relevance_correction,
+    inspect_project_relevance_correction,
+    plan_project_relevance_correction,
+)
 from bibreview.project_review import (
     apply_project_relevance_review_decision,
     plan_project_relevance_review_decision,
@@ -479,6 +484,35 @@ class ProjectInitTests(unittest.TestCase):
             self.config.paths.pending.read_text(encoding="utf-8"),
             "doi:10.1/a\n",
         )
+
+    def test_correct_reject_reconciles_active_initialization_report(self):
+        plan = plan_project_init_batch(
+            self.config,
+            candidates=("10.1/a",),
+        )
+        apply_project_init_plan(plan)
+        execute_project_init_batch(
+            self.config,
+            batch_id=plan.batch.id,
+            provider=FakeWorkProvider({
+                "10.1/a": work("Fluid-structure interaction model"),
+            }),
+        )
+
+        state = inspect_project_relevance_correction(self.config, doi="10.1/a")
+        self.assertEqual(state.initialization.batch_id, "batch-0001")
+        self.assertEqual(state.initialization.outcome, "queued")
+        correction = plan_project_relevance_correction(
+            self.config,
+            doi="10.1/a",
+            decision="reject",
+        )
+        self.assertEqual(correction.initialization_batch, "batch-0001")
+        apply_project_relevance_correction(correction)
+
+        status = project_init_status(self.config)
+        self.assertEqual(status.rejected, 1)
+        self.assertIsNone(status.current_batch)
 
     def test_status_is_derived_from_persisted_state(self):
         plan = plan_project_init_batch(

@@ -157,6 +157,12 @@ from .project_relevance import (
     plan_project_relevance_backfill,
     project_relevance_analysis,
 )
+from .project_correction import (
+    apply_project_relevance_correction,
+    format_project_relevance_correction_state,
+    inspect_project_relevance_correction,
+    plan_project_relevance_correction,
+)
 from .project_render import apply_project_render, plan_project_render
 from .project_review import (
     apply_project_relevance_review_decision,
@@ -468,6 +474,28 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help="With --dry-run, print refreshed review evidence as JSON",
     )
+    correct = commands.add_parser(
+        "correct",
+        help="Inspect or correct one DOI relevance decision",
+    )
+    correct.add_argument("doi", help="DOI in a relevance queue or terminal state")
+    correction_actions = correct.add_mutually_exclusive_group()
+    correction_actions.add_argument(
+        "--keep",
+        action="store_true",
+        help="Set KEEP or resolve review to KEEP, queueing ordinary collection",
+    )
+    correction_actions.add_argument(
+        "--reject",
+        action="store_true",
+        help="Set REJECT or resolve review to REJECT, removing staged/canonical content",
+    )
+    correct.add_argument(
+        "--json",
+        dest="json_output",
+        action="store_true",
+        help="Print correction inspection or plan data as JSON",
+    )
     commands.add_parser("collect", help="Collect pending DOI metadata into canonical staging state")
     manual_import = commands.add_parser(
         "import",
@@ -693,6 +721,51 @@ def _run_author_review(config, args) -> int:
         f"Applied {applied} manual author decision(s); deferred {deferred}; "
         f"remaining manual review: {remaining}."
     )
+    return 0
+
+
+def _run_relevance_correction(config, args) -> int:
+    """Inspect or explicitly correct one DOI relevance decision."""
+
+    state = inspect_project_relevance_correction(config, doi=args.doi)
+    decision = "keep" if args.keep else "reject" if args.reject else None
+    if decision is None:
+        if args.json_output:
+            print(json.dumps(state.data(), ensure_ascii=False, indent=2))
+        elif not args.quiet:
+            print(format_project_relevance_correction_state(state))
+        return 0
+
+    plan = plan_project_relevance_correction(
+        config,
+        doi=args.doi,
+        decision=decision,
+    )
+    if not args.dry_run:
+        apply_project_relevance_correction(plan)
+
+    if args.json_output:
+        print(
+            json.dumps(
+                {"dry_run": bool(args.dry_run), **plan.data()},
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        return 0
+
+    if not args.quiet:
+        prefix = "Dry run: " if args.dry_run else ""
+        print(prefix + plan.summary())
+        if plan.decision == "keep":
+            print("Target state: pending ordinary collection.")
+        else:
+            print("Target state: rejected; canonical publication removed.")
+        print(f"Relevance evidence: {config.relevance.evidence}")
+        if plan.backup is not None:
+            print(f"Backup: {plan.backup}")
+        if plan.deletes:
+            print("Removed tracked BibTeX: " + ", ".join(map(str, plan.deletes)))
     return 0
 
 
@@ -2411,6 +2484,19 @@ def main(argv: list[str] | None = None) -> int:
             TypeError,
         ) as error:
             print(f"bibreview review: {error}", file=sys.stderr)
+            return 1
+
+    if args.command == "correct":
+        try:
+            return _run_relevance_correction(config, args)
+        except (
+            OSError,
+            StorageError,
+            ProjectStateError,
+            ValueError,
+            TypeError,
+        ) as error:
+            print(f"bibreview correct: {error}", file=sys.stderr)
             return 1
 
     if args.command == "discover":
