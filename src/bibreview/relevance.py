@@ -16,10 +16,11 @@ from .identity import normalize_doi
 from .storage import StorageError, read_json
 
 
-RELEVANCE_EVIDENCE_SCHEMA_VERSION = 2
-_SUPPORTED_RELEVANCE_EVIDENCE_SCHEMA_VERSIONS = frozenset({1, 2})
+RELEVANCE_EVIDENCE_SCHEMA_VERSION = 3
+_SUPPORTED_RELEVANCE_EVIDENCE_SCHEMA_VERSIONS = frozenset({1, 2, 3})
 _SCREENING_OUTCOMES = frozenset({"queued", "review", "rejected", "unknown"})
 _HUMAN_DECISIONS = frozenset({"", "keep", "reject"})
+_CORRECTION_DECISIONS = frozenset({"", "keep", "reject"})
 _EVIDENCE_SOURCES = frozenset({"screening", "backfill", "canonical-backfill"})
 
 _STOPWORDS = frozenset(
@@ -59,6 +60,7 @@ class RelevanceEvidence:
     batch_id: str = ""
     attempt: int = 0
     human_decision: str = ""
+    correction_decision: str = ""
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "doi", normalize_doi(self.doi))
@@ -74,6 +76,7 @@ class RelevanceEvidence:
             "source",
             "batch_id",
             "human_decision",
+            "correction_decision",
         ):
             if not isinstance(getattr(self, name), str):
                 raise ValueError(f"relevance evidence {name} must be a string")
@@ -92,6 +95,11 @@ class RelevanceEvidence:
         if self.human_decision not in _HUMAN_DECISIONS:
             raise ValueError(
                 f"unsupported relevance human decision: {self.human_decision!r}"
+            )
+        if self.correction_decision not in _CORRECTION_DECISIONS:
+            raise ValueError(
+                "unsupported relevance correction decision: "
+                f"{self.correction_decision!r}"
             )
         if self.source not in _EVIDENCE_SOURCES:
             raise ValueError(f"unsupported relevance evidence source: {self.source!r}")
@@ -120,6 +128,7 @@ def relevance_evidence_data(entries: Iterable[RelevanceEvidence]) -> dict[str, A
                 "batch_id": entry.batch_id,
                 "attempt": entry.attempt,
                 "human_decision": entry.human_decision,
+                "correction_decision": entry.correction_decision,
             }
             for entry in entries
         ],
@@ -161,7 +170,9 @@ def relevance_evidence_from_data(value: Any) -> tuple[RelevanceEvidence, ...]:
         }
         if schema_version >= 2:
             required |= {"authors", "container_title"}
-        allowed = required | {"authors", "container_title"}
+        if schema_version >= 3:
+            required |= {"correction_decision"}
+        allowed = required | {"authors", "container_title", "correction_decision"}
         missing = required - raw.keys()
         unknown = raw.keys() - allowed
         if missing:
@@ -222,6 +233,7 @@ def relevance_evidence_from_data(value: Any) -> tuple[RelevanceEvidence, ...]:
                 batch_id=raw["batch_id"],
                 attempt=raw["attempt"],
                 human_decision=raw["human_decision"],
+                correction_decision=raw.get("correction_decision", ""),
             )
         except (TypeError, ValueError) as error:
             raise StorageError(
@@ -247,7 +259,7 @@ def merge_relevance_evidence(
     existing: Iterable[RelevanceEvidence],
     additions: Iterable[RelevanceEvidence],
 ) -> tuple[RelevanceEvidence, ...]:
-    """Replace DOI snapshots while preserving explicit human decisions/context."""
+    """Replace DOI snapshots while preserving explicit decisions/context."""
 
     result = list(existing)
     positions = {entry.doi: index for index, entry in enumerate(result)}
@@ -264,6 +276,11 @@ def merge_relevance_evidence(
             replacement = replace(
                 replacement,
                 human_decision=current.human_decision,
+            )
+        if not replacement.correction_decision and current.correction_decision:
+            replacement = replace(
+                replacement,
+                correction_decision=current.correction_decision,
             )
         if not replacement.batch_id and current.batch_id:
             replacement = replace(
@@ -305,6 +322,37 @@ def record_human_relevance_decision(
             result[index] = replace(entry, human_decision=normalized_decision)
             break
     return tuple(result)
+
+
+def record_relevance_correction(
+    entries: Iterable[RelevanceEvidence],
+    *,
+    doi: str,
+    decision: str,
+) -> tuple[RelevanceEvidence, ...]:
+    """Record a durable correction without rewriting historical decisions.
+
+    The correction is intentionally a single current override.  The original
+    screening and, when present, first human-review decision remain available
+    as audit evidence; Git history retains successive corrections.
+    """
+
+    normalized = normalize_doi(doi)
+    normalized_decision = decision.strip().lower()
+    if normalized_decision not in {"keep", "reject"}:
+        raise ValueError("relevance correction decision must be 'keep' or 'reject'")
+
+    result = list(entries)
+    for index, entry in enumerate(result):
+        if entry.doi == normalized:
+            result[index] = replace(
+                entry,
+                correction_decision=normalized_decision,
+            )
+            return tuple(result)
+    raise ValueError(
+        f"{normalized}: relevance evidence is required before recording a correction"
+    )
 
 
 def relevance_text(entry: RelevanceEvidence) -> str:
@@ -993,7 +1041,7 @@ def analyze_relevance(
         labeled_list.append((entry, label, source))
         source_counts[source] += 1
     labeled = tuple(labeled_list)
-    human = tuple(item for item in labeled if item[2] == "human")
+    human = tuple(item for item in labeled if item[2] in {"human", "correction"})
 
     summary = {
         "evidence": len(evidence),
@@ -1001,6 +1049,7 @@ def analyze_relevance(
         "keep": sum(label == "keep" for _, label, _ in labeled),
         "reject": sum(label == "reject" for _, label, _ in labeled),
         "human_labeled": len(human),
+        "corrected_labeled": sum(source == "correction" for _, _, source in labeled),
         "unresolved_evidence": len(evidence) - len(labeled),
         "batches": len({entry.batch_id for entry in evidence if entry.batch_id}),
         "label_sources": dict(sorted(source_counts.items())),

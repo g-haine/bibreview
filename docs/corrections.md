@@ -139,6 +139,51 @@ bibreview --config bibreview.yml render
 
 8. inspect the resulting Git diff.
 
+## Correcting a relevance decision after screening
+
+Use the dedicated relevance-correction workflow rather than editing
+`bibliography.json`, `ID.txt`, `newID.txt`, `checkID.txt`, `badID.txt`, or the
+relevance ledger by hand. It supports corrections regardless of whether the
+original terminal choice was automatic or human-reviewed.
+
+First inspect the DOI and its complete project state:
+
+~~~bash
+bibreview --config bibreview.yml correct 10.1234/example
+~~~
+
+Then preview and apply the intended state:
+
+~~~bash
+bibreview --config bibreview.yml --dry-run correct 10.1234/example --keep
+bibreview --config bibreview.yml correct 10.1234/example --keep
+~~~
+
+or:
+
+~~~bash
+bibreview --config bibreview.yml --dry-run correct 10.1234/example --reject
+bibreview --config bibreview.yml correct 10.1234/example --reject
+~~~
+
+REJECT → KEEP returns the DOI to pending collection. KEEP → REJECT removes the
+canonical record and its registry entry, archives the pre-correction
+bibliography and any tracked BibTeX source, and records the DOI as rejected.
+The same command also resolves a DOI in manual review through the ordinary
+human-decision path, rejects a pending DOI, or safely cancels a staged DOI
+before merge. A requested state already represented by the project is a
+read-only no-op.
+The original screening evidence and original human decision are never
+overwritten; a distinct correction decision takes precedence for subsequent
+offline relevance analysis.
+
+For an initialization campaign, `correct` reconciles the campaign report while
+preserving the original batch membership and attempt; it never reopens a
+historical batch. Corrections that reverse or cancel a prior decision require
+relevance evidence; run
+`bibreview relevance --backfill-evidence` for legacy state before correcting
+such a DOI.
+
 ## Persistent provider error and refresh
 
 A manually corrected canonical field or BibTeX file is protected by the reviewed

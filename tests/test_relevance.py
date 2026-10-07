@@ -6,6 +6,7 @@ from bibreview.relevance import (
     RelevanceEvidence,
     analyze_relevance,
     merge_relevance_evidence,
+    record_relevance_correction,
     record_human_relevance_decision,
     relevance_evidence_data,
     relevance_evidence_from_data,
@@ -60,6 +61,33 @@ class RelevanceEvidenceTests(unittest.TestCase):
         self.assertEqual(merged[0].human_decision, "keep")
         self.assertEqual(merged[0].batch_id, "batch-0001")
         self.assertEqual(merged[0].attempt, 1)
+
+    def test_correction_is_distinct_from_and_preserved_with_human_decision(self):
+        original = record_human_relevance_decision(
+            (self.evidence("10.1/example", "Partitioned coupling"),),
+            doi="10.1/example",
+            decision="keep",
+        )
+
+        corrected = record_relevance_correction(
+            original,
+            doi="10.1/example",
+            decision="reject",
+        )
+        self.assertEqual(corrected[0].human_decision, "keep")
+        self.assertEqual(corrected[0].correction_decision, "reject")
+
+        refreshed = RelevanceEvidence(
+            doi="10.1/example",
+            title="Updated title",
+            abstract="",
+            keywords=(),
+            work_type="journal-article",
+            screening_outcome="queued",
+        )
+        merged = merge_relevance_evidence(corrected, (refreshed,))
+        self.assertEqual(merged[0].human_decision, "keep")
+        self.assertEqual(merged[0].correction_decision, "reject")
 
     def test_schema_v1_evidence_remains_readable(self):
         legacy = relevance_evidence_data(

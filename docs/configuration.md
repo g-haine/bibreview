@@ -235,6 +235,8 @@ for human review instead of being auto-rejected.
 Explicit decisions made through `bibreview review` are also annotated in the
 relevance evidence ledger. This lets offline analysis distinguish a human KEEP
 or REJECT decision from an automatic historical queue/rejection state.
+Later `bibreview correct` decisions are stored separately and take precedence
+without erasing either the screening result or that initial human decision.
 
 For projects created before evidence persistence, a one-time compatibility pass
 can reconstruct accepted evidence from the canonical bibliography and retrieve

@@ -295,12 +295,53 @@ class ProjectInitReviewContext:
 
 
 @dataclass(frozen=True)
+class ProjectInitCorrectionContext:
+    """Persisted initialization context relevant to a DOI correction."""
+
+    doi: str
+    batch_id: str
+    attempt: int
+    outcome: str
+    item_state: str
+
+    def data(self) -> dict[str, Any]:
+        return {
+            "doi": self.doi,
+            "batch_id": self.batch_id,
+            "attempt": self.attempt,
+            "outcome": self.outcome,
+            "item_state": self.item_state,
+        }
+
+
+@dataclass(frozen=True)
 class ProjectInitReviewTransitionPlan:
     """Initialization-state side of one explicit human relevance decision."""
 
     doi: str
     decision: str
     batch_id: str
+    outputs: Mapping[Path, bytes]
+
+    @property
+    def changed(self) -> bool:
+        return bool(self.outputs)
+
+
+@dataclass(frozen=True)
+class ProjectInitCorrectionTransitionPlan:
+    """Initialization-history reconciliation for an explicit correction.
+
+    Unlike :class:`ProjectInitReviewTransitionPlan`, this works for entries in
+    completed batches too.  A correction never reopens a historical batch: it
+    changes the recorded outcome while leaving the original membership and
+    attempt intact.
+    """
+
+    doi: str
+    decision: str
+    batch_id: str
+    attempt: int
     outputs: Mapping[Path, bytes]
 
     @property
@@ -809,6 +850,35 @@ def project_init_review_context(
     )
 
 
+def project_init_correction_context(
+    config: BibReviewConfig,
+    doi: str,
+) -> ProjectInitCorrectionContext | None:
+    """Return persisted initialization context for a DOI, if it has one."""
+
+    normalized = normalize_doi(doi)
+    campaign_exists = config.initialization.campaign.exists()
+    report_exists = config.initialization.report.exists()
+    if campaign_exists != report_exists:
+        raise ProjectStateError(
+            "initialization campaign and report must either both exist or both be absent"
+        )
+    if not campaign_exists:
+        return None
+    campaign, report = _read_state(config)
+    entry = next((item for item in report.entries if item.doi == normalized), None)
+    if entry is None:
+        return None
+    item = next(candidate for candidate in campaign.items if candidate.key == normalized)
+    return ProjectInitCorrectionContext(
+        doi=normalized,
+        batch_id=entry.batch_id,
+        attempt=entry.attempt,
+        outcome=entry.outcome,
+        item_state=item.state,
+    )
+
+
 def plan_project_init_review_transition(
     config: BibReviewConfig,
     *,
@@ -858,6 +928,69 @@ def plan_project_init_review_transition(
         doi=context.doi,
         decision=normalized_decision,
         batch_id=context.batch_id,
+        outputs=_state_outputs(config, campaign, report),
+    )
+
+
+def plan_project_init_correction_transition(
+    config: BibReviewConfig,
+    *,
+    doi: str,
+    decision: str,
+) -> ProjectInitCorrectionTransitionPlan | None:
+    """Reconcile initialization status without changing batch history.
+
+    ``keep`` is represented as ``queued`` because the DOI is handed back to
+    ordinary collection.  ``reject`` completes an active item, if any, and
+    marks the report rejected.  Completed historical items intentionally stay
+    completed in both cases.
+    """
+
+    normalized = normalize_doi(doi)
+    normalized_decision = decision.strip().lower()
+    if normalized_decision not in {"keep", "reject"}:
+        raise ProjectStateError("relevance correction decision must be 'keep' or 'reject'")
+
+    context = project_init_correction_context(config, normalized)
+    if context is None:
+        return None
+
+    campaign, report = _read_state(config)
+    entry = next(item for item in report.entries if item.doi == normalized)
+    item = next(candidate for candidate in campaign.items if candidate.key == normalized)
+    outcome = "queued" if normalized_decision == "keep" else "rejected"
+    report = _replace_report_entry(
+        report,
+        InitReportEntry(
+            doi=entry.doi,
+            batch_id=entry.batch_id,
+            attempt=entry.attempt,
+            outcome=outcome,
+        ),
+    )
+
+    if normalized_decision == "reject" and item.state == "active":
+        try:
+            campaign = record_item_result(
+                campaign,
+                batch_id=entry.batch_id,
+                key=normalized,
+                state="completed",
+            )
+            batch = _current_open_batch(campaign)
+            if batch is not None and batch.id == entry.batch_id:
+                states = {candidate.key: candidate.state for candidate in campaign.items}
+                if not any(states[key] == "active" for key in batch.keys):
+                    campaign = close_batch(campaign, batch_id=batch.id)
+        except CampaignError as error:
+            raise ProjectStateError(str(error)) from error
+
+    _validate_report_against_campaign(campaign, report)
+    return ProjectInitCorrectionTransitionPlan(
+        doi=normalized,
+        decision=normalized_decision,
+        batch_id=context.batch_id,
+        attempt=context.attempt,
         outputs=_state_outputs(config, campaign, report),
     )
 
