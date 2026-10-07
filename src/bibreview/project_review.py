@@ -16,7 +16,13 @@ from .identifier_state import (
     read_identifier_tokens,
 )
 from .identity import STRONG_IDENTIFIER_NAMES, normalize_doi
-from .pipeline.discover import EnrichmentLookup, WorkProvider, matching_patterns
+from .pipeline.discover import (
+    EnrichmentLookup,
+    WorkProvider,
+    matching_patterns,
+    work_authors,
+    work_container_title,
+)
 from .pipeline.enrich import crossref_enrichment
 from .project import ProjectStateError
 from .project_init import (
@@ -40,6 +46,8 @@ class RelevanceReviewCase:
     doi: str
     title: str
     work_type: str
+    authors: tuple[str, ...]
+    container_title: str
     abstract: str
     abstract_source: str
     keywords: tuple[str, ...]
@@ -54,6 +62,8 @@ class RelevanceReviewCase:
             "doi": self.doi,
             "title": self.title,
             "type": self.work_type,
+            "authors": list(self.authors),
+            "container_title": self.container_title,
             "abstract": self.abstract,
             "abstract_source": self.abstract_source,
             "keywords": list(self.keywords),
@@ -145,11 +155,15 @@ def project_relevance_review_cases(
         if message is None:
             title = ""
             work_type = ""
+            authors: tuple[str, ...] = ()
+            container_title = ""
             enrichment = Enrichment()
             text = ""
         else:
             title = _title(message)
             work_type = str(message.get("type") or "")
+            authors = work_authors(message)
+            container_title = work_container_title(message)
             enrichment = (
                 enrichment_lookup(doi, message)
                 if enrichment_lookup is not None
@@ -173,6 +187,8 @@ def project_relevance_review_cases(
                 doi=doi,
                 title=title,
                 work_type=work_type,
+                authors=authors,
+                container_title=container_title,
                 abstract=enrichment.abstract,
                 abstract_source=enrichment.abstract_source,
                 keywords=tuple(enrichment.keywords),
@@ -220,6 +236,8 @@ def format_relevance_review_case(
         lines.append("Metadata: unavailable from configured provider")
     else:
         lines.append(f"Title: {case.title or '(untitled)'}")
+        lines.append(f"Authors: {', '.join(case.authors) if case.authors else '(none)'}")
+        lines.append(f"Journal / venue: {case.container_title or '(none)'}")
         lines.append(f"Type: {case.work_type or '(unknown)'}")
         lines.append(f"Abstract: {case.abstract or '(none)'}")
         if case.abstract_source:
