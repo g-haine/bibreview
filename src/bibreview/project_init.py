@@ -919,6 +919,11 @@ def plan_project_init_rescreen(
 
     project = _project_sets(config)
     entries = {entry.doi: entry for entry in report.entries}
+    human_decisions = {
+        evidence.doi
+        for evidence in read_relevance_evidence(config.relevance.evidence)
+        if evidence.human_decision
+    }
     pending = list(_queue_dois(config.paths.pending))
     review_queue = list(_queue_dois(config.paths.review))
     rejected = list(_queue_dois(config.paths.rejected))
@@ -932,6 +937,9 @@ def plan_project_init_rescreen(
         item = next(candidate for candidate in campaign.items if candidate.key == key)
         entry = entries.get(key)
         if item.state != "active" or entry is None:
+            continue
+        if key in human_decisions:
+            preserved += 1
             continue
         if (
             key in project["staged"]
