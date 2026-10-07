@@ -159,6 +159,8 @@ def relevance_evidence_from_data(value: Any) -> tuple[RelevanceEvidence, ...]:
             "attempt",
             "human_decision",
         }
+        if schema_version >= 2:
+            required |= {"authors", "container_title"}
         allowed = required | {"authors", "container_title"}
         missing = required - raw.keys()
         unknown = raw.keys() - allowed
