@@ -165,6 +165,26 @@ def project_relevance_analysis(config: BibReviewConfig) -> dict[str, object]:
     )
 
 
+def _canonical_author_names(publication) -> tuple[str, ...]:
+    names: list[str] = []
+    for author in publication.authors:
+        literal = (author.literal or "").strip()
+        if literal:
+            names.append(literal)
+            continue
+        name = " ".join(
+            part
+            for part in (
+                (author.given or "").strip(),
+                (author.family or "").strip(),
+            )
+            if part
+        )
+        if name:
+            names.append(name)
+    return tuple(names)
+
+
 def _canonical_backfill_entry(
     publication,
     *,
@@ -176,6 +196,8 @@ def _canonical_backfill_entry(
         abstract=publication.abstract,
         keywords=publication.keywords,
         work_type=publication.type,
+        authors=_canonical_author_names(publication),
+        container_title=publication.container_title,
         screening_outcome="unknown",
         source="canonical-backfill",
     )
