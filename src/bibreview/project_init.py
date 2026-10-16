@@ -27,6 +27,7 @@ from .identifier_state import (
     read_identifier_tokens,
 )
 from .identity import STRONG_IDENTIFIER_NAMES, normalize_doi
+from .identifier_aliases import read_doi_aliases
 from .pipeline.discover import (
     EnrichmentLookup,
     WorkProvider,
@@ -340,6 +341,21 @@ class ProjectInitCorrectionTransitionPlan:
 
     doi: str
     decision: str
+    batch_id: str
+    attempt: int
+    outputs: Mapping[Path, bytes]
+
+    @property
+    def changed(self) -> bool:
+        return bool(self.outputs)
+
+
+@dataclass(frozen=True)
+class ProjectInitAliasTransitionPlan:
+    """Initialization reconciliation for a superseded DOI identity."""
+
+    doi: str
+    replacement: str
     batch_id: str
     attempt: int
     outputs: Mapping[Path, bytes]
@@ -995,6 +1011,74 @@ def plan_project_init_correction_transition(
     )
 
 
+def plan_project_init_alias_transition(
+    config: BibReviewConfig,
+    *,
+    doi: str,
+    replacement: str,
+) -> ProjectInitAliasTransitionPlan | None:
+    """Resolve one initialization DOI as superseded without relevance rejection."""
+
+    normalized = normalize_doi(doi)
+    normalized_replacement = normalize_doi(replacement)
+    if normalized == normalized_replacement:
+        raise ProjectStateError(f"{normalized}: replacement DOI must be different")
+
+    context = project_init_correction_context(config, normalized)
+    if context is None:
+        return None
+
+    campaign, report = _read_state(config)
+    campaign_items = set(_campaign_items(campaign))
+    project = _project_sets(config)
+    if (
+        normalized_replacement not in campaign_items
+        and normalized_replacement not in project["merged"]
+    ):
+        raise ProjectStateError(
+            f"{normalized}: replacement DOI {normalized_replacement} must already "
+            "belong to the frozen initialization campaign or canonical bibliography"
+        )
+
+    entry = next(item for item in report.entries if item.doi == normalized)
+    item = next(candidate for candidate in campaign.items if candidate.key == normalized)
+    report = _replace_report_entry(
+        report,
+        InitReportEntry(
+            doi=entry.doi,
+            batch_id=entry.batch_id,
+            attempt=entry.attempt,
+            outcome="skipped",
+        ),
+    )
+
+    if item.state == "active":
+        try:
+            campaign = record_item_result(
+                campaign,
+                batch_id=entry.batch_id,
+                key=normalized,
+                state="completed",
+                detail=f"superseded by {normalized_replacement}",
+            )
+            batch = _current_open_batch(campaign)
+            if batch is not None and batch.id == entry.batch_id:
+                states = {candidate.key: candidate.state for candidate in campaign.items}
+                if not any(states[key] == "active" for key in batch.keys):
+                    campaign = close_batch(campaign, batch_id=batch.id)
+        except CampaignError as error:
+            raise ProjectStateError(str(error)) from error
+
+    _validate_report_against_campaign(campaign, report)
+    return ProjectInitAliasTransitionPlan(
+        doi=normalized,
+        replacement=normalized_replacement,
+        batch_id=context.batch_id,
+        attempt=context.attempt,
+        outputs=_state_outputs(config, campaign, report),
+    )
+
+
 def _checkpoint(
     config: BibReviewConfig,
     campaign: Campaign,
@@ -1060,6 +1144,7 @@ def plan_project_init_rescreen(
     pending = list(_queue_dois(config.paths.pending))
     review_queue = list(_queue_dois(config.paths.review))
     rejected = list(_queue_dois(config.paths.rejected))
+    aliases = read_doi_aliases(config)
 
     screened = queued_count = review_count = rejected_count = 0
     unchanged = retryable = preserved = 0
@@ -1300,6 +1385,43 @@ def execute_project_init_batch(
     for key in batch.keys:
         item = next(candidate for candidate in campaign.items if candidate.key == key)
         if item.state != "active" or key in entries:
+            continue
+
+        alias = aliases.get(key)
+        if alias is not None:
+            progress_reporter.step(
+                f"Skip superseded DOI {key} -> {alias.replacement}"
+            )
+            attempt = _attempt_for(campaign, key)
+            entry = InitReportEntry(
+                doi=key,
+                batch_id=batch.id,
+                attempt=attempt,
+                outcome="skipped",
+            )
+            report = _replace_report_entry(report, entry)
+            entries[key] = entry
+            try:
+                campaign = record_item_result(
+                    campaign,
+                    batch_id=batch.id,
+                    key=key,
+                    state="completed",
+                    detail=f"superseded by {alias.replacement}",
+                )
+            except CampaignError as error:
+                raise ProjectStateError(str(error)) from error
+            skipped_count += 1
+            screened += 1
+            _validate_report_against_campaign(campaign, report)
+            _checkpoint(
+                config,
+                campaign,
+                report,
+                pending=pending,
+                review_queue=review_queue,
+                rejected=rejected,
+            )
             continue
 
         progress_reporter.step(f"Initialize {key}")
