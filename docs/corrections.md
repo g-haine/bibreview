@@ -214,13 +214,38 @@ For accepted fields with a meaningful tracked BibTeX representation, BibReview
 edits only that local field and creates a backup. Unrelated manually corrected
 BibTeX content remains untouched.
 
-## Wrong DOI
+## Wrong DOI or superseded DOI identity
 
-Changing a DOI is an identity correction, not an ordinary metadata edit.
+Changing a DOI is an identity correction, not a relevance decision or an
+ordinary metadata edit. Do **not** use `correct --reject` merely because a DOI
+candidate is wrong when the publication itself belongs in the bibliography.
 
-Prefer to reject or remove the incorrect identity deliberately and collect the
-correct DOI through the normal pending → collect → merge path. Preserve Git
-history so the identity change is auditable.
+For a reviewed in-flight DOI that is an alias or erroneous identity for another
+DOI, inspect first and then use the dedicated replacement transition:
+
+~~~bash
+bibreview correct 10.1234/wrong
+bibreview --dry-run correct 10.1234/wrong --replace-doi 10.1234/canonical
+bibreview correct 10.1234/wrong --replace-doi 10.1234/canonical
+~~~
+
+The replacement workflow records the durable relation in
+`data/identifier_aliases.json` (next to the configured canonical identifier
+registry), removes the old DOI from acquisition/review staging, and preserves
+all existing relevance evidence and human KEEP/REJECT provenance. Known alias
+sources are ignored by later discovery and collection.
+
+During an initialization campaign, a superseded DOI is completed as a skipped
+identity rather than a relevance rejection. If the replacement DOI is part of
+the frozen campaign it continues through the ordinary screening/collection
+path; the old item does not create a second canonical publication or alter the
+campaign universe.
+
+The initial replacement workflow is deliberately conservative for already
+canonical old identities: it refuses to rewrite a canonical DOI in place. Such
+historical identity migrations still require an explicit reviewed migration so
+the persistent BibReview UUID, BibTeX, registry state, and public permalink are
+not silently reassigned.
 
 ## Provider outage
 
