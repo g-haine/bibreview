@@ -123,7 +123,7 @@ class ProjectCollectionTests(unittest.TestCase):
         new = "10.1/new-canonical"
         write_bibliography(self.config.paths.collected, [])
         self.config.paths.pending.write_text(
-            f"doi:{old}\\ndoi:{new}\\n",
+            f"doi:{old}\ndoi:{new}\n",
             encoding="utf-8",
         )
         aliases = record_doi_alias({}, doi=old, replacement=new)
@@ -137,7 +137,7 @@ class ProjectCollectionTests(unittest.TestCase):
         apply_project_collection(plan)
         self.assertEqual(
             self.config.paths.pending.read_text(encoding="utf-8"),
-            f"doi:{new}\\n",
+            f"doi:{new}\n",
         )
 
     def test_invalid_metadata_is_reported_and_left_pending(self):
