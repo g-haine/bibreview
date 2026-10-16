@@ -185,7 +185,7 @@ class ProjectRelevanceCorrectionTests(unittest.TestCase):
         new = "10.17485/ijst/2015/v8i30/84240"
         self.config.paths.pending.parent.mkdir(parents=True, exist_ok=True)
         self.config.paths.pending.write_text(
-            f"doi:{old}\\ndoi:{new}\\n",
+            f"doi:{old}\ndoi:{new}\n",
             encoding="utf-8",
         )
         self.write_evidence(
@@ -207,7 +207,7 @@ class ProjectRelevanceCorrectionTests(unittest.TestCase):
 
         self.assertEqual(
             self.config.paths.pending.read_text(encoding="utf-8"),
-            f"doi:{new}\\n",
+            f"doi:{new}\n",
         )
         self.assertFalse(self.config.paths.rejected.exists())
         aliases = read_doi_aliases(self.config)
@@ -231,12 +231,12 @@ class ProjectRelevanceCorrectionTests(unittest.TestCase):
         write_bibliography(self.config.paths.collected, (item,))
         self.config.paths.pending.parent.mkdir(parents=True, exist_ok=True)
         self.config.paths.pending.write_text(
-            f"doi:{old}\\ndoi:{new}\\n",
+            f"doi:{old}\ndoi:{new}\n",
             encoding="utf-8",
         )
         self.config.paths.bibtex.mkdir(parents=True, exist_ok=True)
         bibtex = self.config.paths.bibtex / "old-publication.bib"
-        bibtex.write_text("@article{old}\\n", encoding="utf-8")
+        bibtex.write_text("@article{old}\n", encoding="utf-8")
         self.write_evidence(self.evidence(old, outcome="queued"))
 
         plan = plan_project_doi_replacement(
@@ -254,7 +254,7 @@ class ProjectRelevanceCorrectionTests(unittest.TestCase):
         self.assertTrue(plan.staging_backup.exists())
         self.assertEqual(
             self.config.paths.pending.read_text(encoding="utf-8"),
-            f"doi:{new}\\n",
+            f"doi:{new}\n",
         )
 
     def test_review_uses_human_decision_provenance(self):
