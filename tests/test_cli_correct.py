@@ -1,11 +1,13 @@
 from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
 from pathlib import Path
+from bibreview.config import load_config
 import json
 import tempfile
 import unittest
 
 from bibreview.cli import main
+from bibreview.identifier_aliases import read_doi_aliases
 from bibreview.relevance import RelevanceEvidence, relevance_evidence_data
 from bibreview.storage import json_bytes
 
@@ -95,6 +97,49 @@ class RelevanceCorrectionCliTests(unittest.TestCase):
             (self.root / "data" / "newID.txt").read_text(encoding="utf-8"),
             "doi:10.1/reject\n",
         )
+
+    def test_replace_doi_records_alias_without_relevance_reject(self):
+        old = "10.17485/ijst/2015/v8i1/84240"
+        new = "10.17485/ijst/2015/v8i30/84240"
+        pending = self.root / "data" / "newID.txt"
+        pending.write_text(f"doi:{old}\\ndoi:{new}\\n", encoding="utf-8")
+        evidence = (
+            RelevanceEvidence(
+                doi=old,
+                title="Finite Element Analysis of Fluid Structure Interaction in Fully Eulerian Coordinates",
+                abstract="",
+                keywords=(),
+                work_type="journal-article",
+                screening_outcome="review",
+                human_decision="keep",
+            ),
+            RelevanceEvidence(
+                doi=new,
+                title="Finite Element Analysis of Fluid Structure Interaction in Fully Eulerian Coordinates",
+                abstract="",
+                keywords=(),
+                work_type="journal-article",
+                screening_outcome="review",
+                human_decision="keep",
+            ),
+        )
+        path = self.root / "audit" / "relevance" / "evidence.json"
+        path.write_bytes(json_bytes(relevance_evidence_data(evidence)))
+
+        code, stdout, stderr = self.run_cli(
+            "correct",
+            old,
+            "--replace-doi",
+            new,
+        )
+
+        self.assertEqual(code, 0, stderr)
+        self.assertIn(f"{old}: DOI -> {new}", stdout)
+        self.assertIn("relevance evidence is preserved", stdout)
+        self.assertEqual(pending.read_text(encoding="utf-8"), f"doi:{new}\\n")
+        aliases = read_doi_aliases(load_config(self.config_path))
+        self.assertEqual(aliases[old].replacement, new)
+        self.assertNotIn(old, self.rejected.read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":
