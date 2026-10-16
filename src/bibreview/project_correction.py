@@ -18,9 +18,17 @@ from .identifier_state import (
     read_identifier_tokens,
 )
 from .identity import STRONG_IDENTIFIER_NAMES, normalize_doi
+from .identifier_aliases import (
+    doi_aliases_bytes,
+    identifier_alias_path,
+    read_doi_aliases,
+    record_doi_alias,
+    resolve_doi_alias,
+)
 from .project import ProjectStateError
 from .project_init import (
     ProjectInitCorrectionContext,
+    plan_project_init_alias_transition,
     plan_project_init_correction_transition,
     project_init_correction_context,
 )
@@ -101,6 +109,7 @@ class ProjectRelevanceCorrectionState:
     registry: bool
     evidence: RelevanceEvidence | None
     title: str = ""
+    alias_target: str | None = None
     initialization: ProjectInitCorrectionContext | None = None
 
     @property
@@ -115,6 +124,7 @@ class ProjectRelevanceCorrectionState:
                 ("staged", self.staged),
                 ("registry", self.registry),
                 ("evidence", self.evidence is not None),
+                ("alias", self.alias_target is not None),
                 ("initialization", self.initialization is not None),
             )
             if present
@@ -154,6 +164,7 @@ class ProjectRelevanceCorrectionState:
             "correction_decision": (
                 self.evidence.correction_decision if self.evidence is not None else None
             ),
+            "alias_target": self.alias_target,
             "evidence": (
                 {
                     "title": self.evidence.title,
@@ -170,6 +181,37 @@ class ProjectRelevanceCorrectionState:
                 self.initialization.data() if self.initialization is not None else None
             ),
         }
+
+
+@dataclass(frozen=True)
+class ProjectDoiReplacementPlan:
+    """Read-only identity replacement kept separate from relevance decisions."""
+
+    state: ProjectRelevanceCorrectionState
+    replacement: str
+    outputs: Mapping[Path, bytes]
+    deletes: tuple[Path, ...]
+    staging_backup: Path | None
+    initialization_batch: str | None = None
+
+    @property
+    def changed(self) -> bool:
+        return bool(self.outputs or self.deletes)
+
+    def data(self) -> dict[str, object]:
+        return {
+            "state": self.state.data(),
+            "replacement": self.replacement,
+            "changed": self.changed,
+            "deletes": [str(path) for path in self.deletes],
+            "staging_backup": (
+                str(self.staging_backup) if self.staging_backup is not None else None
+            ),
+            "initialization_batch": self.initialization_batch,
+        }
+
+    def summary(self) -> str:
+        return f"{self.state.doi}: DOI -> {self.replacement}"
 
 
 @dataclass(frozen=True)
@@ -247,6 +289,12 @@ def inspect_project_relevance_correction(
         ),
         None,
     )
+    aliases = read_doi_aliases(config)
+    alias_target = (
+        resolve_doi_alias(aliases, normalized)
+        if normalized in aliases
+        else None
+    )
     return ProjectRelevanceCorrectionState(
         doi=normalized,
         canonical=bool(canonical_publications),
@@ -265,6 +313,7 @@ def inspect_project_relevance_correction(
             if evidence is not None
             else ""
         ),
+        alias_target=alias_target,
         initialization=project_init_correction_context(config, normalized),
     )
 
@@ -282,6 +331,134 @@ def _safe_bibtex_path(config: BibReviewConfig, doi: str, publication) -> Path | 
     except ValueError as error:
         raise ProjectStateError(f"{doi}: unsafe BibTeX path for publication") from error
     return path
+
+
+def plan_project_doi_replacement(
+    config: BibReviewConfig,
+    *,
+    doi: str,
+    replacement: str,
+) -> ProjectDoiReplacementPlan:
+    """Plan a reviewed DOI identity replacement without changing relevance."""
+
+    state = inspect_project_relevance_correction(config, doi=doi)
+    aliases_before = read_doi_aliases(config)
+    normalized_replacement = resolve_doi_alias(aliases_before, replacement)
+    if state.doi == normalized_replacement:
+        raise ProjectStateError(
+            f"{state.doi}: replacement DOI must be different"
+        )
+    if state.canonical:
+        raise ProjectStateError(
+            f"{state.doi}: canonical DOI replacement is not supported by this "
+            "workflow; resolve the canonical identity before using --replace-doi"
+        )
+    if state.rejected:
+        raise ProjectStateError(
+            f"{state.doi}: relevance-rejected DOI cannot be converted to an alias "
+            "without first correcting its relevance state"
+        )
+    if not state.surfaces:
+        raise ProjectStateError(
+            f"{state.doi}: DOI is not present in project state"
+        )
+
+    replacement_state = inspect_project_relevance_correction(
+        config,
+        doi=normalized_replacement,
+    )
+    if replacement_state.rejected:
+        raise ProjectStateError(
+            f"{normalized_replacement}: replacement DOI is relevance-rejected"
+        )
+    if replacement_state.review:
+        raise ProjectStateError(
+            f"{normalized_replacement}: replacement DOI still requires relevance review"
+        )
+
+    outputs: dict[Path, bytes] = {}
+    deletes: list[Path] = []
+    staging_backup: Path | None = None
+    paths = config.paths
+
+    aliases_after = record_doi_alias(
+        aliases_before,
+        doi=state.doi,
+        replacement=normalized_replacement,
+    )
+    _put_if_changed(
+        outputs,
+        identifier_alias_path(config),
+        doi_aliases_bytes(aliases_after),
+    )
+
+    pending = _remove(list(_queue_dois(paths.pending)), state.doi)
+    review = _remove(list(_queue_dois(paths.review)), state.doi)
+    if not (
+        replacement_state.canonical
+        or replacement_state.pending
+        or replacement_state.staged
+    ):
+        pending = _append_unique(pending, normalized_replacement)
+    _put_if_changed(outputs, paths.pending, _doi_bytes(pending))
+    _put_if_changed(outputs, paths.review, _doi_bytes(review))
+
+    if state.staged:
+        document = read_bibliography_document(paths.collected)
+        removed = tuple(
+            publication
+            for publication in document.publications
+            if publication.doi == state.doi
+        )
+        retained = tuple(
+            publication
+            for publication in document.publications
+            if publication.doi != state.doi
+        )
+        staging_backup = backup_path(paths.archive, "collected", ".json")
+        outputs[staging_backup] = paths.collected.read_bytes()
+        metadata = BibliographyMetadata(
+            schema_version=document.metadata.schema_version,
+            last_update=date.today(),
+        )
+        outputs[paths.collected] = json_bytes(
+            bibliography_document_data(retained, metadata=metadata)
+        )
+        for publication in removed:
+            bibtex = _safe_bibtex_path(config, state.doi, publication)
+            if bibtex is not None and bibtex.exists() and bibtex not in deletes:
+                outputs[backup_path(paths.archive, "bibtex", ".bib")] = bibtex.read_bytes()
+                deletes.append(bibtex)
+
+    init_transition = plan_project_init_alias_transition(
+        config,
+        doi=state.doi,
+        replacement=normalized_replacement,
+    )
+    if init_transition is not None:
+        outputs.update(init_transition.outputs)
+
+    return ProjectDoiReplacementPlan(
+        state=state,
+        replacement=normalized_replacement,
+        outputs=MappingProxyType(outputs),
+        deletes=tuple(deletes),
+        staging_backup=staging_backup,
+        initialization_batch=(
+            init_transition.batch_id if init_transition is not None else None
+        ),
+    )
+
+
+def apply_project_doi_replacement(plan: ProjectDoiReplacementPlan) -> None:
+    """Apply one reviewed DOI identity replacement."""
+
+    if not isinstance(plan, ProjectDoiReplacementPlan):
+        raise ProjectStateError("plan must be a ProjectDoiReplacementPlan")
+    if plan.outputs:
+        atomic_write_batch(plan.outputs)
+    for path in plan.deletes:
+        path.unlink(missing_ok=True)
 
 
 def plan_project_relevance_correction(
@@ -479,6 +656,7 @@ def format_project_relevance_correction_state(
         "Terminal relevance: "
         + (state.current_decision.upper() if state.current_decision else "none"),
         f"Current provenance: {state.decision_provenance}",
+        "Identity alias: " + (state.alias_target or "none"),
     ]
     if state.evidence is not None:
         lines.extend(
