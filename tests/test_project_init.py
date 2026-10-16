@@ -9,8 +9,10 @@ from bibreview.identity import new_publication_id
 from bibreview.model import Author, Publication
 from bibreview.project import ProjectStateError
 from bibreview.project_correction import (
+    apply_project_doi_replacement,
     apply_project_relevance_correction,
     inspect_project_relevance_correction,
+    plan_project_doi_replacement,
     plan_project_relevance_correction,
 )
 from bibreview.project_review import (
@@ -484,6 +486,56 @@ class ProjectInitTests(unittest.TestCase):
             self.config.paths.pending.read_text(encoding="utf-8"),
             "doi:10.1/a\n",
         )
+
+    def test_doi_replacement_marks_old_init_item_skipped_without_relevance_reject(self):
+        old = "10.1/old"
+        new = "10.1/new"
+        batch = plan_project_init_batch(
+            self.config,
+            candidates=(old, new),
+            batch_size=2,
+        )
+        apply_project_init_plan(batch)
+        execute_project_init_batch(
+            self.config,
+            batch_id=batch.batch.id,
+            provider=FakeWorkProvider({
+                old: work("Fluid-structure interaction old identity"),
+                new: work("Fluid-structure interaction canonical identity"),
+            }),
+        )
+
+        replacement = plan_project_doi_replacement(
+            self.config,
+            doi=old,
+            replacement=new,
+        )
+        self.assertEqual(replacement.initialization_batch, "batch-0001")
+        apply_project_doi_replacement(replacement)
+
+        status = project_init_status(self.config)
+        self.assertEqual(status.queued, 1)
+        self.assertEqual(status.skipped, 1)
+        self.assertEqual(status.rejected, 0)
+        self.assertEqual(status.current_batch, "batch-0001")
+        self.assertEqual(
+            self.config.paths.pending.read_text(encoding="utf-8"),
+            f"doi:{new}\n",
+        )
+
+        write_bibliography(
+            self.config.paths.bibliography,
+            (publication(new, "Canonical identity"),),
+        )
+        self.config.paths.pending.write_text("", encoding="utf-8")
+        completed = plan_project_init_batch(self.config)
+        apply_project_init_plan(completed)
+        final = project_init_status(self.config)
+        self.assertEqual(final.merged, 1)
+        self.assertEqual(final.skipped, 1)
+        self.assertEqual(final.rejected, 0)
+        self.assertIsNone(final.current_batch)
+        self.assertTrue(final.complete)
 
     def test_correct_reject_reconciles_active_initialization_report(self):
         plan = plan_project_init_batch(

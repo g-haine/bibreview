@@ -4,6 +4,11 @@ import unittest
 
 from bibreview.config import load_config
 from bibreview.identity import new_publication_id
+from bibreview.identifier_aliases import (
+    doi_aliases_bytes,
+    identifier_alias_path,
+    record_doi_alias,
+)
 from bibreview.model import Author, Publication
 from bibreview.project import (
     ProjectStateError,
@@ -112,6 +117,28 @@ class ProjectCollectionTests(unittest.TestCase):
             "@article{10.1/new}\n",
         )
         self.assertEqual(len(read_bibliography(self.config.paths.bibliography)), 1)
+
+    def test_superseded_pending_doi_is_dropped_without_provider_access(self):
+        old = "10.1/old-alias"
+        new = "10.1/new-canonical"
+        write_bibliography(self.config.paths.collected, [])
+        self.config.paths.pending.write_text(
+            f"doi:{old}\ndoi:{new}\n",
+            encoding="utf-8",
+        )
+        aliases = record_doi_alias({}, doi=old, replacement=new)
+        identifier_alias_path(self.config).write_bytes(doi_aliases_bytes(aliases))
+        provider = FakeProvider({new: message("Canonical publication")})
+
+        plan = plan_project_collection(self.config, provider=provider)
+
+        self.assertEqual(provider.calls, [new])
+        self.assertEqual(plan.result.candidates, (new,))
+        apply_project_collection(plan)
+        self.assertEqual(
+            self.config.paths.pending.read_text(encoding="utf-8"),
+            f"doi:{new}\n",
+        )
 
     def test_invalid_metadata_is_reported_and_left_pending(self):
         write_bibliography(self.config.paths.collected, [])

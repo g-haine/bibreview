@@ -19,6 +19,7 @@ from .identifier_state import (
     read_identifier_tokens,
 )
 from .identity import STRONG_IDENTIFIER_NAMES
+from .identifier_aliases import read_doi_aliases
 from .pipeline.authors import (
     AuthorMappingPlan,
     AuthorReviewCase,
@@ -290,7 +291,11 @@ def plan_project_collection(
             "merge the existing batch before collecting again"
         )
 
-    submitted = _queue_dois(paths.pending)
+    aliases = read_doi_aliases(config)
+    submitted = tuple(
+        doi for doi in _queue_dois(paths.pending)
+        if doi not in aliases
+    )
     known = list(_registry_dois(paths.known))
     known.extend(
         publication.doi
@@ -372,13 +377,14 @@ def plan_project_discovery(
     pending = list(_queue_dois(paths.pending))
     rejected = list(_queue_dois(paths.rejected))
     review = list(_queue_dois(paths.review))
+    aliases = read_doi_aliases(config)
 
     candidates = discovery_provider.discover(
         config.discovery.query,
         max_pages=config.discovery.max_pages,
         search_field=config.discovery.search_field,
     )
-    already_classified = list(known) + pending + review
+    already_classified = list(known) + pending + review + list(aliases)
     already_classified.extend(
         publication.doi
         for publication in existing
