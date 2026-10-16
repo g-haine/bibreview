@@ -28,6 +28,8 @@ from .backfill_resolution import (
 )
 from .campaign import campaign_progress
 from .config import ConfigError, load_config
+from .identifier_state import doi_values, read_identifier_tokens
+from .model import Author, Editor
 from .pipeline.authors import (
     author_mapping_plan_data,
     format_author_mapping_plan,
@@ -182,6 +184,13 @@ from .refresh_resolution import (
     save_project_refresh_resolutions,
     unresolved_refresh_candidates,
 )
+from .repair import (
+    contributor_evidence_fingerprint,
+    load_contributor_repair_state,
+    record_contributor_repair,
+    repair_path,
+    save_contributor_repair_state,
+)
 from .relevance import format_relevance_analysis
 from .reporting import Reporter
 from .runtime import (
@@ -190,7 +199,7 @@ from .runtime import (
     build_discovery_services,
     build_reference_services,
 )
-from .storage import StorageError
+from .storage import StorageError, read_bibliography
 
 
 def _enable_interactive_line_editing() -> None:
@@ -506,6 +515,10 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Print correction inspection or plan data as JSON",
     )
+    commands.add_parser(
+        "repair",
+        help="Interactively repair structurally invalid pending provider metadata",
+    )
     commands.add_parser("collect", help="Collect pending DOI metadata into canonical staging state")
     manual_import = commands.add_parser(
         "import",
@@ -600,6 +613,305 @@ def _parser() -> argparse.ArgumentParser:
     commands.add_parser("render", help="Render and reconcile configured static-site artifacts")
     commands.add_parser("arxiv", help="Refresh the optional configured arXiv cache")
     return parser
+
+
+def _provider_contributors_present(message) -> bool:
+    """Return whether provider metadata contains one usable author/editor name."""
+    for field in ("author", "editor"):
+        values = message.get(field)
+        if not isinstance(values, list):
+            continue
+        for item in values:
+            if not isinstance(item, dict):
+                continue
+            if any(
+                str(item.get(name) or "").strip()
+                for name in ("given", "family", "name")
+            ):
+                return True
+    return False
+
+
+def _repair_title(message) -> str:
+    """Return a compact provider title for human repair review."""
+    value = message.get("title")
+    if isinstance(value, list) and value:
+        return str(value[0]).strip()
+    return ""
+
+
+def _repair_type(message) -> str:
+    value = message.get("type")
+    return str(value).strip() if value is not None else ""
+
+
+def _repair_container(message) -> str:
+    value = message.get("container-title")
+    if isinstance(value, list) and value:
+        return str(value[0]).strip()
+    return ""
+
+
+def _repair_year(message) -> str:
+    for field in ("published-print", "published-online", "issued", "created"):
+        value = message.get(field)
+        parts = value.get("date-parts") if isinstance(value, dict) else None
+        first = parts[0] if isinstance(parts, list) and parts else None
+        if isinstance(first, list) and first:
+            try:
+                return str(int(first[0]))
+            except (TypeError, ValueError):
+                pass
+    return ""
+
+
+def _run_repair(config, args) -> int:
+    """Interactively record reviewed contributor repairs for pending DOI metadata."""
+    if args.quiet:
+        raise ProjectStateError("--quiet cannot be used with interactive repair")
+
+    staged = (
+        read_bibliography(config.paths.collected)
+        if config.paths.collected.exists()
+        else ()
+    )
+    if staged:
+        raise ProjectStateError(
+            f"{config.paths.collected}: contains {len(staged)} staged publication(s); "
+            "merge the existing batch before repairing pending metadata"
+        )
+
+    reporter = Reporter(args.verbose)
+    services = build_collection_services(
+        config,
+        reporter=reporter,
+        cache_mode=_cache_mode(args),
+    )
+
+    pending = doi_values(
+        read_identifier_tokens(
+            config.paths.pending,
+            allowed_kinds={"doi"},
+            allow_legacy_doi=True,
+        )
+    )
+    state = load_contributor_repair_state(config)
+    existing = {item.doi: item for item in state.repairs}
+
+    reason = "publication must contain at least one author or editor"
+    cases = []
+
+    for doi in pending:
+        message = services.provider.work(doi)
+        if message is None or not isinstance(message, dict):
+            continue
+        if _provider_contributors_present(message):
+            continue
+
+        fingerprint = contributor_evidence_fingerprint(doi, message)
+        previous = existing.get(doi)
+        if (
+            previous is not None
+            and previous.evidence_fingerprint == fingerprint
+        ):
+            continue
+
+        cases.append((doi, message, reason))
+
+    if not cases:
+        print("No structurally invalid pending DOI metadata require repair.")
+        print(f"Repairs: {repair_path(config)}")
+        return 0
+
+    if args.dry_run:
+        for position, (doi, message, failure_reason) in enumerate(cases, 1):
+            print(f"Structural metadata repair [{position}/{len(cases)}]")
+            print(f"  DOI      : {doi}")
+            print(f"  Title    : {_repair_title(message) or '(missing)'}")
+            print(f"  Type     : {_repair_type(message) or '(missing)'}")
+            print(f"  Container: {_repair_container(message) or '(missing)'}")
+            print(f"  Year     : {_repair_year(message) or '(missing)'}")
+            print(f"  Failure  : {failure_reason}")
+            print()
+        print(
+            f"Dry run: {len(cases)} structural metadata repair(s) "
+            "require human review; no repairs were recorded."
+        )
+        print(f"Repairs: {repair_path(config)}")
+        return 0
+
+    _enable_interactive_line_editing()
+    recorded = 0
+    repaired_dois = []
+
+    for position, (doi, message, failure_reason) in enumerate(cases, 1):
+        print(f"Structural metadata repair [{position}/{len(cases)}]")
+        print(f"  DOI      : {doi}")
+        print(f"  Title    : {_repair_title(message) or '(missing)'}")
+        print(f"  Type     : {_repair_type(message) or '(missing)'}")
+        print(f"  Container: {_repair_container(message) or '(missing)'}")
+        print(f"  Year     : {_repair_year(message) or '(missing)'}")
+        print(f"  Failure  : {failure_reason}")
+
+        authors = []
+        editors = []
+        deferred_case = False
+
+        while True:
+            try:
+                raw = input(
+                    "Contributor [a=author/e=editor/n=done/s=defer/q=quit]: "
+                ).strip().lower()
+            except (EOFError, KeyboardInterrupt):
+                print()
+                print(
+                    "Repair session stopped; previous repairs are preserved."
+                )
+                print(f"Repairs: {repair_path(config)}")
+                return 0
+
+            if raw in {"q", "quit"}:
+                print(
+                    f"Recorded {recorded} repair(s); "
+                    "previous repairs are preserved."
+                )
+                print(f"Repairs: {repair_path(config)}")
+                return 0
+
+            if raw in {"s", "skip", "defer"}:
+                deferred_case = True
+                break
+
+            if raw in {"n", "done"}:
+                if not authors and not editors:
+                    print("At least one author or editor is required.")
+                    continue
+                break
+
+            if raw not in {"a", "author", "e", "editor"}:
+                print("Please enter a, e, n, s, or q.")
+                continue
+
+            try:
+                given = input("Given name: ").strip() or None
+                family = input("Family name: ").strip() or None
+                literal = input("Literal name: ").strip() or None
+                source_fields_raw = input(
+                    "Source fields JSON [optional]: "
+                ).strip()
+            except (EOFError, KeyboardInterrupt):
+                print()
+                print(
+                    "Repair session stopped; previous repairs are preserved."
+                )
+                print(f"Repairs: {repair_path(config)}")
+                return 0
+
+            try:
+                source_fields = (
+                    json.loads(source_fields_raw)
+                    if source_fields_raw
+                    else {}
+                )
+                if not isinstance(source_fields, dict):
+                    raise ValueError("source fields must be a JSON object")
+
+                if raw in {"a", "author"}:
+                    authors.append(
+                        Author(
+                            given=given,
+                            family=family,
+                            literal=literal,
+                            source_fields=source_fields,
+                        )
+                    )
+                else:
+                    editors.append(
+                        Editor(
+                            given=given,
+                            family=family,
+                            literal=literal,
+                            source_fields=source_fields,
+                        )
+                    )
+            except json.JSONDecodeError as error:
+                print(f"Invalid contributor: source fields are not valid JSON: {error}")
+                continue
+            except ValueError as error:
+                print(f"Invalid contributor: {error}")
+                continue
+
+        if deferred_case:
+            print(f"Repair deferred: {doi}")
+            print()
+            continue
+
+        print("  Reviewed contributors:")
+        for author in authors:
+            name = " ".join(
+                value
+                for value in (author.given, author.family, author.literal)
+                if value
+            )
+            print(f"    author: {name}")
+        for editor in editors:
+            name = " ".join(
+                value
+                for value in (editor.given, editor.family, editor.literal)
+                if value
+            )
+            print(f"    editor: {name}")
+
+        try:
+            confirmation = input("Record repair? [y/N]: ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            print(
+                "Repair session stopped; previous repairs are preserved."
+            )
+            print(f"Repairs: {repair_path(config)}")
+            return 0
+
+        if confirmation not in {"y", "yes"}:
+            print("Repair deferred.")
+            print()
+            continue
+
+        state = record_contributor_repair(
+            state,
+            doi=doi,
+            message=message,
+            reason=failure_reason,
+            authors=tuple(authors),
+            editors=tuple(editors),
+        )
+        save_contributor_repair_state(config, state)
+        recorded += 1
+        repaired_dois.append(doi)
+        print(f"Recorded repair: {doi}")
+        print()
+
+    print(f"Recorded {recorded} repair(s).")
+    print(f"Repairs: {repair_path(config)}")
+
+    if recorded:
+        plan = plan_project_collection(
+            config,
+            provider=services.provider,
+            only_dois=repaired_dois,
+            enrichment_lookup=services.enrichment_lookup,
+            citation_lookup=services.citation_lookup,
+            bibtex_lookup=services.bibtex_lookup,
+            reporter=reporter,
+        )
+        apply_project_collection(plan)
+        print("Repaired metadata passed ordinary collection validation.")
+        print(plan.summary())
+        _print_collection_failures(plan)
+        if plan.result.publications:
+            print(f"Staging: {config.paths.collected}")
+
+    return 0
 
 
 def _run_author_review(config, args) -> int:
@@ -2572,6 +2884,19 @@ def main(argv: list[str] | None = None) -> int:
             if not plan.changed:
                 print("No new discovery state changes.")
         return 0
+
+    if args.command == "repair":
+        try:
+            return _run_repair(config, args)
+        except (
+            OSError,
+            StorageError,
+            ProjectStateError,
+            ValueError,
+            TypeError,
+        ) as error:
+            print(f"bibreview repair: {error}", file=sys.stderr)
+            return 1
 
     if args.command == "collect":
         reporter = Reporter(-1 if args.quiet else args.verbose)

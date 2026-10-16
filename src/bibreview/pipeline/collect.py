@@ -39,6 +39,14 @@ class BatchWorkProvider(Protocol):
 
 
 @dataclass(frozen=True)
+class ContributorRepair:
+    """Explicit human-supplied contributors for structurally incomplete metadata."""
+
+    authors: tuple[Author, ...] = ()
+    editors: tuple[Editor, ...] = ()
+
+
+@dataclass(frozen=True)
 class CollectedItem:
     """One canonical publication plus optional rendered BibTeX."""
 
@@ -70,6 +78,10 @@ class CollectionResult:
 
 
 EnrichmentLookup = Callable[[str, Mapping[str, Any]], Enrichment]
+ContributorRepairLookup = Callable[
+    [str, Mapping[str, Any]],
+    ContributorRepair | None,
+]
 EnrichmentManyLookup = Callable[
     [Mapping[str, Mapping[str, Any]]],
     Mapping[str, Enrichment],
@@ -435,6 +447,7 @@ def build_publication(
     enrichment_lookup: EnrichmentLookup | None = None,
     citation_lookup: CitationLookup | None = None,
     enrichment: Enrichment | None = None,
+    contributor_repair: ContributorRepair | None = None,
     reject_unsafe_title: bool = True,
 ) -> Publication:
     """Build one canonical publication from a CrossRef work message."""
@@ -472,6 +485,14 @@ def build_publication(
     elif not isinstance(enrichment, Enrichment):
         raise TypeError("enrichment must be an Enrichment value")
 
+    authors = _authors(message.get("author"))
+    editors = _editors(message.get("editor"))
+    if not authors and not editors and contributor_repair is not None:
+        if not isinstance(contributor_repair, ContributorRepair):
+            raise TypeError("contributor_repair must be a ContributorRepair")
+        authors = contributor_repair.authors
+        editors = contributor_repair.editors
+
     identifiers: dict[str, str] = {"doi": normalized_doi}
     isbn_values = message.get("isbn-type")
     if isinstance(isbn_values, list) and isbn_values and isinstance(isbn_values[0], Mapping):
@@ -484,8 +505,8 @@ def build_publication(
         identifiers=identifiers,
         type=_string(message.get("type")),
         title=title,
-        authors=_authors(message.get("author")),
-        editors=_editors(message.get("editor")),
+        authors=authors,
+        editors=editors,
         abstract=_usable_abstract(enrichment.abstract),
         container_title=scalar["container_title"],
         publication_year=scalar["publication_year"],
@@ -523,6 +544,7 @@ def collect(
     known: Iterable[str] = (),
     used_slugs: Iterable[str] = (),
     enrichment_lookup: EnrichmentLookup | None = None,
+    contributor_repair_lookup: ContributorRepairLookup | None = None,
     citation_lookup: CitationLookup | None = None,
     bibtex_lookup: BibtexLookup | None = None,
     reporter: Reporter | None = None,
@@ -556,11 +578,28 @@ def collect(
         try:
             slug = _slug_for_message(doi, message, used)
             progress.detail(f"{doi}: permalink {slug}")
+            contributor_repair = None
+            if (
+                contributor_repair_lookup is not None
+                and not _authors(message.get("author"))
+                and not _editors(message.get("editor"))
+            ):
+                contributor_repair = contributor_repair_lookup(doi, message)
+                if (
+                    contributor_repair is not None
+                    and not isinstance(contributor_repair, ContributorRepair)
+                ):
+                    raise TypeError(
+                        "contributor repair lookup must return "
+                        "ContributorRepair or None"
+                    )
+
             publication = build_publication(
                 doi,
                 message,
                 slug,
                 enrichment_lookup=enrichment_lookup,
+                contributor_repair=contributor_repair,
                 citation_lookup=citation_lookup,
             )
         except ValueError as error:

@@ -212,6 +212,33 @@ DOI-less publications use the reviewed manual `bibreview import`
 workflow introduced by issue #28. That workflow does not create a second
 automated acquisition chain and never invents a fake DOI.
 
+### Reviewed provider-metadata repair evidence
+
+A retrieved DOI record that contains neither a usable author nor a usable editor
+may be repaired through the explicit human-reviewed `bibreview repair`
+workflow. The provider response itself is never modified.
+
+Reviewed contributor repairs are persisted in the versioned project sidecar:
+
+~~~text
+data/repairs.json
+~~~
+
+Each repair records the normalized DOI, the exact structural failure, explicit
+`human-reviewed` provenance, repaired authors/editors including optional
+`source_fields`, and a SHA-256 fingerprint of the exact provider evidence on
+which the decision was made.
+
+The fingerprint makes the repair conditional on that provider evidence. If the
+provider record changes, the stored repair is stale and must be reviewed again.
+If the provider later supplies usable contributors directly, those provider
+contributors take precedence and the repair is not consulted.
+
+The sidecar is review evidence, not canonical bibliography state. A confirmed
+repair is revalidated through the ordinary collection/model pipeline and staged
+in `collected.json`; it reaches `bibliography.json` only through an explicit
+`bibreview merge`.
+
 ### Reviewed manual import evidence
 
 A manual import is represented by a versioned YAML sidecar. The sidecar carries

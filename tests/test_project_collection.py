@@ -10,12 +10,17 @@ from bibreview.identifier_aliases import (
     record_doi_alias,
 )
 from bibreview.model import Author, Publication
+from bibreview.repair import (
+    ContributorRepairState,
+    record_contributor_repair,
+    repair_path,
+)
 from bibreview.project import (
     ProjectStateError,
     apply_project_collection,
     plan_project_collection,
 )
-from bibreview.storage import read_bibliography, write_bibliography
+from bibreview.storage import read_bibliography, write_bibliography, write_json
 
 
 CONFIG = """\
@@ -139,6 +144,42 @@ class ProjectCollectionTests(unittest.TestCase):
             self.config.paths.pending.read_text(encoding="utf-8"),
             f"doi:{new}\n",
         )
+
+    def test_reviewed_contributor_repair_is_used_by_project_collection(self):
+        write_bibliography(self.config.paths.collected, [])
+        invalid = message("Repaired publication")
+        invalid["author"] = []
+        invalid["editor"] = []
+        self.config.paths.pending.write_text(
+            "10.1/repaired\n",
+            encoding="utf-8",
+        )
+
+        state = record_contributor_repair(
+            ContributorRepairState(),
+            doi="10.1/repaired",
+            message=invalid,
+            reason="publication must contain at least one author or editor",
+            authors=(Author(given="Ada", family="Lovelace"),),
+        )
+        write_json(repair_path(self.config), state.data())
+
+        provider = FakeProvider({"10.1/repaired": invalid})
+        plan = plan_project_collection(
+            self.config,
+            provider=provider,
+        )
+
+        self.assertEqual(plan.result.invalid, ())
+        self.assertEqual(len(plan.result.publications), 1)
+        self.assertEqual(
+            [
+                (author.given, author.family)
+                for author in plan.result.publications[0].authors
+            ],
+            [("Ada", "Lovelace")],
+        )
+
 
     def test_invalid_metadata_is_reported_and_left_pending(self):
         write_bibliography(self.config.paths.collected, [])

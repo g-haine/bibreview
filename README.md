@@ -136,6 +136,8 @@ human review when needed
    ↓
 collect
    ↓
+repair missing contributor metadata when needed
+   ↓
 inspect collected.json + BibTeX
    ↓
 merge
@@ -153,6 +155,11 @@ bibreview --dry-run review
 bibreview review
 
 bibreview collect
+
+# Only when provider metadata has no usable author or editor:
+bibreview --dry-run repair
+bibreview repair
+
 bibreview --dry-run merge
 bibreview merge
 
@@ -164,6 +171,13 @@ bibreview render
 ~~~
 
 `merge` is the explicit promotion boundary into the canonical bibliography.
+
+`repair` is a narrow human-reviewed recovery path for pending DOI metadata that
+was retrieved successfully but cannot pass canonical validation because it has
+no usable author or editor. It does not replace `collect`, does not edit
+provider evidence, and does not promote anything directly into the
+canonical bibliography. Repaired records are staged through the ordinary
+collection pipeline and still require an explicit `merge`.
 
 ## Add a publication without a DOI
 
