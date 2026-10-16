@@ -4,11 +4,14 @@ import unittest
 
 from bibreview.config import load_config
 from bibreview.identity import new_publication_id
+from bibreview.identifier_aliases import read_doi_aliases
 from bibreview.model import Author, Publication
 from bibreview.project import ProjectStateError
 from bibreview.project_correction import (
+    apply_project_doi_replacement,
     apply_project_relevance_correction,
     inspect_project_relevance_correction,
+    plan_project_doi_replacement,
     plan_project_relevance_correction,
 )
 from bibreview.project_relevance import project_relevance_analysis
@@ -176,6 +179,83 @@ class ProjectRelevanceCorrectionTests(unittest.TestCase):
         self.assertFalse(plan.changed)
         apply_project_relevance_correction(plan)
         self.assertEqual(before, self.snapshot())
+
+    def test_replace_pending_doi_preserves_human_keep_without_rejecting(self):
+        old = "10.17485/ijst/2015/v8i1/84240"
+        new = "10.17485/ijst/2015/v8i30/84240"
+        self.config.paths.pending.parent.mkdir(parents=True, exist_ok=True)
+        self.config.paths.pending.write_text(
+            f"doi:{old}\\ndoi:{new}\\n",
+            encoding="utf-8",
+        )
+        self.write_evidence(
+            self.evidence(old, outcome="review", human="keep"),
+            self.evidence(new, outcome="review", human="keep"),
+        )
+        before = self.snapshot()
+
+        plan = plan_project_doi_replacement(
+            self.config,
+            doi=old,
+            replacement=new,
+        )
+
+        self.assertEqual(before, self.snapshot())
+        self.assertTrue(plan.changed)
+        self.assertEqual(plan.replacement, new)
+        apply_project_doi_replacement(plan)
+
+        self.assertEqual(
+            self.config.paths.pending.read_text(encoding="utf-8"),
+            f"doi:{new}\\n",
+        )
+        self.assertFalse(self.config.paths.rejected.exists())
+        aliases = read_doi_aliases(self.config)
+        self.assertEqual(aliases[old].replacement, new)
+        evidence = {item.doi: item for item in read_relevance_evidence(self.config.relevance.evidence)}
+        self.assertEqual(evidence[old].human_decision, "keep")
+        self.assertEqual(evidence[old].correction_decision, "")
+
+        analysis = project_relevance_analysis(self.config)
+        self.assertEqual(analysis["summary"]["keep"], 2)
+        self.assertEqual(analysis["summary"]["reject"], 0)
+        self.assertEqual(
+            analysis["summary"]["label_sources"],
+            {"human": 2},
+        )
+
+    def test_replace_staged_doi_removes_duplicate_staging_and_bibtex(self):
+        old = "10.1/old"
+        new = "10.1/new"
+        item = publication(old, permalink="old-publication")
+        write_bibliography(self.config.paths.collected, (item,))
+        self.config.paths.pending.parent.mkdir(parents=True, exist_ok=True)
+        self.config.paths.pending.write_text(
+            f"doi:{old}\\ndoi:{new}\\n",
+            encoding="utf-8",
+        )
+        self.config.paths.bibtex.mkdir(parents=True, exist_ok=True)
+        bibtex = self.config.paths.bibtex / "old-publication.bib"
+        bibtex.write_text("@article{old}\\n", encoding="utf-8")
+        self.write_evidence(self.evidence(old, outcome="queued"))
+
+        plan = plan_project_doi_replacement(
+            self.config,
+            doi=old,
+            replacement=new,
+        )
+        self.assertIsNotNone(plan.staging_backup)
+        self.assertEqual(plan.deletes, (bibtex,))
+
+        apply_project_doi_replacement(plan)
+
+        self.assertEqual(read_bibliography(self.config.paths.collected), ())
+        self.assertFalse(bibtex.exists())
+        self.assertTrue(plan.staging_backup.exists())
+        self.assertEqual(
+            self.config.paths.pending.read_text(encoding="utf-8"),
+            f"doi:{new}\\n",
+        )
 
     def test_review_uses_human_decision_provenance(self):
         self.config.paths.review.parent.mkdir(parents=True, exist_ok=True)
