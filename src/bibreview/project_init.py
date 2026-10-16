@@ -1144,7 +1144,6 @@ def plan_project_init_rescreen(
     pending = list(_queue_dois(config.paths.pending))
     review_queue = list(_queue_dois(config.paths.review))
     rejected = list(_queue_dois(config.paths.rejected))
-    aliases = read_doi_aliases(config)
 
     screened = queued_count = review_count = rejected_count = 0
     unchanged = retryable = preserved = 0
@@ -1370,6 +1369,7 @@ def execute_project_init_batch(
     pending = list(_queue_dois(config.paths.pending))
     review_queue = list(_queue_dois(config.paths.review))
     rejected = list(_queue_dois(config.paths.rejected))
+    aliases = read_doi_aliases(config)
     _checkpoint(
         config,
         campaign,
