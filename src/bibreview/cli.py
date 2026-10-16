@@ -158,9 +158,11 @@ from .project_relevance import (
     project_relevance_analysis,
 )
 from .project_correction import (
+    apply_project_doi_replacement,
     apply_project_relevance_correction,
     format_project_relevance_correction_state,
     inspect_project_relevance_correction,
+    plan_project_doi_replacement,
     plan_project_relevance_correction,
 )
 from .project_render import apply_project_render, plan_project_render
@@ -476,7 +478,7 @@ def _parser() -> argparse.ArgumentParser:
     )
     correct = commands.add_parser(
         "correct",
-        help="Inspect or correct one DOI relevance decision",
+        help="Inspect or correct one DOI relevance or identity decision",
     )
     correct.add_argument("doi", help="DOI in a relevance queue or terminal state")
     correction_actions = correct.add_mutually_exclusive_group()
@@ -489,6 +491,14 @@ def _parser() -> argparse.ArgumentParser:
         "--reject",
         action="store_true",
         help="Set REJECT or resolve review to REJECT, removing staged/canonical content",
+    )
+    correction_actions.add_argument(
+        "--replace-doi",
+        metavar="NEW_DOI",
+        help=(
+            "Mark this DOI identity as superseded by NEW_DOI without changing "
+            "the publication relevance decision"
+        ),
     )
     correct.add_argument(
         "--json",
@@ -728,6 +738,41 @@ def _run_relevance_correction(config, args) -> int:
     """Inspect or explicitly correct one DOI relevance decision."""
 
     state = inspect_project_relevance_correction(config, doi=args.doi)
+    if args.replace_doi is not None:
+        plan = plan_project_doi_replacement(
+            config,
+            doi=args.doi,
+            replacement=args.replace_doi,
+        )
+        if not args.dry_run:
+            apply_project_doi_replacement(plan)
+
+        if args.json_output:
+            print(
+                json.dumps(
+                    {"dry_run": bool(args.dry_run), **plan.data()},
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+            return 0
+
+        if not args.quiet:
+            prefix = "Dry run: " if args.dry_run else ""
+            print(prefix + plan.summary())
+            print(
+                "Target state: superseded DOI alias; relevance evidence is preserved."
+            )
+            print(
+                "Identity aliases: "
+                + str(config.paths.known.with_name("identifier_aliases.json"))
+            )
+            if plan.staging_backup is not None:
+                print(f"Staging backup: {plan.staging_backup}")
+            if plan.deletes:
+                print("Removed tracked BibTeX: " + ", ".join(map(str, plan.deletes)))
+        return 0
+
     decision = "keep" if args.keep else "reject" if args.reject else None
     if decision is None:
         if args.json_output:
