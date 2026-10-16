@@ -470,6 +470,11 @@ def plan_project_relevance_correction(
     """Plan an auditable KEEP/REJECT correction without writing project files."""
 
     state = inspect_project_relevance_correction(config, doi=doi)
+    if state.alias_target is not None:
+        raise ProjectStateError(
+            f"{state.doi}: DOI is superseded by {state.alias_target}; "
+            "correct relevance on the canonical DOI instead"
+        )
     normalized_decision = decision.strip().lower()
     if normalized_decision not in {"keep", "reject"}:
         raise ProjectStateError("relevance correction decision must be 'keep' or 'reject'")
