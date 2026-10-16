@@ -520,7 +520,7 @@ class ProjectInitTests(unittest.TestCase):
         self.assertEqual(status.current_batch, "batch-0001")
         self.assertEqual(
             self.config.paths.pending.read_text(encoding="utf-8"),
-            f"doi:{new}\\n",
+            f"doi:{new}\n",
         )
 
         write_bibliography(
