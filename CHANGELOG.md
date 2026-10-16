@@ -4,6 +4,8 @@ All notable BibReview releases are documented here.
 
 ## Unreleased
 
+- add reviewed DOI identity replacement with `bibreview correct OLD --replace-doi NEW`: persist superseded DOI aliases separately from relevance state, preserve human relevance evidence, reconcile active initialization items as skipped identities, and prevent known alias sources from being rediscovered or collected as duplicate publications;
+
 - preserve explicit human relevance decisions during initialization rescreening,
   preventing provider/rule refreshes from overriding reviewed KEEP decisions;
 
