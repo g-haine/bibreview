@@ -10,6 +10,7 @@ from typing import Mapping
 from .config import BibReviewConfig
 from .identifier_state import doi_values, read_identifier_tokens
 from .identity import STRONG_IDENTIFIER_NAMES
+from .identifier_aliases import read_doi_aliases, resolve_doi_alias
 from .pipeline.discover import (
     EnrichmentLookup,
     WorkProvider,
@@ -129,6 +130,7 @@ def project_relevance_labels(
         if publication.doi is not None
     }
     rejected = set(_queue_dois(config.paths.rejected))
+    aliases = read_doi_aliases(config)
     labels: dict[str, tuple[str, str]] = {}
 
     for entry in evidence:
@@ -154,6 +156,12 @@ def project_relevance_labels(
                     f"{entry.doi}: human REJECT evidence conflicts with canonical project state"
                 )
             labels[entry.doi] = (label, "human")
+        elif entry.doi in aliases:
+            replacement = resolve_doi_alias(aliases, entry.doi)
+            if replacement in canonical:
+                labels[entry.doi] = ("keep", "alias")
+            elif replacement in rejected:
+                labels[entry.doi] = ("reject", "alias")
         elif entry.doi in canonical:
             labels[entry.doi] = ("keep", "canonical")
         elif entry.doi in rejected:
