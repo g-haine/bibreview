@@ -3,7 +3,15 @@ from __future__ import annotations
 import unittest
 
 from bibreview.identity import IdentityError
-from bibreview.pipeline.collect import Enrichment, build_publication, collect, prepare_dois, scalar_metadata_values
+from bibreview.model import Author
+from bibreview.pipeline.collect import (
+    ContributorRepair,
+    Enrichment,
+    build_publication,
+    collect,
+    prepare_dois,
+    scalar_metadata_values,
+)
 
 
 class FakeProvider:
@@ -265,6 +273,89 @@ class BuildPublicationTests(unittest.TestCase):
         data["editor"] = []
         with self.assertRaisesRegex(ValueError, "at least one author or editor"):
             build_publication("10.1/test", data, "invalid-record")
+
+    def test_explicit_contributor_repair_can_supply_missing_authors(self):
+        data = message()
+        data["author"] = []
+        data["editor"] = []
+
+        publication = build_publication(
+            "10.1/test",
+            data,
+            "repaired-record",
+            contributor_repair=ContributorRepair(
+                authors=(Author(given="Ada", family="Lovelace"),),
+            ),
+        )
+
+        self.assertEqual(
+            [(author.given, author.family) for author in publication.authors],
+            [("Ada", "Lovelace")],
+        )
+        self.assertEqual(publication.editors, ())
+
+    def test_provider_contributors_take_precedence_over_obsolete_repair(self):
+        data = message()
+        repair = ContributorRepair(
+            authors=(Author(given="Grace", family="Hopper"),),
+        )
+
+        publication = build_publication(
+            "10.1/test",
+            data,
+            "provider-wins",
+            contributor_repair=repair,
+        )
+
+        self.assertEqual(
+            [(author.given, author.family) for author in publication.authors],
+            [("Ada", "Lovelace")],
+        )
+
+    def test_collect_uses_repair_lookup_for_missing_contributors(self):
+        data = message()
+        data["author"] = []
+        data["editor"] = []
+        provider = FakeProvider({"10.1/new": data})
+        calls = []
+
+        def repair_lookup(doi, work):
+            calls.append(doi)
+            return ContributorRepair(
+                authors=(Author(given="Grace", family="Hopper"),),
+            )
+
+        result = collect(
+            ["10.1/new"],
+            provider=provider,
+            contributor_repair_lookup=repair_lookup,
+        )
+
+        self.assertEqual(calls, ["10.1/new"])
+        self.assertEqual(result.invalid, ())
+        self.assertEqual(len(result.publications), 1)
+        self.assertEqual(
+            [
+                (author.given, author.family)
+                for author in result.publications[0].authors
+            ],
+            [("Grace", "Hopper")],
+        )
+
+    def test_collect_does_not_consult_repair_when_provider_has_contributors(self):
+        provider = FakeProvider({"10.1/new": message()})
+
+        def repair_lookup(doi, work):
+            raise AssertionError("repair lookup must not be consulted")
+
+        result = collect(
+            ["10.1/new"],
+            provider=provider,
+            contributor_repair_lookup=repair_lookup,
+        )
+
+        self.assertEqual(result.invalid, ())
+        self.assertEqual(len(result.publications), 1)
 
     def test_build_publication_calls_optional_enrichment_once(self):
         calls = []

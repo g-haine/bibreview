@@ -75,6 +75,11 @@ pattern matches, and initialization context. Authors and venue are retained as
 human-review evidence but are deliberately excluded from automatic relevance
 rule mining.
 bibreview collect
+
+# Only when provider metadata has no usable author or editor:
+bibreview --dry-run repair
+bibreview repair
+
 bibreview --dry-run merge
 bibreview merge
 ~~~
@@ -84,6 +89,15 @@ isolates that candidate instead of aborting the whole batch. Valid publications
 are still staged, while the invalid DOI remains in the pending queue and is
 reported with its reason as requiring explicit human review. BibReview never
 moves such a candidate to `badID.txt` automatically.
+
+When the failure is specifically that the retrieved provider record contains no
+usable author or editor, `bibreview repair` provides the reviewed recovery path.
+It records explicit human-supplied contributors in `data/repairs.json`, binds
+the decision to the exact provider evidence, and stages only the DOI values
+confirmed in that repair session through the ordinary collection pipeline.
+Changed provider evidence invalidates the stored repair, and valid provider
+contributors always take precedence. Canonical promotion still requires the
+ordinary explicit `bibreview merge`.
 
 Run `bibreview init` again. BibReview observes the canonical/rejected outcome
 of the current batch, closes it only when fully resolved, and then opens the
@@ -1147,6 +1161,58 @@ bibreview --config bibreview.yml collect
 ~~~
 
 Collection refuses to overwrite a non-empty staging bibliography.
+
+## repair
+
+Review and repair pending DOI metadata that was retrieved successfully but
+contains neither a usable author nor a usable editor.
+
+Inspect affected candidates without modifying project state:
+
+~~~bash
+bibreview --config bibreview.yml --dry-run repair
+~~~
+
+Run the interactive review:
+
+~~~bash
+bibreview --config bibreview.yml repair
+~~~
+
+For each affected DOI, BibReview displays the provider title, work type,
+container, publication year, and structural validation failure. The reviewer
+may add one or more explicit authors/editors using given, family, or literal
+names. Optional contributor `source_fields` may be supplied as a JSON object.
+BibReview never infers missing contributors.
+
+Confirmed repairs are persisted in:
+
+~~~text
+data/repairs.json
+~~~
+
+Each record contains explicit `human-reviewed` provenance and a SHA-256
+fingerprint of the exact provider evidence. A provider change makes that repair
+stale and requires a new review. If the provider later supplies usable
+contributors itself, ordinary provider metadata takes precedence.
+
+`repair` is candidate-local: only DOI values explicitly confirmed during that
+session are sent back through the ordinary collection pipeline. Other pending
+DOI values are left untouched. Existing non-empty staging is refused rather
+than overwritten.
+
+A successful repair is not canonicalized directly. The rebuilt publication must
+pass the normal collection/model validation and is written only to
+`collected.json`. Inspect it, then use the ordinary explicit promotion boundary:
+
+~~~bash
+bibreview --config bibreview.yml --dry-run merge
+bibreview --config bibreview.yml merge
+~~~
+
+Use `repair` only for this reviewed contributor-repair case. It is not a
+free-form metadata import mechanism; DOI-less publications use `bibreview
+import`.
 
 ## import
 

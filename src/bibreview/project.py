@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 from types import MappingProxyType
-from typing import Mapping, Protocol
+from typing import Iterable, Mapping, Protocol
 
 from .config import BibReviewConfig
 from .identifier_state import (
@@ -18,7 +18,7 @@ from .identifier_state import (
     identifier_tokens_bytes,
     read_identifier_tokens,
 )
-from .identity import STRONG_IDENTIFIER_NAMES
+from .identity import STRONG_IDENTIFIER_NAMES, normalize_doi
 from .identifier_aliases import read_doi_aliases
 from .pipeline.authors import (
     AuthorMappingPlan,
@@ -43,6 +43,10 @@ from .pipeline.discover import (
     discover as discover_publications,
 )
 from .pipeline.merge import MergeResult, merge_publications
+from .repair import (
+    load_contributor_repair_state,
+    lookup_contributor_repair,
+)
 from .relevance import (
     merge_relevance_evidence,
     read_relevance_evidence,
@@ -265,6 +269,7 @@ def plan_project_collection(
     config: BibReviewConfig,
     *,
     provider: WorkProvider,
+    only_dois: Iterable[str] | None = None,
     enrichment_lookup: EnrichmentLookup | None = None,
     citation_lookup: CitationLookup | None = None,
     bibtex_lookup: BibtexLookup | None = None,
@@ -292,10 +297,20 @@ def plan_project_collection(
         )
 
     aliases = read_doi_aliases(config)
+    pending = tuple(_queue_dois(paths.pending))
     submitted = tuple(
-        doi for doi in _queue_dois(paths.pending)
+        doi for doi in pending
         if doi not in aliases
     )
+    if only_dois is not None:
+        selected = {
+            normalize_doi(doi)
+            for doi in only_dois
+        }
+        submitted = tuple(
+            doi for doi in submitted
+            if doi in selected
+        )
     known = list(_registry_dois(paths.known))
     known.extend(
         publication.doi
@@ -311,12 +326,19 @@ def plan_project_collection(
     if paths.bibtex.exists():
         used_slugs.update(path.stem for path in paths.bibtex.glob("*.bib"))
 
+    repair_state = load_contributor_repair_state(config)
+
     result = collect_publications(
         submitted,
         provider=provider,
         known=known,
         used_slugs=used_slugs,
         enrichment_lookup=enrichment_lookup,
+        contributor_repair_lookup=lambda doi, message: lookup_contributor_repair(
+            repair_state,
+            doi=doi,
+            message=message,
+        ),
         citation_lookup=citation_lookup,
         bibtex_lookup=bibtex_lookup,
         reporter=reporter,
@@ -326,7 +348,12 @@ def plan_project_collection(
     collected_bytes = json_bytes(
         bibliography_document_data(result.publications)
     )
-    pending_bytes = _doi_tokens_bytes(list(result.candidates))
+    pending_values = (
+        list(pending)
+        if only_dois is not None
+        else list(result.candidates)
+    )
+    pending_bytes = _doi_tokens_bytes(pending_values)
 
     if result.candidates or paths.collected.exists():
         _put_if_changed(outputs, paths.collected, collected_bytes)

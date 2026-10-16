@@ -141,6 +141,54 @@ bibreview merge
 
 Collection never makes provider metadata canonical by itself.
 
+### Repair missing contributor metadata
+
+A DOI can be available from the provider yet still fail collection because the
+retrieved record contains neither a usable author nor a usable editor.
+
+This is different from an unavailable DOI: the current `repair` workflow is
+specifically for this reviewed contributor-repair case.
+
+Inspect affected pending DOI values without changing project state:
+
+~~~bash
+bibreview --dry-run repair
+~~~
+
+Then run the interactive review:
+
+~~~bash
+bibreview repair
+~~~
+
+The reviewer sees the provider DOI, title, type, container, year, and exact
+structural failure. Contributor repairs are entered explicitly as authors or
+editors; BibReview never infers missing names. Optional contributor
+`source_fields` may be supplied as JSON when relevant.
+
+Confirmed repairs are stored in the versioned project sidecar
+`data/repairs.json` with explicit `human-reviewed` provenance and a fingerprint
+of the exact provider evidence. If that evidence changes, the repair becomes
+stale and must be reviewed again. If the provider later supplies valid
+contributors itself, the ordinary provider metadata takes precedence.
+
+`repair` is candidate-local: it stages only DOI values explicitly repaired in
+that session and never opportunistically collects other pending candidates. It
+also refuses to run while `collected.json` already contains staged
+publications.
+
+A repaired record must still pass the ordinary collection/model validation and
+is written only to normal staging. Inspect `collected.json` and promote through
+the same explicit boundary:
+
+~~~bash
+bibreview --dry-run merge
+bibreview merge
+~~~
+
+`repair` is not a free-form publication import mechanism. DOI-less publications
+use the separate reviewed `bibreview import` workflow below.
+
 ## 3. Add a DOI-less publication
 
 DOI-less publications use the reviewed manual import path.
