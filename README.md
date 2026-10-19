@@ -6,7 +6,7 @@ databases and static scholarly websites.**
 It automates repetitive bibliographic work while keeping ambiguous decisions,
 provider disagreements, and canonical changes inspectable by a human maintainer.
 
-Current release line: **v1.7.1**.
+Current release line: **v1.7.2**.
 
 ## What BibReview is for
 
@@ -45,7 +45,7 @@ For reproducible use, install an exact release tag:
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.7.1"
+python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.7.2"
 
 bibreview --version
 ~~~
