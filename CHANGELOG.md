@@ -4,6 +4,15 @@ All notable BibReview releases are documented here.
 
 ## Unreleased
 
+- harden contributor hygiene comparison so exact normalized contributor-token
+  permutations do not create false BibTeX mismatches, preserve contributor
+  ordering, and report empty `and` segments separately as malformed contributor
+  lists;
+- add a conservative `institution-like-author` hygiene signal for mapped
+  author identities that resemble affiliations or institutions, while keeping
+  those cases strictly human-reviewed because collective authors can be valid.
+
+
 - extend `bibreview hygiene` with read-only canonical/BibTeX contributor
   checks and already-mapped author-identity checks; report missing or mismatched
   tracked contributor fields, weak initial-based slugs, encoding-normalization
