@@ -622,8 +622,13 @@ def collect(
             contributor_repair = None
             if (
                 contributor_repair_lookup is not None
-                and not _authors(message.get("author"))
-                and not _editors(message.get("editor"))
+                and (
+                    (
+                        not _authors(message.get("author"))
+                        and not _editors(message.get("editor"))
+                    )
+                    or provider_suspicious_contributors(message)
+                )
             ):
                 contributor_repair = contributor_repair_lookup(doi, message)
                 if (
