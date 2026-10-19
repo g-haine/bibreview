@@ -236,10 +236,16 @@ bibreview --config bibreview.yml hygiene --bibtex --json
 ~~~
 
 The inventory reports missing tracked BibTeX files, missing `author` /
-`editor` fields when canonical contributors exist, invalid BibTeX, and
-material contributor mismatches. Comparison accepts equivalent
-`Family, Given` versus `Given Family` forms but does not invent identity
-equivalence from initials.
+`editor` fields when canonical contributors exist, invalid BibTeX, malformed
+contributor lists, and material contributor mismatches. Comparison accepts
+exact normalized token permutations within one contributor, so equivalent
+forms such as `Family, Given`, `Given Family`, or `Family Given` do not
+produce false mismatches. Contributor order remains meaningful and BibReview
+does not invent identity equivalence from initials or fuzzy matching.
+
+Empty contributor segments caused by leading, trailing, or repeated BibTeX
+`and` separators are ignored for identity comparison but reported separately
+as malformed contributor-list hygiene findings.
 
 This inventory also detects historical inconsistencies created before repaired
 contributors were propagated into tracked BibTeX.
