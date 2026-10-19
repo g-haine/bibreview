@@ -28,6 +28,7 @@ from .backfill_resolution import (
 )
 from .campaign import campaign_progress
 from .config import ConfigError, load_config
+from .contributor_hygiene import provider_suspicious_contributors
 from .identifier_state import doi_values, read_identifier_tokens
 from .model import Author, Editor
 from .pipeline.authors import (
@@ -726,15 +727,21 @@ def _run_repair(config, args) -> int:
     state = load_contributor_repair_state(config)
     existing = {item.doi: item for item in state.repairs}
 
-    reason = "publication must contain at least one author or editor"
+    missing_reason = "publication must contain at least one author or editor"
+    mixed_reason = (
+        "provider contributor list mixes person-like and institution-like entries"
+    )
     cases = []
 
     for doi in pending:
         message = services.provider.work(doi)
         if message is None or not isinstance(message, dict):
             continue
-        if _provider_contributors_present(message):
+        suspicious = provider_suspicious_contributors(message)
+        contributors_present = _provider_contributors_present(message)
+        if contributors_present and not suspicious:
             continue
+        reason = mixed_reason if suspicious else missing_reason
 
         fingerprint = contributor_evidence_fingerprint(doi, message)
         previous = existing.get(doi)
