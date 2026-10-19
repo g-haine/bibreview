@@ -112,7 +112,10 @@ bibreview init --status --json
 ~~~
 
 The status includes total candidates, unscreened, pending, manual-review,
-staged, merged, rejected, skipped, retryable, failed, and batch progress.
+staged, merged, rejected, skipped, retryable, failed, and batch progress. It
+also appends a read-only author-identity summary with known and unresolved name
+counts, separating safely auto-applicable mappings from names that still require
+manual review. The JSON form exposes the same counts under `authors`.
 
 When project relevance rules change while the current batch is still open,
 re-evaluate only its machine-screened pending/review candidates before
