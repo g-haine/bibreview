@@ -584,6 +584,107 @@ class HygieneCliTests(unittest.TestCase):
         self.assertEqual(payload["findings"][0]["field"], "author")
 
 
+    def test_bibtex_review_and_apply_safe_repair_tracked_file_only(self) -> None:
+        item = Publication(
+            id=new_publication_id(),
+            identifiers={"doi": "10.1/bibtex-safe"},
+            title="BibTeX safe repair",
+            authors=(Author(literal="Eman Alhayki"),),
+            permalink="bibtex-safe-repair",
+        )
+        write_bibliography(self.config.paths.bibliography, (item,))
+        self.config.paths.bibtex.mkdir(parents=True, exist_ok=True)
+        bibtex_path = self.config.paths.bibtex / "bibtex-safe-repair.bib"
+        bibtex_path.write_text(
+            """@article{example,
+  author={ and Alhayki Eman},
+  title={{BibTeX safe repair}},
+  year={2024}
+}
+""",
+            encoding="utf-8",
+        )
+        canonical_before = self.config.paths.bibliography.read_bytes()
+
+        code, stdout, stderr = self.run_cli(
+            "hygiene",
+            "--bibtex",
+            "--review",
+        )
+        self.assertEqual(code, 0, stderr)
+        self.assertIn("Deterministic repairs  : 1", stdout)
+        self.assertIn("Review required        : 0", stdout)
+
+        code, stdout, stderr = self.run_cli(
+            "--dry-run",
+            "hygiene",
+            "--bibtex",
+            "--apply-safe",
+        )
+        self.assertEqual(code, 0, stderr)
+        self.assertIn("Dry run:", stdout)
+        self.assertIn("Repairs applied : 1", stdout)
+        self.assertIn(" and Alhayki Eman", bibtex_path.read_text(encoding="utf-8"))
+
+        code, stdout, stderr = self.run_cli(
+            "hygiene",
+            "--bibtex",
+            "--apply-safe",
+        )
+        self.assertEqual(code, 0, stderr)
+        self.assertIn("author={Alhayki Eman}", bibtex_path.read_text(encoding="utf-8"))
+        self.assertEqual(
+            self.config.paths.bibliography.read_bytes(),
+            canonical_before,
+        )
+
+    def test_bibtex_invalid_resolve_accepts_explicit_replacement_file(self) -> None:
+        item = Publication(
+            id=new_publication_id(),
+            identifiers={"doi": "10.1/bibtex-invalid"},
+            title="BibTeX invalid repair",
+            authors=(Author(literal="Ada Lovelace"),),
+            permalink="bibtex-invalid-repair",
+        )
+        write_bibliography(self.config.paths.bibliography, (item,))
+        self.config.paths.bibtex.mkdir(parents=True, exist_ok=True)
+        bibtex_path = self.config.paths.bibtex / "bibtex-invalid-repair.bib"
+        bibtex_path.write_text(
+            "@article{broken,\n  author={Ada Lovelace}\n",
+            encoding="utf-8",
+        )
+        replacement = self.root / "replacement.bib"
+        replacement.write_text(
+            """@article{fixed,
+  author={Ada Lovelace},
+  title={{BibTeX invalid repair}},
+  year={2024}
+}
+""",
+            encoding="utf-8",
+        )
+
+        with patch("builtins.input", side_effect=[str(replacement)]):
+            code, stdout, stderr = self.run_cli(
+                "hygiene",
+                "--bibtex",
+                "--resolve",
+            )
+        self.assertEqual(code, 0, stderr)
+        self.assertIn("Recorded replacement", stdout)
+
+        code, stdout, stderr = self.run_cli(
+            "hygiene",
+            "--bibtex",
+            "--apply",
+        )
+        self.assertEqual(code, 0, stderr)
+        self.assertIn("Repairs applied : 1", stdout)
+        self.assertIn(
+            "title={{BibTeX invalid repair}}",
+            bibtex_path.read_text(encoding="utf-8"),
+        )
+
     def test_missing_canonical_bibliography_fails_without_traceback(self) -> None:
         self.config.paths.bibliography.unlink()
         code, stdout, stderr = self.run_cli("hygiene")

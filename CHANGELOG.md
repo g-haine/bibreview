@@ -4,6 +4,13 @@ All notable BibReview releases are documented here.
 
 ## Unreleased
 
+- add reviewed tracked-BibTeX hygiene repair: deterministic cleanup for empty
+  contributor segments and missing canonical contributor fields, plus explicit
+  replacement-file review for invalid or multi-entry BibTeX; repairs are
+  fingerprinted, dry-runnable, atomically applied with backups, and never
+  mutate the canonical bibliography.
+
+
 - add a reviewed contributor-hygiene migration for institution/affiliation-like
   canonical authors/editors: inspect, persist KEEP/REMOVE decisions, stage
   exact publication replacements through `collected.json`, preserve UUIDs,

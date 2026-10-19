@@ -250,6 +250,34 @@ as malformed contributor-list hygiene findings.
 This inventory also detects historical inconsistencies created before repaired
 contributors were propagated into tracked BibTeX.
 
+Repair tracked BibTeX separately from canonical metadata:
+
+~~~bash
+bibreview --config bibreview.yml hygiene --bibtex --review
+bibreview --config bibreview.yml -v hygiene --bibtex --review
+bibreview --config bibreview.yml --dry-run hygiene --bibtex --apply-safe
+bibreview --config bibreview.yml hygiene --bibtex --apply-safe
+~~~
+
+`--apply-safe` repairs only deterministic structural cases: empty leading /
+trailing / repeated contributor segments and missing `author` or `editor`
+fields whose exact value already exists in reviewed canonical metadata.
+Unrelated BibTeX fields are preserved, changed files receive timestamped
+backups, and `bibliography.json` is never written.
+
+Invalid or multi-entry BibTeX is never guessed. Review those cases explicitly:
+
+~~~bash
+bibreview --config bibreview.yml hygiene --bibtex --resolve
+bibreview --config bibreview.yml --dry-run hygiene --bibtex --apply
+bibreview --config bibreview.yml hygiene --bibtex --apply
+~~~
+
+The resolver asks for a replacement `.bib` file for each unsafe case. A
+replacement must parse as exactly one valid BibTeX entry before it is recorded.
+Decisions are resumable and fingerprinted against the current tracked file;
+stale replacements are refused.
+
 ### Existing author-identity hygiene
 
 Use `--authors` after ordinary `bibreview authors` review has reached zero
