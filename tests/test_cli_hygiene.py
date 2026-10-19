@@ -14,7 +14,7 @@ from bibreview.hygiene_resolution import load_project_hygiene_resolutions
 from bibreview.identity import new_publication_id
 from bibreview.model import Author, Publication, Reference
 from bibreview.project_hygiene import project_hygiene_migration_review
-from bibreview.storage import read_bibliography, write_bibliography
+from bibreview.storage import read_bibliography, read_json, write_bibliography
 
 
 CONFIG = """\
@@ -430,6 +430,96 @@ class HygieneCliTests(unittest.TestCase):
             state.decisions[0].resolved_value,
             "Reviewed safe abstract",
         )
+
+    def test_author_hygiene_inventory_and_explicit_rename(self) -> None:
+        self.config.paths.author_mappings.write_text(
+            """{
+  "m-heck": ["M. Heck", "Marcus Heck"]
+}
+""",
+            encoding="utf-8",
+        )
+        before = self.config.paths.author_mappings.read_bytes()
+
+        code, stdout, stderr = self.run_cli("hygiene", "--authors")
+        self.assertEqual(code, 0, stderr)
+        self.assertIn("Slugs to strengthen           : 1", stdout)
+        self.assertEqual(
+            self.config.paths.author_mappings.read_bytes(),
+            before,
+        )
+
+        code, stdout, stderr = self.run_cli(
+            "--dry-run",
+            "hygiene",
+            "--authors",
+            "--rename-author",
+            "m-heck",
+            "marcus-heck",
+        )
+        self.assertEqual(code, 0, stderr)
+        self.assertIn("Dry run: Rename author identity", stdout)
+        self.assertIn(
+            "m-heck",
+            read_json(self.config.paths.author_mappings, dict),
+        )
+
+        code, stdout, stderr = self.run_cli(
+            "hygiene",
+            "--authors",
+            "--rename-author",
+            "m-heck",
+            "marcus-heck",
+        )
+        self.assertEqual(code, 0, stderr)
+        mapping = read_json(self.config.paths.author_mappings, dict)
+        self.assertNotIn("m-heck", mapping)
+        self.assertIn("marcus-heck", mapping)
+
+    def test_author_merge_requires_authors_scope(self) -> None:
+        code, stdout, stderr = self.run_cli(
+            "hygiene",
+            "--merge-author",
+            "source",
+            "target",
+        )
+        self.assertEqual(code, 1)
+        self.assertEqual(stdout, "")
+        self.assertIn("require --authors", stderr)
+
+    def test_bibtex_hygiene_reports_missing_canonical_author(self) -> None:
+        item = Publication(
+            id=new_publication_id(),
+            identifiers={"doi": "10.1/bibtex"},
+            title="BibTeX check",
+            authors=(Author(literal="Ada Lovelace"),),
+            permalink="bibtex-check",
+        )
+        write_bibliography(self.config.paths.bibliography, (item,))
+        self.config.paths.bibtex.mkdir(parents=True, exist_ok=True)
+        (self.config.paths.bibtex / "bibtex-check.bib").write_text(
+            """@article{example,
+  title={{BibTeX check}},
+  DOI={10.1/bibtex}
+}
+""",
+            encoding="utf-8",
+        )
+
+        code, stdout, stderr = self.run_cli("hygiene", "--bibtex")
+        self.assertEqual(code, 0, stderr)
+        self.assertIn("Missing author/editor  : 1", stdout)
+
+        code, stdout, stderr = self.run_cli(
+            "hygiene",
+            "--bibtex",
+            "--json",
+        )
+        self.assertEqual(code, 0, stderr)
+        payload = json.loads(stdout)
+        self.assertEqual(payload["missing_contributor_fields"], 1)
+        self.assertEqual(payload["findings"][0]["field"], "author")
+
 
     def test_missing_canonical_bibliography_fails_without_traceback(self) -> None:
         self.config.paths.bibliography.unlink()
