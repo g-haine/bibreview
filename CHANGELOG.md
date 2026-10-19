@@ -4,6 +4,15 @@ All notable BibReview releases are documented here.
 
 ## Unreleased
 
+- extend `bibreview hygiene` with read-only canonical/BibTeX contributor
+  checks and already-mapped author-identity checks; report missing or mismatched
+  tracked contributor fields, weak initial-based slugs, encoding-normalization
+  duplicate identities, and initials/full-name merge candidates;
+- add explicit dry-runnable `hygiene --authors --merge-author SOURCE TARGET`
+  and `--rename-author OLD NEW` operations so reviewed identity cleanup no
+  longer requires direct `author_mappings.json` editing.
+
+
 ## 1.7.2 — 2026-10-19
 
 - add first-class `bibreview repair` for pending DOI records whose provider
