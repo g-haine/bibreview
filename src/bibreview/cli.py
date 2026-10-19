@@ -34,7 +34,9 @@ from .identifier_state import doi_values, read_identifier_tokens
 from .model import Author, Editor
 from .pipeline.authors import (
     author_mapping_plan_data,
+    author_mapping_status_data,
     format_author_mapping_plan,
+    format_author_mapping_status,
     format_author_review_case,
 )
 from .pipeline.backfill import BACKFILL_FIELDS
@@ -2999,6 +3001,7 @@ def main(argv: list[str] | None = None) -> int:
                         "--batch-size cannot be used with init --status"
                     )
                 status = project_init_status(config)
+                author_plan = plan_project_author_mappings(config).before
             except (
                 OSError,
                 StorageError,
@@ -3010,9 +3013,14 @@ def main(argv: list[str] | None = None) -> int:
                 return 1
 
             if args.json_output:
-                print(json.dumps(status.data(), ensure_ascii=False, indent=2))
+                payload = {
+                    **status.data(),
+                    "authors": author_mapping_status_data(author_plan),
+                }
+                print(json.dumps(payload, ensure_ascii=False, indent=2))
             elif not args.quiet:
                 print(status.summary())
+                print(format_author_mapping_status(author_plan))
             return 0
 
         if args.rescreen_current:
