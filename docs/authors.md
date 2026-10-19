@@ -110,6 +110,41 @@ bibreview --config bibreview.yml authors
 
 Continue until the report is acceptable.
 
+## Hygiene of already-mapped identities
+
+Once every publication author is mapped, run:
+
+~~~bash
+bibreview --config bibreview.yml hygiene --authors
+~~~
+
+This is distinct from `authors --review`: it audits the **existing identity
+graph** rather than unresolved source names. It can flag weak initial-based
+slugs, encoding-normalization duplicates, and initials/full-name pairs that
+deserve human review.
+
+Use `-v` or `--json` to inspect all candidates. No candidate is merged
+automatically.
+
+After validating the evidence, use the first-class mapping operations instead
+of editing `author_mappings.json` directly:
+
+~~~bash
+bibreview --config bibreview.yml --dry-run hygiene --authors \
+  --merge-author SOURCE TARGET
+bibreview --config bibreview.yml hygiene --authors \
+  --merge-author SOURCE TARGET
+
+bibreview --config bibreview.yml --dry-run hygiene --authors \
+  --rename-author OLD_SLUG NEW_SLUG
+bibreview --config bibreview.yml hygiene --authors \
+  --rename-author OLD_SLUG NEW_SLUG
+~~~
+
+A merge requires both identities to exist. A rename requires the target slug
+not to exist. Both operations validate the invariant that each exact
+source-visible name variant belongs to only one identity.
+
 ## Same exact display name for two different people
 
 The current mapping model requires one exact name string to map to one identity.
