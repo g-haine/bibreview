@@ -9,6 +9,7 @@ from typing import Any, Mapping
 
 from unidecode import unidecode
 
+from .contributor_hygiene import institution_like_contributor_name
 from .pipeline.authors import AuthorMappingError, validate_author_mappings
 from .text import safe_component, slugify
 
@@ -56,22 +57,6 @@ def _initials_compatible(left: str, right: str) -> bool:
         (len(a) == 1) != (len(b) == 1)
         for a, b in zip(left_given, right_given)
     )
-
-
-_INSTITUTION_LIKE_RE = re.compile(
-    r"\b(?:department|university|universite|institute|institution|laboratory|"
-    r"laboratoire|centre|center|academy|faculty|school|hospital|research\s+"
-    r"(?:centre|center)|national\s+laboratory)\b",
-    re.IGNORECASE,
-)
-
-
-def _institution_like_name(value: str) -> bool:
-    """Return whether a mapped author name looks institution/affiliation-like."""
-    normalized = unidecode(value)
-    if re.match(r"^\s*\d+\s+", normalized):
-        return True
-    return _INSTITUTION_LIKE_RE.search(normalized) is not None
 
 
 @dataclass(frozen=True)
@@ -149,7 +134,7 @@ def scan_author_identity_hygiene(
     findings: list[AuthorHygieneFinding] = []
 
     for slug, names in canonical.items():
-        if any(_institution_like_name(name) for name in names):
+        if any(institution_like_contributor_name(name) for name in names):
             findings.append(
                 AuthorHygieneFinding(
                     kind="institution-like-author",

@@ -141,13 +141,19 @@ bibreview merge
 
 Collection never makes provider metadata canonical by itself.
 
-### Repair missing contributor metadata
+### Repair structurally invalid contributor metadata
 
-A DOI can be available from the provider yet still fail collection because the
-retrieved record contains neither a usable author nor a usable editor.
+A DOI can be available from the provider yet still require reviewed contributor
+repair when either:
 
-This is different from an unavailable DOI: the current `repair` workflow is
-specifically for this reviewed contributor-repair case.
+- the retrieved record contains neither a usable author nor a usable editor; or
+- one author/editor list mixes ordinary person-like names with entries that look
+  like institutions or affiliations.
+
+The second case is deliberately conservative: institutional authors can be
+legitimate, so BibReview never drops them automatically. Collection leaves the
+candidate invalid/pending until a reviewer explicitly supplies the complete
+intended contributor list through `repair`.
 
 Inspect affected pending DOI values without changing project state:
 
@@ -169,8 +175,10 @@ editors; BibReview never infers missing names. Optional contributor
 Confirmed repairs are stored in the versioned project sidecar
 `data/repairs.json` with explicit `human-reviewed` provenance and a fingerprint
 of the exact provider evidence. If that evidence changes, the repair becomes
-stale and must be reviewed again. If the provider later supplies valid
-contributors itself, the ordinary provider metadata takes precedence.
+stale and must be reviewed again. Ordinary provider contributors take
+precedence when structurally unambiguous; a matching reviewed repair takes
+precedence when the provider list is still flagged as mixed person/institution
+metadata.
 
 `repair` is candidate-local: it stages only DOI values explicitly repaired in
 that session and never opportunistically collects other pending candidates. It

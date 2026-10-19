@@ -14,6 +14,7 @@ from datetime import date
 from typing import Any, Protocol
 
 from ..bibtex_edit import bibtex_field_names, update_bibtex_fields
+from ..contributor_hygiene import provider_suspicious_contributors
 from ..identity import IdentityError, new_publication_id, normalize_doi
 from ..model import Author, Editor, Publication, Reference
 from ..providers.base import AbstractEvidence, Enrichment
@@ -230,15 +231,17 @@ def _contributor_display_name(contributor: Author | Editor) -> str:
 def _bibtex_with_repaired_contributors(
     text: str,
     repair: ContributorRepair,
+    *,
+    replace_existing: bool = False,
 ) -> str:
-    """Add missing repaired contributor fields without replacing existing ones."""
+    """Apply reviewed contributors to tracked BibTeX conservatively."""
     fields = bibtex_field_names(text)
     updates: dict[str, str] = {}
-    if repair.authors and "author" not in fields:
+    if repair.authors and (replace_existing or "author" not in fields):
         updates["author"] = " and ".join(
             _contributor_display_name(author) for author in repair.authors
         )
-    if repair.editors and "editor" not in fields:
+    if repair.editors and (replace_existing or "editor" not in fields):
         updates["editor"] = " and ".join(
             _contributor_display_name(editor) for editor in repair.editors
         )
@@ -514,11 +517,22 @@ def build_publication(
 
     authors = _authors(message.get("author"))
     editors = _editors(message.get("editor"))
-    if not authors and not editors and contributor_repair is not None:
+    suspicious_contributors = provider_suspicious_contributors(message)
+    if contributor_repair is not None:
         if not isinstance(contributor_repair, ContributorRepair):
             raise TypeError("contributor_repair must be a ContributorRepair")
-        authors = contributor_repair.authors
-        editors = contributor_repair.editors
+        if (not authors and not editors) or suspicious_contributors:
+            authors = contributor_repair.authors
+            editors = contributor_repair.editors
+    elif suspicious_contributors:
+        labels = ", ".join(
+            f"{role}[{index + 1}]={name!r}"
+            for role, index, name in suspicious_contributors
+        )
+        raise ValueError(
+            "provider contributor list mixes person-like and "
+            f"institution-like entries; reviewed repair required ({labels})"
+        )
 
     identifiers: dict[str, str] = {"doi": normalized_doi}
     isbn_values = message.get("isbn-type")
@@ -608,8 +622,13 @@ def collect(
             contributor_repair = None
             if (
                 contributor_repair_lookup is not None
-                and not _authors(message.get("author"))
-                and not _editors(message.get("editor"))
+                and (
+                    (
+                        not _authors(message.get("author"))
+                        and not _editors(message.get("editor"))
+                    )
+                    or provider_suspicious_contributors(message)
+                )
             ):
                 contributor_repair = contributor_repair_lookup(doi, message)
                 if (
@@ -652,6 +671,9 @@ def collect(
             bibtex = _bibtex_with_repaired_contributors(
                 bibtex,
                 contributor_repair,
+                replace_existing=bool(
+                    provider_suspicious_contributors(message)
+                ),
             )
         items.append(CollectedItem(publication=publication, bibtex=bibtex))
 

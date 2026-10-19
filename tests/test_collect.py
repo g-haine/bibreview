@@ -342,6 +342,112 @@ class BuildPublicationTests(unittest.TestCase):
             [("Grace", "Hopper")],
         )
 
+    def test_mixed_person_and_institution_provider_contributors_require_repair(self):
+        data = message()
+        data["author"] = [
+            {"given": "Debayan", "family": "Maity"},
+            {"name": "TIFR Centre for Applicable Mathematics"},
+            {"given": "Takéo", "family": "Takahashi"},
+        ]
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "reviewed repair required",
+        ):
+            build_publication(
+                "10.1/test",
+                data,
+                "mixed-contributors",
+            )
+
+    def test_reviewed_repair_replaces_mixed_provider_contributor_list(self):
+        data = message()
+        data["author"] = [
+            {"given": "Debayan", "family": "Maity"},
+            {"name": "TIFR Centre for Applicable Mathematics"},
+            {"given": "Takéo", "family": "Takahashi"},
+        ]
+        publication = build_publication(
+            "10.1/test",
+            data,
+            "mixed-contributors",
+            contributor_repair=ContributorRepair(
+                authors=(
+                    Author(given="Debayan", family="Maity"),
+                    Author(given="Takéo", family="Takahashi"),
+                ),
+            ),
+        )
+        self.assertEqual(
+            [(item.given, item.family) for item in publication.authors],
+            [("Debayan", "Maity"), ("Takéo", "Takahashi")],
+        )
+
+    def test_collect_uses_repair_lookup_for_mixed_provider_contributors(self):
+        data = message()
+        data["author"] = [
+            {"given": "Debayan", "family": "Maity"},
+            {"name": "TIFR Centre for Applicable Mathematics"},
+            {"given": "Takéo", "family": "Takahashi"},
+        ]
+        provider = FakeProvider({"10.1/new": data})
+        calls = []
+
+        def repair_lookup(doi, work):
+            calls.append(doi)
+            return ContributorRepair(
+                authors=(
+                    Author(given="Debayan", family="Maity"),
+                    Author(given="Takéo", family="Takahashi"),
+                ),
+            )
+
+        result = collect(
+            ["10.1/new"],
+            provider=provider,
+            contributor_repair_lookup=repair_lookup,
+        )
+
+        self.assertEqual(calls, ["10.1/new"])
+        self.assertEqual(result.invalid, ())
+        self.assertEqual(
+            [(item.given, item.family) for item in result.publications[0].authors],
+            [("Debayan", "Maity"), ("Takéo", "Takahashi")],
+        )
+
+    def test_reviewed_mixed_contributor_repair_replaces_existing_bibtex_author(self):
+        data = message()
+        data["author"] = [
+            {"given": "Debayan", "family": "Maity"},
+            {"name": "TIFR Centre for Applicable Mathematics"},
+            {"given": "Takéo", "family": "Takahashi"},
+        ]
+        provider = FakeProvider({"10.1/new": data})
+
+        result = collect(
+            ["10.1/new"],
+            provider=provider,
+            contributor_repair_lookup=lambda doi, work: ContributorRepair(
+                authors=(
+                    Author(given="Debayan", family="Maity"),
+                    Author(given="Takéo", family="Takahashi"),
+                ),
+            ),
+            bibtex_lookup=lambda doi: (
+                "@article{example,\n"
+                "  author={Maity, Debayan and TIFR Centre for Applicable Mathematics "
+                "and Takahashi, Takéo},\n"
+                "  title={{Fluid-structure systems}}\n"
+                "}\n"
+            ),
+        )
+
+        self.assertIn(
+            "author={Debayan Maity and Takéo Takahashi}",
+            result.items[0].bibtex,
+        )
+        self.assertNotIn("TIFR Centre", result.items[0].bibtex)
+
     def test_collect_does_not_consult_repair_when_provider_has_contributors(self):
         provider = FakeProvider({"10.1/new": message()})
 

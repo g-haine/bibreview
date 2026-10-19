@@ -4,6 +4,18 @@ All notable BibReview releases are documented here.
 
 ## Unreleased
 
+- add a reviewed contributor-hygiene migration for institution/affiliation-like
+  canonical authors/editors: inspect, persist KEEP/REMOVE decisions, stage
+  exact publication replacements through `collected.json`, preserve UUIDs,
+  permalinks, retained order and source fields, and reconcile removed author
+  mapping variants only after canonical merge when no longer referenced;
+- block future collection of mixed person/institution contributor lists until a
+  human-reviewed `repair` supplies the complete intended contributor set, while
+  continuing to allow purely institutional/collective author lists;
+- propagate reviewed suspicious-contributor repairs into tracked BibTeX so the
+  repaired canonical contributor list and BibTeX stay aligned.
+
+
 - harden contributor hygiene comparison so exact normalized contributor-token
   permutations do not create false BibTeX mismatches, preserve contributor
   ordering, and report empty `and` segments separately as malformed contributor

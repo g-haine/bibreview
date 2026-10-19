@@ -129,6 +129,24 @@ Use `-v` or `--json` to inspect all candidates. No candidate is merged or
 removed automatically. In particular, an institution-like name may be a
 legitimate collective author and always remains a human-review decision.
 
+For suspicious contributor entries inside canonical publications, review and
+resolve them separately from identity merging:
+
+~~~bash
+bibreview hygiene --authors --review
+bibreview hygiene --authors --resolve
+bibreview --dry-run hygiene --authors --apply
+bibreview hygiene --authors --apply
+bibreview --dry-run merge
+bibreview merge
+~~~
+
+KEEP/REMOVE decisions are persisted and resumable. Applying them stages only
+the affected publications, preserving UUID, permalink, retained contributor
+order, and contributor source fields. Removed exact name variants are reconciled
+from author mappings only at the subsequent canonical merge, and only when no
+canonical publication still uses the variant.
+
 After validating the evidence, use the first-class mapping operations instead
 of editing `author_mappings.json` directly:
 

@@ -271,6 +271,24 @@ This scans identities that are **already mapped** and reports:
 
 These are review candidates, not automatic merge decisions.
 
+For institution/affiliation-like contributors already present in canonical
+publications, use the reviewed migration workflow:
+
+~~~bash
+bibreview --config bibreview.yml hygiene --authors --review
+bibreview --config bibreview.yml -v hygiene --authors --review
+bibreview --config bibreview.yml hygiene --authors --resolve
+bibreview --config bibreview.yml --dry-run hygiene --authors --apply
+bibreview --config bibreview.yml hygiene --authors --apply
+~~~
+
+The interactive resolver asks for an explicit KEEP or REMOVE decision for each
+suspicious contributor. KEEP preserves legitimate collective authors. REMOVE
+stages a replacement publication in `collected.json`; canonical state changes
+only after the ordinary `bibreview merge`. Exact author variants removed by
+that merge are pruned from `author_mappings.json` only when they are no longer
+used by any canonical publication.
+
 After human validation, merge or rename identities explicitly:
 
 ~~~bash
