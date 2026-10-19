@@ -41,6 +41,39 @@ class AuthorIdentityHygieneTests(unittest.TestCase):
         )
         self.assertEqual(weak.proposed_slug, "marcus-heck")
 
+    def test_reports_institution_like_authors_as_review_only_findings(self):
+        report = scan_author_identity_hygiene(
+            {
+                "tifr-centre": [
+                    "TIFR Centre for Applicable Mathematics, Bangalore"
+                ],
+                "numbered-department": [
+                    "1 Department of Mathematics, Example University"
+                ],
+                "ada-lovelace": ["Ada Lovelace"],
+            }
+        )
+
+        flagged = {
+            item.slugs[0]
+            for item in report.findings
+            if item.kind == "institution-like-author"
+        }
+        self.assertEqual(
+            flagged,
+            {"tifr-centre", "numbered-department"},
+        )
+        self.assertEqual(report.institution_like, 2)
+
+    def test_collective_author_signal_is_not_an_automatic_mutation(self):
+        mapping = {
+            "example-university": ["Example University"],
+        }
+        report = scan_author_identity_hygiene(mapping)
+        self.assertEqual(report.institution_like, 1)
+        self.assertEqual(mapping, {"example-university": ["Example University"]})
+
+
     def test_does_not_treat_two_different_full_given_names_as_duplicate(self):
         report = scan_author_identity_hygiene(
             {
