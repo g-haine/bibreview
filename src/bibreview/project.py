@@ -661,13 +661,13 @@ def plan_project_merge(config: BibReviewConfig) -> ProjectMergePlan:
             raise ProjectStateError(
                 "unsupported contributor hygiene pending cleanup schema"
             )
-        raw_names = raw_cleanup.get("removed_names")
+        raw_names = raw_cleanup.get("removed_author_names")
         if not isinstance(raw_names, list) or any(
             not isinstance(name, str) or not name
             for name in raw_names
         ):
             raise ProjectStateError(
-                "contributor hygiene pending cleanup removed_names must be strings"
+                "contributor hygiene pending cleanup removed_author_names must be strings"
             )
         removed_names = set(raw_names)
         active_names = {
