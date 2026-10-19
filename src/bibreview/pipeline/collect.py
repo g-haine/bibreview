@@ -231,15 +231,17 @@ def _contributor_display_name(contributor: Author | Editor) -> str:
 def _bibtex_with_repaired_contributors(
     text: str,
     repair: ContributorRepair,
+    *,
+    replace_existing: bool = False,
 ) -> str:
-    """Add missing repaired contributor fields without replacing existing ones."""
+    """Apply reviewed contributors to tracked BibTeX conservatively."""
     fields = bibtex_field_names(text)
     updates: dict[str, str] = {}
-    if repair.authors and "author" not in fields:
+    if repair.authors and (replace_existing or "author" not in fields):
         updates["author"] = " and ".join(
             _contributor_display_name(author) for author in repair.authors
         )
-    if repair.editors and "editor" not in fields:
+    if repair.editors and (replace_existing or "editor" not in fields):
         updates["editor"] = " and ".join(
             _contributor_display_name(editor) for editor in repair.editors
         )
@@ -664,6 +666,9 @@ def collect(
             bibtex = _bibtex_with_repaired_contributors(
                 bibtex,
                 contributor_repair,
+                replace_existing=bool(
+                    provider_suspicious_contributors(message)
+                ),
             )
         items.append(CollectedItem(publication=publication, bibtex=bibtex))
 
