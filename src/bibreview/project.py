@@ -9,6 +9,7 @@ from types import MappingProxyType
 from typing import Iterable, Mapping, Protocol
 
 from .config import BibReviewConfig
+from .contributor_hygiene import contributor_display_name
 from .identifier_state import (
     IdentifierStateError,
     IdentifierToken,
@@ -27,6 +28,7 @@ from .pipeline.authors import (
     assign_author_mapping,
     author_review_cases,
     plan_author_mappings,
+    validate_author_mappings,
 )
 from .pipeline.collect import (
     BibtexLookup,
@@ -179,6 +181,7 @@ class ProjectMergePlan:
     rejected_count: int
     known_count: int
     pending_count: int
+    cleanup_paths: tuple[Path, ...] = ()
 
     @property
     def changed(self) -> bool:
@@ -648,6 +651,48 @@ def plan_project_merge(config: BibReviewConfig) -> ProjectMergePlan:
     outputs[paths.pending] = _doi_tokens_bytes(pending)
     outputs[paths.review] = _doi_tokens_bytes(review)
 
+    cleanup_paths: tuple[Path, ...] = ()
+    contributor_cleanup = config.audit.report.with_name(
+        "contributor-hygiene-pending-cleanup.json"
+    )
+    if contributor_cleanup.exists():
+        raw_cleanup = read_json(contributor_cleanup, dict)
+        if raw_cleanup.get("schema_version") != 1:
+            raise ProjectStateError(
+                "unsupported contributor hygiene pending cleanup schema"
+            )
+        raw_names = raw_cleanup.get("removed_names")
+        if not isinstance(raw_names, list) or any(
+            not isinstance(name, str) or not name
+            for name in raw_names
+        ):
+            raise ProjectStateError(
+                "contributor hygiene pending cleanup removed_names must be strings"
+            )
+        removed_names = set(raw_names)
+        active_names = {
+            contributor_display_name(author)
+            for publication in result.publications
+            for author in publication.authors
+        }
+        removable = removed_names - active_names
+        if removable and config.paths.author_mappings.exists():
+            mapping = read_json(config.paths.author_mappings, dict)
+            canonical_mapping, _ = validate_author_mappings(mapping)
+            updated_mapping: dict[str, list[str]] = {}
+            for slug, names in canonical_mapping.items():
+                retained_names = [
+                    name for name in names if name not in removable
+                ]
+                if retained_names:
+                    updated_mapping[slug] = retained_names
+            _put_if_changed(
+                outputs,
+                config.paths.author_mappings,
+                json_bytes(updated_mapping),
+            )
+        cleanup_paths = (contributor_cleanup,)
+
     return ProjectMergePlan(
         result=result,
         outputs=MappingProxyType(outputs),
@@ -656,6 +701,7 @@ def plan_project_merge(config: BibReviewConfig) -> ProjectMergePlan:
         rejected_count=rejected_count,
         known_count=len(registry),
         pending_count=len(pending),
+        cleanup_paths=cleanup_paths,
     )
 
 
@@ -665,3 +711,5 @@ def apply_project_merge(plan: ProjectMergePlan) -> None:
         raise ProjectStateError("plan must be a ProjectMergePlan")
     if plan.outputs:
         atomic_write_batch(plan.outputs)
+    for path in plan.cleanup_paths:
+        path.unlink(missing_ok=True)
