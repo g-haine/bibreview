@@ -149,7 +149,7 @@ def plan_project_contributor_hygiene_apply(
     canonical_document = read_bibliography_document(config.paths.bibliography)
     staged = []
     changes: list[ContributorHygieneChange] = []
-    removed_names_all: list[str] = []
+    removed_author_names: list[str] = []
 
     for publication in canonical_document.publications:
         remove_author_indexes: set[int] = set()
@@ -191,7 +191,13 @@ def plan_project_contributor_hygiene_apply(
                 removed_names=tuple(removed_names),
             )
         )
-        removed_names_all.extend(removed_names)
+        removed_author_names.extend(
+            candidate.name
+            for candidate in review.candidates
+            if candidate.publication_id == publication.id
+            and candidate.role == "author"
+            and decisions.get(candidate.key) == "remove"
+        )
 
     outputs: dict[Path, bytes] = {}
     if staged:
@@ -201,7 +207,7 @@ def plan_project_contributor_hygiene_apply(
         outputs[contributor_hygiene_pending_cleanup_path(config)] = json_bytes(
             {
                 "schema_version": 1,
-                "removed_names": sorted(set(removed_names_all)),
+                "removed_author_names": sorted(set(removed_author_names)),
             }
         )
     return ProjectContributorHygieneApplyPlan(
