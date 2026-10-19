@@ -180,6 +180,17 @@ def bibtex_field_names(text: str) -> frozenset[str]:
     return frozenset(field.name for field in parse_bibtex_entry(text).fields)
 
 
+def bibtex_field_value(text: str, name: str) -> str | None:
+    """Return one unwrapped top-level BibTeX field value, if present."""
+    target = str(name).casefold()
+    entry = parse_bibtex_entry(text)
+    for field in entry.fields:
+        if field.name != target:
+            continue
+        return _unwrap_value(text[field.value_start : field.value_end])
+    return None
+
+
 def _unwrap_value(value: str) -> str:
     stripped = value.strip()
     if stripped.startswith("{") and _balanced_end(stripped, 0, "{", "}") == len(stripped):
