@@ -452,6 +452,121 @@ class InitCliTests(unittest.TestCase):
         self.assertEqual(payload["total"], 2)
         self.assertEqual(payload["queued"], 1)
         self.assertEqual(payload["current_batch"], "batch-0001")
+        self.assertEqual(
+            payload["authors"],
+            {
+                "known_name_variants": 0,
+                "unknown_names": 0,
+                "safe_auto_applicable": 0,
+                "manual_review": 0,
+            },
+        )
+
+    def test_status_reports_safe_author_mapping_without_mutation(self):
+        services = self.services()
+        with patch(
+            "bibreview.cli.build_discovery_services",
+            return_value=services,
+        ), redirect_stdout(StringIO()), redirect_stderr(StringIO()):
+            self.assertEqual(
+                main([
+                    "--config",
+                    str(self.config_path),
+                    "init",
+                    "--batch-size",
+                    "1",
+                ]),
+                0,
+            )
+
+        canonical = Publication(
+            id=new_publication_id(),
+            identifiers={"doi": "10.1/a"},
+            type="journal-article",
+            title="Reviewed A",
+            authors=(Author(literal="Grace Hopper"),),
+            publication_year="2026",
+            permalink="reviewed-a",
+        )
+        write_bibliography(self.config.paths.bibliography, (canonical,))
+        before = self.snapshot()
+
+        stdout = StringIO()
+        stderr = StringIO()
+        with patch(
+            "bibreview.cli.build_discovery_services",
+            side_effect=AssertionError("status must be offline"),
+        ), redirect_stdout(stdout), redirect_stderr(stderr):
+            code = main([
+                "--config",
+                str(self.config_path),
+                "init",
+                "--status",
+                "--json",
+            ])
+
+        self.assertEqual(code, 0, stderr.getvalue())
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(payload["authors"]["unknown_names"], 1)
+        self.assertEqual(payload["authors"]["safe_auto_applicable"], 1)
+        self.assertEqual(payload["authors"]["manual_review"], 0)
+        self.assertEqual(self.snapshot(), before)
+
+    def test_status_reports_manual_author_review(self):
+        services = self.services()
+        with patch(
+            "bibreview.cli.build_discovery_services",
+            return_value=services,
+        ), redirect_stdout(StringIO()), redirect_stderr(StringIO()):
+            self.assertEqual(
+                main([
+                    "--config",
+                    str(self.config_path),
+                    "init",
+                    "--batch-size",
+                    "1",
+                ]),
+                0,
+            )
+
+        canonical = Publication(
+            id=new_publication_id(),
+            identifiers={"doi": "10.1/a"},
+            type="journal-article",
+            title="Reviewed A",
+            authors=(Author(literal="A. Smith"),),
+            publication_year="2026",
+            permalink="reviewed-a",
+        )
+        write_bibliography(self.config.paths.bibliography, (canonical,))
+        self.config.paths.author_mappings.parent.mkdir(parents=True, exist_ok=True)
+        self.config.paths.author_mappings.write_text(
+            json.dumps({"alice-smith": ["Alice Smith"]}) + "\n",
+            encoding="utf-8",
+        )
+        before = self.snapshot()
+
+        stdout = StringIO()
+        stderr = StringIO()
+        with patch(
+            "bibreview.cli.build_discovery_services",
+            side_effect=AssertionError("status must be offline"),
+        ), redirect_stdout(stdout), redirect_stderr(stderr):
+            code = main([
+                "--config",
+                str(self.config_path),
+                "init",
+                "--status",
+                "--json",
+            ])
+
+        self.assertEqual(code, 0, stderr.getvalue())
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(payload["authors"]["known_name_variants"], 1)
+        self.assertEqual(payload["authors"]["unknown_names"], 1)
+        self.assertEqual(payload["authors"]["safe_auto_applicable"], 0)
+        self.assertEqual(payload["authors"]["manual_review"], 1)
+        self.assertEqual(self.snapshot(), before)
 
     def test_merged_batch_allows_next_stable_batch(self):
         services = self.services()

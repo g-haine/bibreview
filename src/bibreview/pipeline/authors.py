@@ -401,6 +401,28 @@ def author_mapping_plan_data(plan: AuthorMappingPlan) -> dict[str, object]:
     }
 
 
+def author_mapping_status_data(plan: AuthorMappingPlan) -> dict[str, int]:
+    """Return compact read-only author status counts for workflow summaries."""
+    return {
+        "known_name_variants": plan.known_names,
+        "unknown_names": plan.unknown_names,
+        "safe_auto_applicable": sum(len(names) for names in plan.safe.values()),
+        "manual_review": sum(len(item.names) for item in plan.review),
+    }
+
+
+def format_author_mapping_status(plan: AuthorMappingPlan) -> str:
+    """Render compact author status suitable for command status output."""
+    data = author_mapping_status_data(plan)
+    return (
+        "Authors\n"
+        f"  Known name variants : {data['known_name_variants']}\n"
+        f"  Unknown names        : {data['unknown_names']}\n"
+        f"  Safe auto-applicable : {data['safe_auto_applicable']}\n"
+        f"  Manual review        : {data['manual_review']}"
+    )
+
+
 def format_author_mapping_plan(
     plan: AuthorMappingPlan,
     *,
