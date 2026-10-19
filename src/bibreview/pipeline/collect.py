@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Any, Protocol
 
+from ..bibtex_edit import bibtex_field_names, update_bibtex_fields
 from ..identity import IdentityError, new_publication_id, normalize_doi
 from ..model import Author, Editor, Publication, Reference
 from ..providers.base import AbstractEvidence, Enrichment
@@ -216,6 +217,32 @@ def _authors(value: Any) -> tuple[Author, ...]:
 
 def _editors(value: Any) -> tuple[Editor, ...]:
     return _contributors(value, Editor)
+
+
+def _contributor_display_name(contributor: Author | Editor) -> str:
+    if contributor.literal:
+        return contributor.literal
+    return " ".join(
+        value for value in (contributor.given, contributor.family) if value
+    ).strip()
+
+
+def _bibtex_with_repaired_contributors(
+    text: str,
+    repair: ContributorRepair,
+) -> str:
+    """Add missing repaired contributor fields without replacing existing ones."""
+    fields = bibtex_field_names(text)
+    updates: dict[str, str] = {}
+    if repair.authors and "author" not in fields:
+        updates["author"] = " and ".join(
+            _contributor_display_name(author) for author in repair.authors
+        )
+    if repair.editors and "editor" not in fields:
+        updates["editor"] = " and ".join(
+            _contributor_display_name(editor) for editor in repair.editors
+        )
+    return update_bibtex_fields(text, updates)
 
 
 def _reference_citation(
@@ -620,6 +647,11 @@ def collect(
             bibtex = None
             progress.detail(
                 f"{doi}: BibTeX unavailable; publication collected without a BibTeX file"
+            )
+        if bibtex is not None and contributor_repair is not None:
+            bibtex = _bibtex_with_repaired_contributors(
+                bibtex,
+                contributor_repair,
             )
         items.append(CollectedItem(publication=publication, bibtex=bibtex))
 
