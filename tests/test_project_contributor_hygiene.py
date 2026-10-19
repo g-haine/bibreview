@@ -87,6 +87,26 @@ class ProjectContributorHygieneTests(unittest.TestCase):
         )
         save_contributor_hygiene_state(self.config, state)
 
+    def _resolve_publication_candidate(
+        self,
+        *,
+        publication_id: str,
+        decision: str,
+    ) -> None:
+        review = project_contributor_hygiene_review(self.config)
+        state = load_contributor_hygiene_state(self.config, review)
+        target = next(
+            item
+            for item in review.candidates
+            if item.publication_id == publication_id
+        )
+        state = record_contributor_hygiene_decision(
+            state,
+            target,
+            decision=decision,
+        )
+        save_contributor_hygiene_state(self.config, state)
+
     def test_review_is_read_only_and_exposes_source_position(self):
         before = self.config.paths.bibliography.read_bytes()
 
@@ -175,7 +195,14 @@ class ProjectContributorHygieneTests(unittest.TestCase):
             self.config.paths.bibliography,
             (self.publication, self.other, shared),
         )
-        self._resolve("remove")
+        self._resolve_publication_candidate(
+            publication_id=self.publication.id,
+            decision="remove",
+        )
+        self._resolve_publication_candidate(
+            publication_id=shared.id,
+            decision="keep",
+        )
         apply_project_contributor_hygiene_apply(
             plan_project_contributor_hygiene_apply(self.config)
         )
