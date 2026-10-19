@@ -224,6 +224,66 @@ stages, or mutates canonical metadata.**
 The plain command remains the abstract inventory phase of canonical-data
 hygiene.
 
+### Canonical/BibTeX contributor inventory
+
+Use `--bibtex` to compare reviewed canonical contributors with tracked BibTeX
+artifacts without calling providers or mutating project state:
+
+~~~bash
+bibreview --config bibreview.yml hygiene --bibtex
+bibreview --config bibreview.yml -v hygiene --bibtex
+bibreview --config bibreview.yml hygiene --bibtex --json
+~~~
+
+The inventory reports missing tracked BibTeX files, missing `author` /
+`editor` fields when canonical contributors exist, invalid BibTeX, and
+material contributor mismatches. Comparison accepts equivalent
+`Family, Given` versus `Given Family` forms but does not invent identity
+equivalence from initials.
+
+This inventory also detects historical inconsistencies created before repaired
+contributors were propagated into tracked BibTeX.
+
+### Existing author-identity hygiene
+
+Use `--authors` after ordinary `bibreview authors` review has reached zero
+unknown names:
+
+~~~bash
+bibreview --config bibreview.yml hygiene --authors
+bibreview --config bibreview.yml -v hygiene --authors
+bibreview --config bibreview.yml hygiene --authors --json
+~~~
+
+This scans identities that are **already mapped** and reports:
+
+- initial-based slugs that can be strengthened because a reviewed full given
+  name is already known;
+- distinct identities that collapse to the same normalized full name, including
+  encoding variants;
+- initials/full-name pairs that are plausible duplicate identities.
+
+These are review candidates, not automatic merge decisions.
+
+After human validation, merge or rename identities explicitly:
+
+~~~bash
+bibreview --config bibreview.yml --dry-run hygiene --authors \
+  --merge-author SOURCE TARGET
+bibreview --config bibreview.yml hygiene --authors \
+  --merge-author SOURCE TARGET
+
+bibreview --config bibreview.yml --dry-run hygiene --authors \
+  --rename-author OLD_SLUG NEW_SLUG
+bibreview --config bibreview.yml hygiene --authors \
+  --rename-author OLD_SLUG NEW_SLUG
+~~~
+
+A merge moves every exact reviewed name variant from `SOURCE` into the
+existing `TARGET` identity and removes `SOURCE`. A rename requires a new,
+unused target slug and preserves the identity's exact variants. Both operations
+use the ordinary validated mapping layer; direct JSON editing is not required.
+
 ### Title and reference-citation inventory
 
 Issue #97 starts with a separate **T1 read-only inventory**:

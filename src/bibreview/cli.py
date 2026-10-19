@@ -83,6 +83,12 @@ from .project_hygiene_apply import (
     plan_project_hygiene_apply,
     plan_project_hygiene_safe_apply,
 )
+from .project_identity_hygiene import (
+    apply_project_author_identity_mutation,
+    plan_project_author_identity_mutation,
+    project_author_identity_hygiene,
+    project_bibtex_contributor_hygiene,
+)
 from .project_init import (
     apply_project_init_plan,
     apply_project_init_rescreen,
@@ -295,6 +301,16 @@ def _parser() -> argparse.ArgumentParser:
             "operate on complete reference citation strings"
         ),
     )
+    hygiene_scope.add_argument(
+        "--bibtex",
+        action="store_true",
+        help="Check tracked BibTeX contributor fields against canonical metadata",
+    )
+    hygiene_scope.add_argument(
+        "--authors",
+        action="store_true",
+        help="Check existing author identities for duplicates and weak slugs",
+    )
     hygiene_actions = hygiene.add_mutually_exclusive_group()
     hygiene_actions.add_argument(
         "--review",
@@ -318,6 +334,18 @@ def _parser() -> argparse.ArgumentParser:
         "--apply",
         action="store_true",
         help="Stage completed historical hygiene decisions for ordinary merge",
+    )
+    hygiene_actions.add_argument(
+        "--merge-author",
+        nargs=2,
+        metavar=("SOURCE", "TARGET"),
+        help="Merge an existing SOURCE author identity into TARGET",
+    )
+    hygiene_actions.add_argument(
+        "--rename-author",
+        nargs=2,
+        metavar=("SOURCE", "TARGET"),
+        help="Rename an existing author identity slug from SOURCE to TARGET",
     )
     hygiene.add_argument(
         "--json",
@@ -1940,6 +1968,104 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "hygiene":
+        if args.merge_author or args.rename_author:
+            if not args.authors:
+                print(
+                    "bibreview hygiene: --merge-author/--rename-author require --authors",
+                    file=sys.stderr,
+                )
+                return 1
+            operation = "merge" if args.merge_author else "rename"
+            source_slug, target_slug = args.merge_author or args.rename_author
+            try:
+                plan = plan_project_author_identity_mutation(
+                    config,
+                    operation=operation,
+                    source_slug=source_slug,
+                    target_slug=target_slug,
+                )
+                if not args.dry_run:
+                    apply_project_author_identity_mutation(plan)
+            except (OSError, StorageError, ValueError, TypeError) as error:
+                print(f"bibreview hygiene: {error}", file=sys.stderr)
+                return 1
+            if args.json_output:
+                print(
+                    json.dumps(
+                        {
+                            "dry_run": bool(args.dry_run),
+                            "operation": plan.operation,
+                            "source_slug": plan.source_slug,
+                            "target_slug": plan.target_slug,
+                            "changed": plan.changed,
+                        },
+                        ensure_ascii=False,
+                        indent=2,
+                    )
+                )
+            elif not args.quiet:
+                prefix = "Dry run: " if args.dry_run else ""
+                print(prefix + plan.summary())
+            return 0
+
+        if args.authors:
+            if args.review or args.resolve or args.apply_safe or args.apply:
+                print(
+                    "bibreview hygiene: --authors supports inventory plus "
+                    "--merge-author/--rename-author explicit decisions",
+                    file=sys.stderr,
+                )
+                return 1
+            try:
+                report = project_author_identity_hygiene(config)
+            except (OSError, StorageError, ValueError, TypeError) as error:
+                print(f"bibreview hygiene: {error}", file=sys.stderr)
+                return 1
+            if args.json_output:
+                print(json.dumps(report.data(), ensure_ascii=False, indent=2))
+            elif not args.quiet:
+                print(report.summary())
+                if args.verbose:
+                    for finding in report.findings:
+                        print(
+                            f"  ? {finding.kind}: {', '.join(finding.slugs)}"
+                        )
+                        print(f"    Names: {', '.join(finding.names)}")
+                        if finding.proposed_slug:
+                            print(f"    Proposed slug: {finding.proposed_slug}")
+                        print(f"    Reason: {finding.reason}")
+            return 0
+
+        if args.bibtex:
+            if args.review or args.resolve or args.apply_safe or args.apply:
+                print(
+                    "bibreview hygiene: --bibtex is currently a read-only inventory",
+                    file=sys.stderr,
+                )
+                return 1
+            try:
+                report = project_bibtex_contributor_hygiene(config)
+            except (OSError, StorageError, ValueError, TypeError) as error:
+                print(f"bibreview hygiene: {error}", file=sys.stderr)
+                return 1
+            if args.json_output:
+                print(json.dumps(report.data(), ensure_ascii=False, indent=2))
+            elif not args.quiet:
+                print(report.summary())
+                if args.verbose:
+                    for finding in report.findings:
+                        label = finding.doi or finding.publication_id
+                        print(
+                            f"  ? {label} [{finding.field}] {finding.kind}: "
+                            f"{finding.title}"
+                        )
+                        print(f"    {finding.reason}")
+                        if finding.canonical_value:
+                            print(f"    Canonical: {finding.canonical_value}")
+                        if finding.bibtex_value is not None:
+                            print(f"    BibTeX: {finding.bibtex_value}")
+            return 0
+
         field = _hygiene_field(args)
 
         if args.apply_safe:

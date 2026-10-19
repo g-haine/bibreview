@@ -5,6 +5,7 @@ import unittest
 from bibreview.bibtex_edit import (
     BibtexEditError,
     bibtex_field_names,
+    bibtex_field_value,
     canonicalize_bibtex,
     parse_bibtex_entry,
     update_bibtex_fields,
@@ -37,6 +38,19 @@ class BibtexEditTests(unittest.TestCase):
             bibtex_field_names(updated),
             frozenset({"title", "author", "year", "pages"}),
         )
+
+    def test_reads_unwrapped_top_level_field_value(self):
+        source = (
+            "@article{example,\n"
+            "  author={Lovelace, Ada and Hopper, Grace},\n"
+            "  year={2026}\n"
+            "}\n"
+        )
+        self.assertEqual(
+            bibtex_field_value(source, "AUTHOR"),
+            "Lovelace, Ada and Hopper, Grace",
+        )
+        self.assertIsNone(bibtex_field_value(source, "editor"))
 
     def test_parses_quoted_and_multiline_values(self):
         source = (
