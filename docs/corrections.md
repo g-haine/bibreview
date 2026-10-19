@@ -118,6 +118,32 @@ staging, and merge protections still apply.
 Inspect staging and use the normal `bibreview merge` boundary only after the
 accepted values are satisfactory.
 
+## Publication-scoped contributor corrections
+
+When the same abbreviated contributor string refers to different people in
+different publications, correct the reviewed canonical publication occurrence
+instead of forcing that ambiguity into the global author mapping:
+
+~~~bash
+bibreview --dry-run correct 10.1234/example --author "Y. Wang" --to "Yongxing Wang"
+bibreview correct 10.1234/example --author "Y. Wang" --to "Yongxing Wang"
+bibreview merge
+~~~
+
+Use `--editor` instead of `--author` for an editor. The command is fully
+offline, targets exactly one DOI-backed canonical publication and one exact
+contributor occurrence, stages the revised publication in `collected.json`,
+and synchronizes the complete tracked BibTeX `author` or `editor` field with
+a timestamped backup. It preserves publication UUID, permalink, contributor
+order, unrelated metadata, and contributor `source_fields`. The reviewed
+replacement is stored as a literal name; BibReview does not infer given/family
+components.
+
+The command refuses missing or repeated target names, non-empty staging, or a
+tracked BibTeX file that cannot be updated safely. It never rewrites
+`author_mappings.json`; after merge, run the ordinary author workflow to map
+the corrected full name.
+
 ## Correction after a publication was already merged
 
 If incorrect metadata is already in the canonical bibliography:
