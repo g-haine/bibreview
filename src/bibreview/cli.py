@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 from importlib import import_module
+from pathlib import Path
 import sys
 
 from . import __version__
