@@ -431,6 +431,69 @@ class HygieneCliTests(unittest.TestCase):
             "Reviewed safe abstract",
         )
 
+    def test_contributor_hygiene_review_resolve_and_apply(self) -> None:
+        contaminated = Publication(
+            id=new_publication_id(),
+            identifiers={"doi": "10.1/contaminated"},
+            title="Contaminated contributors",
+            authors=(
+                Author(given="Debayan", family="Maity"),
+                Author(literal="TIFR Centre for Applicable Mathematics"),
+                Author(given="Takéo", family="Takahashi"),
+            ),
+            permalink="contaminated",
+        )
+        write_bibliography(
+            self.config.paths.bibliography,
+            (contaminated,),
+        )
+
+        code, stdout, stderr = self.run_cli(
+            "hygiene",
+            "--authors",
+            "--review",
+        )
+        self.assertEqual(code, 0, stderr)
+        self.assertIn("Review candidates     : 1", stdout)
+        self.assertIn("unresolved 1", stdout)
+
+        with patch("builtins.input", side_effect=["r"]):
+            code, stdout, stderr = self.run_cli(
+                "hygiene",
+                "--authors",
+                "--resolve",
+            )
+        self.assertEqual(code, 0, stderr)
+        self.assertIn("Recorded: remove", stdout)
+
+        before = self.config.paths.bibliography.read_bytes()
+        code, stdout, stderr = self.run_cli(
+            "--dry-run",
+            "hygiene",
+            "--authors",
+            "--apply",
+        )
+        self.assertEqual(code, 0, stderr)
+        self.assertIn("Dry run:", stdout)
+        self.assertFalse(self.config.paths.collected.exists())
+        self.assertEqual(
+            self.config.paths.bibliography.read_bytes(),
+            before,
+        )
+
+        code, stdout, stderr = self.run_cli(
+            "hygiene",
+            "--authors",
+            "--apply",
+        )
+        self.assertEqual(code, 0, stderr)
+        staged = read_bibliography(self.config.paths.collected)
+        self.assertEqual(len(staged), 1)
+        self.assertEqual(
+            [(author.given, author.family) for author in staged[0].authors],
+            [("Debayan", "Maity"), ("Takéo", "Takahashi")],
+        )
+
     def test_author_hygiene_inventory_and_explicit_rename(self) -> None:
         self.config.paths.author_mappings.write_text(
             """{
