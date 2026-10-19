@@ -58,6 +58,22 @@ def _initials_compatible(left: str, right: str) -> bool:
     )
 
 
+_INSTITUTION_LIKE_RE = re.compile(
+    r"\b(?:department|university|universite|institute|institution|laboratory|"
+    r"laboratoire|centre|center|academy|faculty|school|hospital|research\s+"
+    r"(?:centre|center)|national\s+laboratory)\b",
+    re.IGNORECASE,
+)
+
+
+def _institution_like_name(value: str) -> bool:
+    """Return whether a mapped author name looks institution/affiliation-like."""
+    normalized = unidecode(value)
+    if re.match(r"^\s*\d+\s+", normalized):
+        return True
+    return _INSTITUTION_LIKE_RE.search(normalized) is not None
+
+
 @dataclass(frozen=True)
 class AuthorHygieneFinding:
     """One author-identity hygiene finding requiring maintainer attention."""
@@ -98,6 +114,10 @@ class AuthorHygieneReport:
     def initial_full_candidates(self) -> int:
         return sum(item.kind == "initial-full-name-candidate" for item in self.findings)
 
+    @property
+    def institution_like(self) -> int:
+        return sum(item.kind == "institution-like-author" for item in self.findings)
+
     def summary(self) -> str:
         return (
             "Author identity hygiene\n"
@@ -105,7 +125,8 @@ class AuthorHygieneReport:
             f"  Name variants                 : {self.name_variants}\n"
             f"  Slugs to strengthen           : {self.weak_slugs}\n"
             f"  Encoding duplicate candidates : {self.encoding_duplicates}\n"
-            f"  Initial/full-name candidates  : {self.initial_full_candidates}"
+            f"  Initial/full-name candidates  : {self.initial_full_candidates}\n"
+            f"  Institution-like authors      : {self.institution_like}"
         )
 
     def data(self) -> dict[str, Any]:
@@ -115,6 +136,7 @@ class AuthorHygieneReport:
             "slugs_to_strengthen": self.weak_slugs,
             "encoding_duplicate_candidates": self.encoding_duplicates,
             "initial_full_name_candidates": self.initial_full_candidates,
+            "institution_like_authors": self.institution_like,
             "findings": [item.data() for item in self.findings],
         }
 
@@ -127,6 +149,20 @@ def scan_author_identity_hygiene(
     findings: list[AuthorHygieneFinding] = []
 
     for slug, names in canonical.items():
+        if any(_institution_like_name(name) for name in names):
+            findings.append(
+                AuthorHygieneFinding(
+                    kind="institution-like-author",
+                    slugs=(slug,),
+                    names=names,
+                    proposed_slug=None,
+                    reason=(
+                        "mapped author name looks like an institution or affiliation; "
+                        "manual review is required because collective authors can be legitimate"
+                    ),
+                )
+            )
+
         stronger = sorted(
             (
                 name

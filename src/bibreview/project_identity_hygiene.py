@@ -45,18 +45,55 @@ def _canonical_contributor_value(
     )
 
 
-def _bibtex_name_key(value: str) -> tuple[tuple[str, ...], ...]:
-    result: list[tuple[str, ...]] = []
-    for raw_name in re.split(r"\s+and\s+", value, flags=re.IGNORECASE):
-        clean = raw_name.replace("{", "").replace("}", "").strip()
-        if "," in clean:
-            family, given = clean.split(",", 1)
-            clean = f"{given.strip()} {family.strip()}"
-        words = tuple(
-            re.findall(r"[a-z0-9]+", unidecode(clean).casefold())
-        )
-        result.append(words)
-    return tuple(result)
+def _normalized_name_key(value: str) -> tuple[str, ...]:
+    """Return a conservative order-insensitive token key for one contributor."""
+    clean = value.replace("{", "").replace("}", "").strip()
+    words = re.findall(r"[a-z0-9]+", unidecode(clean).casefold())
+    return tuple(sorted(words))
+
+
+def _split_bibtex_contributors(
+    value: str,
+) -> tuple[tuple[tuple[str, ...], ...], bool]:
+    """Split a BibTeX contributor list at top-level and separators."""
+    segments: list[str] = []
+    start = 0
+    depth = 0
+    index = 0
+    while index < len(value):
+        char = value[index]
+        if char == "{" and (index == 0 or value[index - 1] != "\\"):
+            depth += 1
+        elif char == "}" and depth > 0 and value[index - 1] != "\\":
+            depth -= 1
+
+        if depth == 0:
+            match = re.match(r"\s+and\s+", value[index:], flags=re.IGNORECASE)
+            if match is not None:
+                segments.append(value[start:index])
+                index += match.end()
+                start = index
+                continue
+        index += 1
+    segments.append(value[start:])
+
+    malformed = any(not segment.strip() for segment in segments)
+    keys = tuple(
+        _normalized_name_key(segment)
+        for segment in segments
+        if segment.strip()
+    )
+    return keys, malformed
+
+
+def _canonical_contributor_keys(
+    contributors: tuple[Author, ...] | tuple[Editor, ...],
+) -> tuple[tuple[str, ...], ...]:
+    return tuple(
+        _normalized_name_key(name)
+        for contributor in contributors
+        if (name := _display_contributor(contributor))
+    )
 
 
 @dataclass(frozen=True)
@@ -108,6 +145,10 @@ class BibtexContributorHygieneReport:
         return sum(item.kind == "contributor-mismatch" for item in self.findings)
 
     @property
+    def malformed_lists(self) -> int:
+        return sum(item.kind == "malformed-contributor-list" for item in self.findings)
+
+    @property
     def unreadable_files(self) -> int:
         return sum(item.kind == "invalid-bibtex" for item in self.findings)
 
@@ -119,6 +160,7 @@ class BibtexContributorHygieneReport:
             f"  Missing BibTeX files   : {self.missing_files}\n"
             f"  Missing author/editor  : {self.missing_fields}\n"
             f"  Contributor mismatches : {self.mismatched_fields}\n"
+            f"  Malformed contrib. list: {self.malformed_lists}\n"
             f"  Invalid BibTeX files   : {self.unreadable_files}"
         )
 
@@ -129,6 +171,7 @@ class BibtexContributorHygieneReport:
             "missing_bibtex_files": self.missing_files,
             "missing_contributor_fields": self.missing_fields,
             "contributor_mismatches": self.mismatched_fields,
+            "malformed_contributor_lists": self.malformed_lists,
             "invalid_bibtex_files": self.unreadable_files,
             "findings": [item.data() for item in self.findings],
         }
@@ -189,7 +232,25 @@ def project_bibtex_contributor_hygiene(
                         )
                     )
                     continue
-                if _bibtex_name_key(value) != _bibtex_name_key(canonical_value):
+                bibtex_keys, malformed = _split_bibtex_contributors(value)
+                if malformed:
+                    findings.append(
+                        BibtexContributorFinding(
+                            publication_id=publication.id,
+                            doi=publication.doi,
+                            title=publication.title,
+                            path=str(path),
+                            field=field,
+                            kind="malformed-contributor-list",
+                            canonical_value=canonical_value,
+                            bibtex_value=value,
+                            reason=(
+                                f"BibTeX {field} contains an empty contributor "
+                                "segment around an 'and' separator"
+                            ),
+                        )
+                    )
+                if bibtex_keys != _canonical_contributor_keys(contributors):
                     findings.append(
                         BibtexContributorFinding(
                             publication_id=publication.id,

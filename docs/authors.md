@@ -120,11 +120,14 @@ bibreview --config bibreview.yml hygiene --authors
 
 This is distinct from `authors --review`: it audits the **existing identity
 graph** rather than unresolved source names. It can flag weak initial-based
-slugs, encoding-normalization duplicates, and initials/full-name pairs that
-deserve human review.
+slugs, encoding-normalization duplicates, initials/full-name pairs, and mapped
+author names that look institution- or affiliation-like (for example
+departments, universities, institutes, laboratories, centres, schools, or
+numbered affiliation strings).
 
-Use `-v` or `--json` to inspect all candidates. No candidate is merged
-automatically.
+Use `-v` or `--json` to inspect all candidates. No candidate is merged or
+removed automatically. In particular, an institution-like name may be a
+legitimate collective author and always remains a human-review decision.
 
 After validating the evidence, use the first-class mapping operations instead
 of editing `author_mappings.json` directly:
