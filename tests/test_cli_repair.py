@@ -68,12 +68,12 @@ class RepairCliTests(unittest.TestCase):
             encoding="utf-8",
         )
 
-    def collection_services(self):
+    def collection_services(self, *, bibtex_lookup=None):
         return SimpleNamespace(
             provider=FakeProvider(),
             enrichment_lookup=None,
             citation_lookup=None,
-            bibtex_lookup=None,
+            bibtex_lookup=bibtex_lookup,
         )
 
     def test_repair_stages_only_the_repaired_pending_candidate(self):
@@ -379,6 +379,92 @@ class RepairCliTests(unittest.TestCase):
             [(editor.given, editor.family) for editor in staged[0].editors],
             [("John", "Editor")],
         )
+
+
+    def test_repair_adds_missing_author_to_tracked_bibtex(self):
+        answers = iter([
+            "a",
+            "Ada",
+            "Lovelace",
+            "",
+            "",
+            "n",
+            "y",
+        ])
+        source_bibtex = """@article{example,
+  DOI={10.1/invalid},
+  title={{Incomplete publication}},
+  year={2026}
+}
+"""
+
+        stdout = StringIO()
+        stderr = StringIO()
+        with patch(
+            "bibreview.cli.build_collection_services",
+            return_value=self.collection_services(
+                bibtex_lookup=lambda doi: source_bibtex,
+            ),
+        ), patch(
+            "builtins.input",
+            side_effect=lambda prompt="": next(answers),
+        ), redirect_stdout(stdout), redirect_stderr(stderr):
+            code = main([
+                "--config",
+                str(self.config_path),
+                "repair",
+            ])
+
+        self.assertEqual(code, 0, stderr.getvalue())
+        bibtex_path = (
+            self.config.paths.bibtex / "incomplete-publication.bib"
+        )
+        rendered = bibtex_path.read_text(encoding="utf-8")
+        self.assertIn("author={Ada Lovelace}", rendered)
+        self.assertIn("title={{Incomplete publication}}", rendered)
+
+    def test_repair_adds_missing_editor_and_preserves_existing_author_bibtex(self):
+        answers = iter([
+            "e",
+            "John",
+            "Editor",
+            "",
+            "",
+            "n",
+            "y",
+        ])
+        source_bibtex = """@article{example,
+  author={Existing BibTeX Author},
+  DOI={10.1/invalid},
+  title={{Incomplete publication}},
+  year={2026}
+}
+"""
+
+        stdout = StringIO()
+        stderr = StringIO()
+        with patch(
+            "bibreview.cli.build_collection_services",
+            return_value=self.collection_services(
+                bibtex_lookup=lambda doi: source_bibtex,
+            ),
+        ), patch(
+            "builtins.input",
+            side_effect=lambda prompt="": next(answers),
+        ), redirect_stdout(stdout), redirect_stderr(stderr):
+            code = main([
+                "--config",
+                str(self.config_path),
+                "repair",
+            ])
+
+        self.assertEqual(code, 0, stderr.getvalue())
+        bibtex_path = (
+            self.config.paths.bibtex / "incomplete-publication.bib"
+        )
+        rendered = bibtex_path.read_text(encoding="utf-8")
+        self.assertIn("author={Existing BibTeX Author}", rendered)
+        self.assertIn("editor={John Editor}", rendered)
 
 
     def test_repair_dry_run_is_non_mutating(self):
