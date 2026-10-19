@@ -84,6 +84,80 @@ class ProjectIdentityHygieneTests(unittest.TestCase):
         report = project_bibtex_contributor_hygiene(self.config)
         self.assertEqual(report.findings, ())
 
+    def test_bibtex_hygiene_accepts_reversed_compound_name_tokens(self):
+        publication = Publication(
+            id=new_publication_id(),
+            identifiers={"doi": "10.1/compound"},
+            title="Compound",
+            authors=(
+                Author(given="Diego", family="Gajardo Miranda"),
+                Author(given="Stéphanie", family="El Feghali"),
+            ),
+            permalink="compound",
+        )
+        write_bibliography(self.config.paths.bibliography, (publication,))
+        (self.config.paths.bibtex / "compound.bib").write_text(
+            """@article{compound,
+  author={Gajardo Miranda Diego and El Feghali Stéphanie},
+  title={{Compound}}
+}
+""",
+            encoding="utf-8",
+        )
+
+        report = project_bibtex_contributor_hygiene(self.config)
+        self.assertEqual(report.mismatched_fields, 0)
+        self.assertEqual(report.malformed_lists, 0)
+
+    def test_bibtex_hygiene_separates_empty_segments_from_identity_mismatch(self):
+        publication = Publication(
+            id=new_publication_id(),
+            identifiers={"doi": "10.1/malformed"},
+            title="Malformed",
+            authors=(Author(given="Eman", family="Alhayki"),),
+            permalink="malformed",
+        )
+        write_bibliography(self.config.paths.bibliography, (publication,))
+        (self.config.paths.bibtex / "malformed.bib").write_text(
+            """@article{malformed,
+  author={ and Alhayki Eman},
+  title={{Malformed}}
+}
+""",
+            encoding="utf-8",
+        )
+
+        report = project_bibtex_contributor_hygiene(self.config)
+        self.assertEqual(report.malformed_lists, 1)
+        self.assertEqual(report.mismatched_fields, 0)
+        self.assertEqual(
+            report.findings[0].kind,
+            "malformed-contributor-list",
+        )
+
+    def test_bibtex_hygiene_keeps_real_contributor_difference(self):
+        publication = Publication(
+            id=new_publication_id(),
+            identifiers={"doi": "10.1/different"},
+            title="Different",
+            authors=(Author(given="Ada", family="Lovelace"),),
+            permalink="different",
+        )
+        write_bibliography(self.config.paths.bibliography, (publication,))
+        (self.config.paths.bibtex / "different.bib").write_text(
+            """@article{different,
+  author={Grace Hopper},
+  title={{Different}}
+}
+""",
+            encoding="utf-8",
+        )
+
+        report = project_bibtex_contributor_hygiene(self.config)
+        self.assertEqual(report.malformed_lists, 0)
+        self.assertEqual(report.mismatched_fields, 1)
+
+
     def test_project_author_hygiene_and_explicit_rename_are_separate(self):
         self.config.paths.author_mappings.write_text(
             """{
