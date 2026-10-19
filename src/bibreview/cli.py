@@ -84,6 +84,20 @@ from .project_hygiene_apply import (
     plan_project_hygiene_apply,
     plan_project_hygiene_safe_apply,
 )
+from .contributor_hygiene_resolution import (
+    contributor_hygiene_counts,
+    contributor_hygiene_resolution_path,
+    load_contributor_hygiene_state,
+    record_contributor_hygiene_decision,
+    save_contributor_hygiene_state,
+    unresolved_contributor_hygiene_candidates,
+)
+from .project_contributor_hygiene import (
+    apply_project_contributor_hygiene_apply,
+    format_project_contributor_hygiene_review,
+    plan_project_contributor_hygiene_apply,
+    project_contributor_hygiene_review,
+)
 from .project_identity_hygiene import (
     apply_project_author_identity_mutation,
     plan_project_author_identity_mutation,
@@ -946,6 +960,86 @@ def _run_repair(config, args) -> int:
         if plan.result.publications:
             print(f"Staging: {config.paths.collected}")
 
+    return 0
+
+
+def _run_contributor_hygiene_resolution(config, args) -> int:
+    """Interactively resolve suspicious canonical contributor entries."""
+    if args.quiet:
+        raise ProjectStateError(
+            "--quiet cannot be used with interactive hygiene --authors --resolve"
+        )
+    if args.json_output:
+        raise ProjectStateError(
+            "--json cannot be used with interactive hygiene --authors --resolve"
+        )
+
+    review = project_contributor_hygiene_review(config)
+    state = load_contributor_hygiene_state(config, review)
+    pending = unresolved_contributor_hygiene_candidates(review, state)
+    if not pending:
+        counts = contributor_hygiene_counts(review, state)
+        print("No unresolved contributor hygiene candidates.")
+        print(
+            f"Keep: {counts['keep']}; remove: {counts['remove']}; "
+            f"deferred: {counts['deferred']}"
+        )
+        return 0
+
+    _enable_interactive_line_editing()
+    for position, candidate in enumerate(pending, 1):
+        print(f"Contributor hygiene review {position}/{len(pending)}")
+        print(f"DOI: {candidate.doi or candidate.publication_id}")
+        print(f"Title: {candidate.title}")
+        print(f"Role: {candidate.role}[{candidate.index + 1}]")
+        print(f"Name: {candidate.name}")
+        if candidate.source_fields:
+            print(
+                "Source fields: "
+                + json.dumps(
+                    dict(candidate.source_fields),
+                    ensure_ascii=False,
+                    sort_keys=True,
+                )
+            )
+        try:
+            raw = input(
+                "Decision [k=keep/r=remove/s=defer/q=quit]: "
+            ).strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            print("Contributor hygiene review stopped; prior decisions are preserved.")
+            return 0
+
+        if raw in {"q", "quit"}:
+            print("Contributor hygiene review stopped; prior decisions are preserved.")
+            return 0
+        if raw in {"k", "keep"}:
+            decision = "keep"
+        elif raw in {"r", "remove"}:
+            decision = "remove"
+        elif raw in {"s", "skip", "defer"}:
+            decision = "deferred"
+        else:
+            print("Please enter k, r, s, or q.")
+            continue
+
+        state = record_contributor_hygiene_decision(
+            state,
+            candidate,
+            decision=decision,
+        )
+        save_contributor_hygiene_state(config, state)
+        print(f"Recorded: {decision}")
+        print()
+
+    counts = contributor_hygiene_counts(review, state)
+    print(
+        f"Contributor hygiene decisions: keep {counts['keep']}; "
+        f"remove {counts['remove']}; deferred {counts['deferred']}; "
+        f"unresolved {counts['unresolved']}."
+    )
+    print(f"Resolutions: {contributor_hygiene_resolution_path(config)}")
     return 0
 
 
@@ -2016,13 +2110,72 @@ def main(argv: list[str] | None = None) -> int:
             return 0
 
         if args.authors:
-            if args.review or args.resolve or args.apply_safe or args.apply:
+            if args.apply_safe:
                 print(
-                    "bibreview hygiene: --authors supports inventory plus "
-                    "--merge-author/--rename-author explicit decisions",
+                    "bibreview hygiene: --apply-safe is not supported with --authors",
                     file=sys.stderr,
                 )
                 return 1
+            if args.resolve:
+                try:
+                    return _run_contributor_hygiene_resolution(config, args)
+                except (OSError, StorageError, ProjectStateError, ValueError, TypeError) as error:
+                    print(f"bibreview hygiene: {error}", file=sys.stderr)
+                    return 1
+            if args.apply:
+                try:
+                    plan = plan_project_contributor_hygiene_apply(config)
+                    if not args.dry_run:
+                        apply_project_contributor_hygiene_apply(plan)
+                except (OSError, StorageError, ProjectStateError, ValueError, TypeError) as error:
+                    print(f"bibreview hygiene: {error}", file=sys.stderr)
+                    return 1
+                if args.json_output:
+                    print(
+                        json.dumps(
+                            {
+                                "dry_run": bool(args.dry_run),
+                                "changed": plan.changed,
+                                "staging": str(config.paths.collected),
+                                **plan.data(),
+                            },
+                            ensure_ascii=False,
+                            indent=2,
+                        )
+                    )
+                elif not args.quiet:
+                    prefix = "Dry run: " if args.dry_run else ""
+                    print(prefix + plan.summary())
+                    if plan.changed:
+                        print(f"Staging: {config.paths.collected}")
+                return 0
+            if args.review:
+                try:
+                    review = project_contributor_hygiene_review(config)
+                    state = load_contributor_hygiene_state(config, review)
+                except (OSError, StorageError, ProjectStateError, ValueError, TypeError) as error:
+                    print(f"bibreview hygiene: {error}", file=sys.stderr)
+                    return 1
+                if args.json_output:
+                    payload = review.data()
+                    payload["decisions"] = [
+                        item.data() for item in state.decisions
+                    ]
+                    payload["counts"] = contributor_hygiene_counts(review, state)
+                    print(json.dumps(payload, ensure_ascii=False, indent=2))
+                elif not args.quiet:
+                    print(
+                        format_project_contributor_hygiene_review(
+                            review,
+                            verbose=bool(args.verbose),
+                        )
+                    )
+                    counts = contributor_hygiene_counts(review, state)
+                    print(
+                        f"Decisions: keep {counts['keep']}; remove {counts['remove']}; "
+                        f"deferred {counts['deferred']}; unresolved {counts['unresolved']}"
+                    )
+                return 0
             try:
                 report = project_author_identity_hygiene(config)
             except (OSError, StorageError, ValueError, TypeError) as error:
