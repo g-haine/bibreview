@@ -104,6 +104,16 @@ from .project_identity_hygiene import (
     project_author_identity_hygiene,
     project_bibtex_contributor_hygiene,
 )
+from .bibtex_hygiene_repair import (
+    apply_project_bibtex_repair,
+    bibtex_repair_state_path,
+    load_bibtex_repair_state,
+    plan_project_bibtex_repair,
+    project_bibtex_repair_review,
+    record_bibtex_replacement,
+    save_bibtex_repair_state,
+    unresolved_bibtex_repair_proposals,
+)
 from .project_init import (
     apply_project_init_plan,
     apply_project_init_rescreen,
@@ -960,6 +970,74 @@ def _run_repair(config, args) -> int:
         if plan.result.publications:
             print(f"Staging: {config.paths.collected}")
 
+    return 0
+
+
+def _run_bibtex_hygiene_resolution(config, args) -> int:
+    """Interactively attach reviewed replacements to unsafe BibTeX files."""
+    if args.quiet:
+        raise ProjectStateError(
+            "--quiet cannot be used with interactive hygiene --bibtex --resolve"
+        )
+    if args.json_output:
+        raise ProjectStateError(
+            "--json cannot be used with interactive hygiene --bibtex --resolve"
+        )
+
+    review = project_bibtex_repair_review(config)
+    state = load_bibtex_repair_state(config)
+    pending = unresolved_bibtex_repair_proposals(review, state)
+    if not pending:
+        print("No unresolved BibTeX repair proposals require human review.")
+        print(f"Resolutions: {bibtex_repair_state_path(config)}")
+        return 0
+
+    _enable_interactive_line_editing()
+    for position, proposal in enumerate(pending, 1):
+        print(f"BibTeX repair review {position}/{len(pending)}")
+        print(f"DOI: {proposal.doi or proposal.publication_id}")
+        print(f"Title: {proposal.title}")
+        print(f"Path: {proposal.path}")
+        print(f"Failure: {proposal.reason}")
+        try:
+            raw = input(
+                "Replacement BibTeX file [path/s=defer/q=quit]: "
+            ).strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            print("BibTeX repair review stopped; prior decisions are preserved.")
+            return 0
+
+        lowered = raw.lower()
+        if lowered in {"q", "quit"}:
+            print("BibTeX repair review stopped; prior decisions are preserved.")
+            return 0
+        if lowered in {"s", "skip", "defer"} or not raw:
+            state = record_bibtex_replacement(state, proposal, None)
+            save_bibtex_repair_state(config, state)
+            print("Recorded: deferred")
+            print()
+            continue
+
+        replacement_path = Path(raw).expanduser()
+        try:
+            replacement_text = replacement_path.read_text(encoding="utf-8")
+            state = record_bibtex_replacement(
+                state,
+                proposal,
+                replacement_text,
+            )
+        except (OSError, UnicodeError, ValueError, TypeError) as error:
+            print(f"Invalid replacement: {error}")
+            print()
+            continue
+        save_bibtex_repair_state(config, state)
+        print(f"Recorded replacement: {replacement_path}")
+        print()
+
+    remaining = unresolved_bibtex_repair_proposals(review, state)
+    print(f"BibTeX repair review remaining: {len(remaining)}")
+    print(f"Resolutions: {bibtex_repair_state_path(config)}")
     return 0
 
 
@@ -2197,12 +2275,87 @@ def main(argv: list[str] | None = None) -> int:
             return 0
 
         if args.bibtex:
-            if args.review or args.resolve or args.apply_safe or args.apply:
-                print(
-                    "bibreview hygiene: --bibtex is currently a read-only inventory",
-                    file=sys.stderr,
-                )
-                return 1
+            if args.resolve:
+                try:
+                    return _run_bibtex_hygiene_resolution(config, args)
+                except (
+                    OSError,
+                    StorageError,
+                    ProjectStateError,
+                    ValueError,
+                    TypeError,
+                ) as error:
+                    print(f"bibreview hygiene: {error}", file=sys.stderr)
+                    return 1
+
+            if args.apply_safe or args.apply:
+                try:
+                    plan = plan_project_bibtex_repair(
+                        config,
+                        safe_only=bool(args.apply_safe),
+                    )
+                    if not args.dry_run:
+                        apply_project_bibtex_repair(plan)
+                except (
+                    OSError,
+                    StorageError,
+                    ProjectStateError,
+                    ValueError,
+                    TypeError,
+                ) as error:
+                    print(f"bibreview hygiene: {error}", file=sys.stderr)
+                    return 1
+                if args.json_output:
+                    print(
+                        json.dumps(
+                            {
+                                "dry_run": bool(args.dry_run),
+                                "changed": plan.changed,
+                                **plan.data(),
+                            },
+                            ensure_ascii=False,
+                            indent=2,
+                        )
+                    )
+                elif not args.quiet:
+                    prefix = "Dry run: " if args.dry_run else ""
+                    print(prefix + plan.summary())
+                return 0
+
+            if args.review:
+                try:
+                    review = project_bibtex_repair_review(config)
+                    state = load_bibtex_repair_state(config)
+                    remaining = unresolved_bibtex_repair_proposals(
+                        review,
+                        state,
+                    )
+                except (OSError, StorageError, ValueError, TypeError) as error:
+                    print(f"bibreview hygiene: {error}", file=sys.stderr)
+                    return 1
+                if args.json_output:
+                    payload = review.data()
+                    payload["review_remaining"] = len(remaining)
+                    print(json.dumps(payload, ensure_ascii=False, indent=2))
+                elif not args.quiet:
+                    print(review.summary())
+                    print(f"  Review remaining       : {len(remaining)}")
+                    if args.verbose:
+                        for proposal in review.proposals:
+                            label = proposal.doi or proposal.publication_id
+                            status = (
+                                "SAFE"
+                                if proposal.deterministic
+                                else "REVIEW REQUIRED"
+                            )
+                            print(
+                                f"  ? {label} [{proposal.field}] "
+                                f"{proposal.kind}: {status}"
+                            )
+                            print(f"    {proposal.title}")
+                            print(f"    {proposal.reason}")
+                return 0
+
             try:
                 report = project_bibtex_contributor_hygiene(config)
             except (OSError, StorageError, ValueError, TypeError) as error:
