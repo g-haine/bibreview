@@ -4,6 +4,10 @@ All notable BibReview releases are documented here.
 
 ## Unreleased
 
+- include read-only author-identity state in `bibreview init --status`, with
+  concise known/unresolved, safe-auto-applicable, and manual-review counts in
+  both text and JSON output, reusing the canonical author-mapping analysis.
+
 - add reviewed tracked-BibTeX hygiene repair: deterministic cleanup for empty
   contributor segments and missing canonical contributor fields, plus explicit
   replacement-file review for invalid or multi-entry BibTeX; repairs are
