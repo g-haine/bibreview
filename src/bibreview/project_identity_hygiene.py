@@ -9,11 +9,20 @@ from types import MappingProxyType
 from typing import Any, Mapping
 from unidecode import unidecode
 
+from .author_distinct import (
+    author_distinct_path,
+    load_reviewed_distinct_state,
+    mark_reviewed_distinct,
+    reconcile_reviewed_distinct_state,
+    reviewed_distinct_bytes,
+    reviewed_distinct_status,
+)
 from .bibtex_edit import BibtexEditError, bibtex_field_value
 from .config import BibReviewConfig
 from .identity_hygiene import (
     AuthorHygieneReport,
     merge_author_identities,
+    remove_author_variant,
     rename_author_identity,
     scan_author_identity_hygiene,
 )
@@ -295,7 +304,29 @@ def project_author_identity_hygiene(
         if config.paths.author_mappings.exists()
         else {}
     )
-    return scan_author_identity_hygiene(mapping)
+    raw = scan_author_identity_hygiene(mapping)
+    state = load_reviewed_distinct_state(config)
+    candidate_pairs = {
+        item.slugs
+        for item in raw.findings
+        if item.kind == "initial-full-name-candidate"
+    }
+    valid, stale = reviewed_distinct_status(mapping, candidate_pairs, state)
+    findings = tuple(
+        item
+        for item in raw.findings
+        if not (
+            item.kind == "initial-full-name-candidate"
+            and item.slugs in valid
+        )
+    )
+    return AuthorHygieneReport(
+        identities=raw.identities,
+        name_variants=raw.name_variants,
+        findings=findings,
+        reviewed_distinct=len(valid),
+        stale_reviewed_distinct=stale,
+    )
 
 
 @dataclass(frozen=True)
@@ -345,14 +376,154 @@ def plan_project_author_identity_mutation(
     else:
         raise ValueError(f"unsupported author identity operation: {operation}")
 
+    outputs: dict[Path, bytes] = {
+        config.paths.author_mappings: json_bytes(updated)
+    }
+    decision_path = author_distinct_path(config)
+    if decision_path.exists():
+        state = load_reviewed_distinct_state(config)
+        reconciled = reconcile_reviewed_distinct_state(
+            state,
+            operation=operation,
+            source_slug=source_slug,
+            target_slug=target_slug,
+            updated_mapping=updated,
+        )
+        outputs[decision_path] = reviewed_distinct_bytes(reconciled)
+
     return ProjectAuthorIdentityMutationPlan(
         operation=operation,
         source_slug=source_slug,
         target_slug=target_slug,
+        outputs=MappingProxyType(outputs),
+    )
+
+
+@dataclass(frozen=True)
+class ProjectAuthorVariantRemovalPlan:
+    """One explicit removal of an unused author name variant."""
+
+    slug: str
+    variant: str
+    outputs: Mapping[Path, bytes]
+
+    @property
+    def changed(self) -> bool:
+        return bool(self.outputs)
+
+    def summary(self) -> str:
+        return f"Remove author variant {self.variant!r} from {self.slug}"
+
+
+def plan_project_author_variant_removal(
+    config: BibReviewConfig,
+    *,
+    slug: str,
+    variant: str,
+) -> ProjectAuthorVariantRemovalPlan:
+    """Plan removal of one exact variant only when canonical data no longer uses it."""
+    mapping = (
+        read_json(config.paths.author_mappings, dict)
+        if config.paths.author_mappings.exists()
+        else {}
+    )
+    publications = read_bibliography(config.paths.bibliography)
+    users = [
+        publication
+        for publication in publications
+        if any(
+            _display_contributor(author) == variant.strip()
+            for author in publication.authors
+        )
+    ]
+    if users:
+        raise ValueError(
+            f"author variant {variant.strip()!r} is still used by "
+            f"{len(users)} canonical publication(s)"
+        )
+    updated = remove_author_variant(
+        mapping,
+        slug=slug,
+        variant=variant,
+    )
+    return ProjectAuthorVariantRemovalPlan(
+        slug=slug.strip(),
+        variant=variant.strip(),
         outputs=MappingProxyType(
             {config.paths.author_mappings: json_bytes(updated)}
         ),
     )
+
+
+def apply_project_author_variant_removal(
+    plan: ProjectAuthorVariantRemovalPlan,
+) -> None:
+    """Apply one reviewed unused-variant removal."""
+    if plan.outputs:
+        atomic_write_batch(plan.outputs)
+
+
+@dataclass(frozen=True)
+class ProjectAuthorDistinctPlan:
+    """One explicit KEEP-SEPARATE author identity decision."""
+
+    left_slug: str
+    right_slug: str
+    outputs: Mapping[Path, bytes]
+
+    @property
+    def changed(self) -> bool:
+        return bool(self.outputs)
+
+    def summary(self) -> str:
+        return (
+            f"Mark author identities {self.left_slug} and "
+            f"{self.right_slug} as reviewed distinct"
+        )
+
+
+def plan_project_author_distinct(
+    config: BibReviewConfig,
+    *,
+    left_slug: str,
+    right_slug: str,
+) -> ProjectAuthorDistinctPlan:
+    """Plan one explicit reviewed-distinct identity decision."""
+    mapping = (
+        read_json(config.paths.author_mappings, dict)
+        if config.paths.author_mappings.exists()
+        else {}
+    )
+    raw = scan_author_identity_hygiene(mapping)
+    candidate_pairs = {
+        item.slugs
+        for item in raw.findings
+        if item.kind == "initial-full-name-candidate"
+    }
+    state = load_reviewed_distinct_state(config)
+    updated = mark_reviewed_distinct(
+        mapping,
+        state,
+        left_slug=left_slug,
+        right_slug=right_slug,
+        candidate_pairs=candidate_pairs,
+    )
+    pair = tuple(sorted((left_slug.strip(), right_slug.strip())))
+    return ProjectAuthorDistinctPlan(
+        left_slug=pair[0],
+        right_slug=pair[1],
+        outputs=MappingProxyType(
+            {author_distinct_path(config): reviewed_distinct_bytes(updated)}
+        ),
+    )
+
+
+def apply_project_author_distinct(
+    plan: ProjectAuthorDistinctPlan,
+) -> None:
+    """Apply one reviewed KEEP-SEPARATE identity decision."""
+    if plan.outputs:
+        atomic_write_batch(plan.outputs)
 
 
 def apply_project_author_identity_mutation(

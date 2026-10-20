@@ -166,6 +166,37 @@ A merge requires both identities to exist. A rename requires the target slug
 not to exist. Both operations validate the invariant that each exact
 source-visible name variant belongs to only one identity.
 
+When a reviewed publication-scoped correction has removed an ambiguous
+abbreviated name from the canonical corpus, prune that now-unused exact variant
+without editing the mapping JSON:
+
+~~~bash
+bibreview --config bibreview.yml --dry-run hygiene --authors \
+  --remove-author-variant SLUG "OLD NAME"
+bibreview --config bibreview.yml hygiene --authors \
+  --remove-author-variant SLUG "OLD NAME"
+~~~
+
+BibReview refuses the operation while the exact variant is still used by any
+canonical publication or when it is the identity's last remaining name.
+
+For initials/full-name candidates that have been investigated and confirmed to
+be **different people**, persist that human KEEP-SEPARATE decision:
+
+~~~bash
+bibreview --config bibreview.yml --dry-run hygiene --authors \
+  --mark-distinct SLUG_A SLUG_B
+bibreview --config bibreview.yml hygiene --authors \
+  --mark-distinct SLUG_A SLUG_B
+~~~
+
+Reviewed-distinct pairs are stored separately in `author_distinct.json`.
+Their fingerprint covers both identity slugs and their exact name variants.
+Valid reviewed pairs disappear from the ordinary candidate count. If either
+identity's reviewed name evidence changes, the decision becomes stale and the
+pair reappears for review. Slug renames preserve compatible decisions; merges
+drop decisions involving either changed identity.
+
 ## Same exact display name for two different people
 
 The current mapping model requires one exact name string to map to one identity.

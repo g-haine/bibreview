@@ -86,6 +86,8 @@ class AuthorHygieneReport:
     identities: int
     name_variants: int
     findings: tuple[AuthorHygieneFinding, ...]
+    reviewed_distinct: int = 0
+    stale_reviewed_distinct: int = 0
 
     @property
     def weak_slugs(self) -> int:
@@ -111,6 +113,8 @@ class AuthorHygieneReport:
             f"  Slugs to strengthen           : {self.weak_slugs}\n"
             f"  Encoding duplicate candidates : {self.encoding_duplicates}\n"
             f"  Initial/full-name candidates  : {self.initial_full_candidates}\n"
+            f"  Reviewed distinct pairs       : {self.reviewed_distinct}\n"
+            f"  Stale distinct decisions      : {self.stale_reviewed_distinct}\n"
             f"  Institution-like authors      : {self.institution_like}"
         )
 
@@ -121,6 +125,8 @@ class AuthorHygieneReport:
             "slugs_to_strengthen": self.weak_slugs,
             "encoding_duplicate_candidates": self.encoding_duplicates,
             "initial_full_name_candidates": self.initial_full_candidates,
+            "reviewed_distinct_pairs": self.reviewed_distinct,
+            "stale_distinct_decisions": self.stale_reviewed_distinct,
             "institution_like_authors": self.institution_like,
             "findings": [item.data() for item in self.findings],
         }
@@ -270,5 +276,34 @@ def rename_author_identity(
     result: dict[str, list[str]] = {}
     for slug, names in canonical.items():
         result[target if slug == source else slug] = list(names)
+    validate_author_mappings(result)
+    return result
+
+
+def remove_author_variant(
+    mapping: Mapping[str, object],
+    *,
+    slug: str,
+    variant: str,
+) -> dict[str, list[str]]:
+    """Remove one explicitly reviewed exact name variant from an identity."""
+    canonical, _ = validate_author_mappings(mapping)
+    identity = slug.strip()
+    name = variant.strip()
+    if identity not in canonical:
+        raise AuthorMappingError(f"unknown author identity {identity!r}")
+    if not name:
+        raise AuthorMappingError("author variant must be non-empty")
+    if name not in canonical[identity]:
+        raise AuthorMappingError(
+            f"author identity {identity!r} has no exact variant {name!r}"
+        )
+    if len(canonical[identity]) == 1:
+        raise AuthorMappingError(
+            f"cannot remove the last name variant from author identity {identity!r}"
+        )
+
+    result = {key: list(names) for key, names in canonical.items()}
+    result[identity] = [item for item in result[identity] if item != name]
     validate_author_mappings(result)
     return result
