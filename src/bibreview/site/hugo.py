@@ -51,10 +51,13 @@ def _yaml_string(value: str) -> str:
     return json.dumps(value, ensure_ascii=False)
 
 
-def _yaml_string_list(values: tuple[str, ...] | list[str]) -> list[str]:
+def _yaml_list_lines(
+    key: str,
+    values: tuple[str, ...] | list[str],
+) -> list[str]:
     if not values:
-        return ["[]"]
-    return [f"  - {_yaml_string(value)}" for value in values]
+        return [f"{key}: []"]
+    return [f"{key}:", *(f"  - {_yaml_string(value)}" for value in values)]
 
 
 def _markdown_label(value: str) -> str:
@@ -124,15 +127,13 @@ def _render_publication(
         f"date: {publication.created_date.isoformat()}",
         f"year: {_yaml_string(publication.year)}",
         f"publication_type: {_yaml_string(publication.type)}",
-        "authors:",
-        *_yaml_string_list(names),
-        "author_slugs:",
-        *_yaml_string_list(slugs),
+        *_yaml_list_lines("authors", names),
+        *_yaml_list_lines("author_slugs", slugs),
     ]
     if editors:
-        lines.extend(["editors:", *_yaml_string_list(editors)])
+        lines.extend(_yaml_list_lines("editors", editors))
     if publication.keywords:
-        lines.extend(["tags:", *_yaml_string_list(list(publication.keywords))])
+        lines.extend(_yaml_list_lines("tags", list(publication.keywords)))
     lines.extend(["---", ""])
 
     if publication.authors:
