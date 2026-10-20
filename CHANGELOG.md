@@ -4,6 +4,15 @@ All notable BibReview releases are documented here.
 
 ## Unreleased
 
+- add safe `hygiene --authors --remove-author-variant SLUG NAME` for exact
+  author variants no longer used by canonical publications, with dry-run,
+  last-variant protection, and validated atomic mapping updates;
+- add fingerprinted reviewed-distinct author identity decisions through
+  `hygiene --authors --mark-distinct SLUG_A SLUG_B`; suppress current reviewed
+  initials/full-name false positives, surface stale decisions after evidence
+  changes, preserve compatible decisions across slug renames, and drop affected
+  decisions on identity merge.
+
 - add publication-scoped contributor correction through
   `bibreview correct DOI --author/--editor NAME --to REPLACEMENT`; stage the
   reviewed canonical replacement, preserve UUID/permalink/order/source fields,
