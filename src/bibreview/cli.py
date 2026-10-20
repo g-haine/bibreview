@@ -201,6 +201,10 @@ from .project_correction import (
     plan_project_doi_replacement,
     plan_project_relevance_correction,
 )
+from .project_contributor_correction import (
+    apply_project_contributor_correction,
+    plan_project_contributor_correction,
+)
 from .project_render import apply_project_render, plan_project_render
 from .project_review import (
     apply_project_relevance_review_decision,
@@ -564,6 +568,21 @@ def _parser() -> argparse.ArgumentParser:
             "Mark this DOI identity as superseded by NEW_DOI without changing "
             "the publication relevance decision"
         ),
+    )
+    correction_actions.add_argument(
+        "--author",
+        metavar="NAME",
+        help="Correct one exact author name in this canonical publication",
+    )
+    correction_actions.add_argument(
+        "--editor",
+        metavar="NAME",
+        help="Correct one exact editor name in this canonical publication",
+    )
+    correct.add_argument(
+        "--to",
+        metavar="NAME",
+        help="Reviewed replacement name for --author or --editor",
     )
     correct.add_argument(
         "--json",
@@ -1257,7 +1276,43 @@ def _run_author_review(config, args) -> int:
 
 
 def _run_relevance_correction(config, args) -> int:
-    """Inspect or explicitly correct one DOI relevance decision."""
+    """Inspect or explicitly correct one DOI relevance/contributor decision."""
+
+    contributor_source = args.author if args.author is not None else args.editor
+    if contributor_source is not None:
+        if args.to is None:
+            raise ProjectStateError("--to is required with --author or --editor")
+        role = "author" if args.author is not None else "editor"
+        plan = plan_project_contributor_correction(
+            config,
+            doi=args.doi,
+            role=role,
+            source=contributor_source,
+            replacement=args.to,
+        )
+        if not args.dry_run:
+            apply_project_contributor_correction(plan)
+
+        if args.json_output:
+            print(
+                json.dumps(
+                    {"dry_run": bool(args.dry_run), **plan.data()},
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+            return 0
+
+        if not args.quiet:
+            prefix = "Dry run: " if args.dry_run else ""
+            print(prefix + plan.summary())
+            print(f"Staging: {config.paths.collected}")
+            print(f"BibTeX backup: {plan.bibtex_backup}")
+            print("Canonical promotion still requires: bibreview merge")
+        return 0
+
+    if args.to is not None:
+        raise ProjectStateError("--to requires --author or --editor")
 
     state = inspect_project_relevance_correction(config, doi=args.doi)
     if args.replace_doi is not None:

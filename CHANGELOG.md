@@ -4,6 +4,12 @@ All notable BibReview releases are documented here.
 
 ## Unreleased
 
+- add publication-scoped contributor correction through
+  `bibreview correct DOI --author/--editor NAME --to REPLACEMENT`; stage the
+  reviewed canonical replacement, preserve UUID/permalink/order/source fields,
+  synchronize tracked BibTeX with backup, keep author mappings untouched, and
+  require ordinary explicit merge.
+
 - include read-only author-identity state in `bibreview init --status`, with
   concise known/unresolved, safe-auto-applicable, and manual-review counts in
   both text and JSON output, reusing the canonical author-mapping analysis.

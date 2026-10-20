@@ -1242,6 +1242,20 @@ projects lacking that evidence. When initialization is active, it reconciles
 the report without rewriting historical batch membership. `--json` provides
 the same inspection/plan data for scripts.
 
+Correct one reviewed contributor occurrence in a canonical publication without
+changing the global author identity mapping:
+
+~~~bash
+bibreview --dry-run correct DOI --author "SOURCE NAME" --to "FULL NAME"
+bibreview correct DOI --author "SOURCE NAME" --to "FULL NAME"
+bibreview merge
+~~~
+
+Use `--editor` instead of `--author` for editors. This path is offline,
+requires an exact unique contributor occurrence, stages one replacement
+publication, synchronizes tracked BibTeX with a backup, and leaves
+`author_mappings.json` untouched.
+
 ## collect
 
 Collect metadata for DOI values in the pending queue and write canonical staging
