@@ -339,6 +339,35 @@ existing `TARGET` identity and removes `SOURCE`. A rename requires a new,
 unused target slug and preserves the identity's exact variants. Both operations
 use the ordinary validated mapping layer; direct JSON editing is not required.
 
+Remove an exact mapping variant only after it has disappeared from canonical
+publication authors:
+
+~~~bash
+bibreview --config bibreview.yml --dry-run hygiene --authors \
+  --remove-author-variant SLUG "NAME"
+bibreview --config bibreview.yml hygiene --authors \
+  --remove-author-variant SLUG "NAME"
+~~~
+
+The operation refuses a still-used variant and refuses to leave an identity
+without any name.
+
+Persist a reviewed initials/full-name false positive as an explicit distinct
+identity pair:
+
+~~~bash
+bibreview --config bibreview.yml --dry-run hygiene --authors \
+  --mark-distinct SLUG_A SLUG_B
+bibreview --config bibreview.yml hygiene --authors \
+  --mark-distinct SLUG_A SLUG_B
+~~~
+
+These decisions live in `author_distinct.json`, are fingerprinted against the
+two current identities and their exact name variants, and suppress only the
+matching current initials/full-name candidate. Changed evidence invalidates the
+suppression and makes the pair visible again. The hygiene summary and JSON
+report valid reviewed-distinct and stale-decision counts separately.
+
 ### Title and reference-citation inventory
 
 Issue #97 starts with a separate **T1 read-only inventory**:
