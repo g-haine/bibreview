@@ -8,6 +8,7 @@ from pathlib import Path
 
 from .config import BibReviewConfig
 from .site import (
+    HugoRenderOptions,
     JekyllIndexRenderOptions,
     JekyllPublicationRenderOptions,
     RenderedArtifact,
@@ -15,6 +16,7 @@ from .site import (
     apply_rendered_artifacts,
     build_site_model,
     plan_rendered_artifacts,
+    render_hugo_site,
     render_jekyll_index_pages,
     render_jekyll_publication_posts,
 )
@@ -77,6 +79,19 @@ def _jekyll_publication_options(
     )
 
 
+def _hugo_options(config: BibReviewConfig) -> HugoRenderOptions:
+    policy = config.site.hugo
+    return HugoRenderOptions(
+        publication_path_prefix=policy.publication_path_prefix,
+        author_path_prefix=policy.author_path_prefix,
+        year_path_prefix=policy.year_path_prefix,
+        bibtex_asset_prefix=policy.bibtex_asset_prefix,
+        include_authorless_year_publications=(
+            policy.include_authorless_year_publications
+        ),
+    )
+
+
 def _read_bibtex(
     config: BibReviewConfig,
     publications,
@@ -118,27 +133,11 @@ def _read_bibtex(
     return by_id, orphan
 
 
-def plan_project_render(config: BibReviewConfig) -> ProjectRenderPlan:
-    """Render the configured site in memory and return a safe persistence plan."""
-    if not config.site.enabled:
-        raise ProjectRenderError("site rendering is disabled by site.enabled=false")
-    if config.site.implementation != "jekyll":
-        raise ProjectRenderError(
-            "unsupported site implementation "
-            f"{config.site.implementation!r}; expected 'jekyll'"
-        )
-    if config.site.source is None:
-        raise ProjectRenderError("site.source is required for site rendering")
-
-    document = read_bibliography_document(config.paths.bibliography)
-    author_mappings = read_json(config.paths.author_mappings, dict)
-    model = build_site_model(document.publications, author_mappings)
-    bibtex_by_id, orphan_bibtex = _read_bibtex(config, model.publications)
-
-    metadata_artifact = RenderedArtifact(
-        path="_data/bibreview/metadata.json",
+def _metadata_artifact(path: str, metadata) -> RenderedArtifact:
+    return RenderedArtifact(
+        path=path,
         content=json.dumps(
-            bibliography_metadata_data(document.metadata),
+            bibliography_metadata_data(metadata),
             ensure_ascii=False,
             indent=2,
             allow_nan=False,
@@ -146,9 +145,17 @@ def plan_project_render(config: BibReviewConfig) -> ProjectRenderPlan:
         + "\n",
     )
 
+
+def _jekyll_render_plan(
+    config: BibReviewConfig,
+    model,
+    bibtex_by_id: dict[str, str],
+    metadata,
+) -> tuple[tuple[RenderedArtifact, ...], tuple[str, ...]]:
+    policy = config.site.jekyll
     public_data_artifacts: tuple[RenderedArtifact, ...] = ()
     public_data_roots: tuple[str, ...] = ()
-    if config.site.jekyll.publish_data:
+    if policy.publish_data:
         public_data_artifacts = (
             RenderedArtifact(
                 path="assets/data/bibreview/bibliography.json",
@@ -161,7 +168,7 @@ def plan_project_render(config: BibReviewConfig) -> ProjectRenderPlan:
             *(
                 RenderedArtifact(
                     path=(
-                        f"{config.site.jekyll.bibtex_asset_prefix}/"
+                        f"{policy.bibtex_asset_prefix}/"
                         f"{publication.permalink}.bib"
                     ),
                     content=bibtex_by_id[publication.id],
@@ -171,11 +178,11 @@ def plan_project_render(config: BibReviewConfig) -> ProjectRenderPlan:
         )
         public_data_roots = (
             "assets/data/bibreview",
-            config.site.jekyll.bibtex_asset_prefix,
+            policy.bibtex_asset_prefix,
         )
 
     artifacts = (
-        metadata_artifact,
+        _metadata_artifact("_data/bibreview/metadata.json", metadata),
         *public_data_artifacts,
         *render_jekyll_publication_posts(
             model,
@@ -187,17 +194,110 @@ def plan_project_render(config: BibReviewConfig) -> ProjectRenderPlan:
             options=_jekyll_index_options(config),
         ),
     )
-    artifacts = tuple(artifacts)
+    managed_roots = (
+        "_posts",
+        "authors",
+        "years",
+        "_data/bibreview",
+        *public_data_roots,
+    )
+    return tuple(artifacts), managed_roots
+
+
+def _hugo_render_plan(
+    config: BibReviewConfig,
+    model,
+    bibtex_by_id: dict[str, str],
+    metadata,
+) -> tuple[tuple[RenderedArtifact, ...], tuple[str, ...]]:
+    policy = config.site.hugo
+    options = _hugo_options(config)
+
+    bibtex_artifacts = tuple(
+        RenderedArtifact(
+            path=(
+                f"static/{policy.bibtex_asset_prefix}/"
+                f"{publication.permalink}.bib"
+            ),
+            content=bibtex_by_id[publication.id],
+        )
+        for publication in model.publications
+    )
+
+    public_data_artifacts: tuple[RenderedArtifact, ...] = ()
+    public_data_roots: tuple[str, ...] = ()
+    if policy.publish_data:
+        public_data_artifacts = (
+            RenderedArtifact(
+                path="static/data/bibreview/bibliography.json",
+                content=config.paths.bibliography.read_text(encoding="utf-8"),
+            ),
+            RenderedArtifact(
+                path="static/data/bibreview/author_mappings.json",
+                content=config.paths.author_mappings.read_text(encoding="utf-8"),
+            ),
+        )
+        public_data_roots = ("static/data/bibreview",)
+
+    artifacts = (
+        _metadata_artifact("data/bibreview/metadata.json", metadata),
+        *bibtex_artifacts,
+        *public_data_artifacts,
+        *render_hugo_site(
+            model,
+            bibtex_by_id,
+            options=options,
+        ),
+    )
+    managed_roots = (
+        f"content/{policy.publication_path_prefix}",
+        f"content/{policy.author_path_prefix}",
+        f"content/{policy.year_path_prefix}",
+        "data/bibreview",
+        f"static/{policy.bibtex_asset_prefix}",
+        *public_data_roots,
+    )
+    return tuple(artifacts), managed_roots
+
+
+def plan_project_render(config: BibReviewConfig) -> ProjectRenderPlan:
+    """Render the configured site in memory and return a safe persistence plan."""
+    if not config.site.enabled:
+        raise ProjectRenderError("site rendering is disabled by site.enabled=false")
+    if config.site.source is None:
+        raise ProjectRenderError("site.source is required for site rendering")
+
+    implementation = config.site.implementation
+    if implementation not in {"jekyll", "hugo"}:
+        raise ProjectRenderError(
+            "unsupported site implementation "
+            f"{implementation!r}; expected 'jekyll' or 'hugo'"
+        )
+
+    document = read_bibliography_document(config.paths.bibliography)
+    author_mappings = read_json(config.paths.author_mappings, dict)
+    model = build_site_model(document.publications, author_mappings)
+    bibtex_by_id, orphan_bibtex = _read_bibtex(config, model.publications)
+
+    if implementation == "jekyll":
+        artifacts, managed_roots = _jekyll_render_plan(
+            config,
+            model,
+            bibtex_by_id,
+            document.metadata,
+        )
+    else:
+        artifacts, managed_roots = _hugo_render_plan(
+            config,
+            model,
+            bibtex_by_id,
+            document.metadata,
+        )
+
     persistence = plan_rendered_artifacts(
         config.site.source,
         artifacts,
-        managed_roots=(
-            "_posts",
-            "authors",
-            "years",
-            "_data/bibreview",
-            *public_data_roots,
-        ),
+        managed_roots=managed_roots,
     )
     return ProjectRenderPlan(
         artifacts=artifacts,
