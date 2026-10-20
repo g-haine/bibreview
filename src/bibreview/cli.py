@@ -102,8 +102,12 @@ from .project_contributor_hygiene import (
     project_contributor_hygiene_review,
 )
 from .project_identity_hygiene import (
+    apply_project_author_distinct,
     apply_project_author_identity_mutation,
+    apply_project_author_variant_removal,
+    plan_project_author_distinct,
     plan_project_author_identity_mutation,
+    plan_project_author_variant_removal,
     project_author_identity_hygiene,
     project_bibtex_contributor_hygiene,
 )
@@ -378,6 +382,18 @@ def _parser() -> argparse.ArgumentParser:
         nargs=2,
         metavar=("SOURCE", "TARGET"),
         help="Rename an existing author identity slug from SOURCE to TARGET",
+    )
+    hygiene_actions.add_argument(
+        "--remove-author-variant",
+        nargs=2,
+        metavar=("SLUG", "NAME"),
+        help="Remove one exact unused author name variant from SLUG",
+    )
+    hygiene_actions.add_argument(
+        "--mark-distinct",
+        nargs=2,
+        metavar=("LEFT", "RIGHT"),
+        help="Record that one initials/full-name candidate pair is reviewed and distinct",
     )
     hygiene.add_argument(
         "--json",
@@ -2205,41 +2221,75 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "hygiene":
-        if args.merge_author or args.rename_author:
+        author_mutation = (
+            args.merge_author
+            or args.rename_author
+            or args.remove_author_variant
+            or args.mark_distinct
+        )
+        if author_mutation:
             if not args.authors:
                 print(
-                    "bibreview hygiene: --merge-author/--rename-author require --authors",
+                    "bibreview hygiene: author identity mutations require --authors",
                     file=sys.stderr,
                 )
                 return 1
-            operation = "merge" if args.merge_author else "rename"
-            source_slug, target_slug = args.merge_author or args.rename_author
             try:
-                plan = plan_project_author_identity_mutation(
-                    config,
-                    operation=operation,
-                    source_slug=source_slug,
-                    target_slug=target_slug,
-                )
-                if not args.dry_run:
-                    apply_project_author_identity_mutation(plan)
-            except (OSError, StorageError, ValueError, TypeError) as error:
+                if args.remove_author_variant:
+                    slug, variant = args.remove_author_variant
+                    plan = plan_project_author_variant_removal(
+                        config,
+                        slug=slug,
+                        variant=variant,
+                    )
+                    if not args.dry_run:
+                        apply_project_author_variant_removal(plan)
+                    payload = {
+                        "dry_run": bool(args.dry_run),
+                        "operation": "remove-author-variant",
+                        "slug": plan.slug,
+                        "variant": plan.variant,
+                        "changed": plan.changed,
+                    }
+                elif args.mark_distinct:
+                    left_slug, right_slug = args.mark_distinct
+                    plan = plan_project_author_distinct(
+                        config,
+                        left_slug=left_slug,
+                        right_slug=right_slug,
+                    )
+                    if not args.dry_run:
+                        apply_project_author_distinct(plan)
+                    payload = {
+                        "dry_run": bool(args.dry_run),
+                        "operation": "mark-distinct",
+                        "left_slug": plan.left_slug,
+                        "right_slug": plan.right_slug,
+                        "changed": plan.changed,
+                    }
+                else:
+                    operation = "merge" if args.merge_author else "rename"
+                    source_slug, target_slug = args.merge_author or args.rename_author
+                    plan = plan_project_author_identity_mutation(
+                        config,
+                        operation=operation,
+                        source_slug=source_slug,
+                        target_slug=target_slug,
+                    )
+                    if not args.dry_run:
+                        apply_project_author_identity_mutation(plan)
+                    payload = {
+                        "dry_run": bool(args.dry_run),
+                        "operation": plan.operation,
+                        "source_slug": plan.source_slug,
+                        "target_slug": plan.target_slug,
+                        "changed": plan.changed,
+                    }
+            except (OSError, StorageError, ProjectStateError, ValueError, TypeError) as error:
                 print(f"bibreview hygiene: {error}", file=sys.stderr)
                 return 1
             if args.json_output:
-                print(
-                    json.dumps(
-                        {
-                            "dry_run": bool(args.dry_run),
-                            "operation": plan.operation,
-                            "source_slug": plan.source_slug,
-                            "target_slug": plan.target_slug,
-                            "changed": plan.changed,
-                        },
-                        ensure_ascii=False,
-                        indent=2,
-                    )
-                )
+                print(json.dumps(payload, ensure_ascii=False, indent=2))
             elif not args.quiet:
                 prefix = "Dry run: " if args.dry_run else ""
                 print(prefix + plan.summary())
