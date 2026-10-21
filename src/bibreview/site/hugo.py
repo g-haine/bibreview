@@ -74,6 +74,13 @@ def _render_lines(lines: list[str]) -> str:
     return "\n".join(lines).rstrip("\n") + "\n"
 
 
+def _metadata_line(label: str, value: str) -> str:
+    """Render a Markdown metadata item without trailing whitespace."""
+    rendered = _hugo_text(value)
+    suffix = f" {rendered}" if rendered else ""
+    return f"- **{label}:**{suffix}"
+
+
 def _publication_names(publication: SitePublication) -> str:
     if publication.authors:
         return ", ".join(author.name for author in publication.authors)
@@ -170,7 +177,7 @@ def _render_publication(
 
     lines.append("## Citation")
     if publication.type in {"book", "monograph"}:
-        lines.append(f"- **ISBN:** {publication.identifiers.get('isbn', '')}")
+        lines.append(_metadata_line("ISBN", publication.identifiers.get("isbn", "")))
     else:
         for label, value in (
             ("Journal", publication.container_title),
@@ -179,8 +186,8 @@ def _render_publication(
             ("Issue", publication.issue),
             ("Pages", publication.pages),
         ):
-            lines.append(f"- **{label}:** {_hugo_text(str(value))}")
-    lines.append(f"- **Publisher:** {_hugo_text(publication.publisher)}")
+            lines.append(_metadata_line(label, str(value)))
+    lines.append(_metadata_line("Publisher", publication.publisher))
     doi = publication.identifiers.get("doi")
     if doi:
         lines.append(f"- **DOI:** [{doi}](https://doi.org/{doi})")

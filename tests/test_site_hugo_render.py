@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date
 import unittest
 
@@ -141,6 +142,27 @@ class HugoRendererTests(unittest.TestCase):
             "[2025](./2025/) (1)",
             artifacts["content/years/_index.md"],
         )
+
+    def test_empty_publication_metadata_has_no_trailing_whitespace(self) -> None:
+        original = self.model()
+        publication = replace(
+            original.publications[0],
+            container_title="",
+            volume="",
+            issue="",
+            pages="",
+            publisher="",
+        )
+        model = replace(original, publications=(publication,))
+        rendered = render_hugo_site(
+            model,
+            {"pub-id": "@article{example}\n"},
+        )
+        artifacts = {item.path: item.content for item in rendered}
+        content = artifacts["content/publications/example-publication.md"]
+
+        for line in content.splitlines():
+            self.assertEqual(line, line.rstrip())
 
     def test_markdown_artifacts_have_exactly_one_trailing_newline(self) -> None:
         artifacts = self.artifacts()
