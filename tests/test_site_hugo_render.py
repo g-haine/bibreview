@@ -142,6 +142,13 @@ class HugoRendererTests(unittest.TestCase):
             artifacts["content/years/_index.md"],
         )
 
+    def test_markdown_artifacts_have_exactly_one_trailing_newline(self) -> None:
+        artifacts = self.artifacts()
+        for artifact_path, content in artifacts.items():
+            with self.subTest(path=artifact_path):
+                self.assertTrue(content.endswith("\n"))
+                self.assertFalse(content.endswith("\n\n"))
+
     def test_custom_section_and_asset_prefixes_are_used(self) -> None:
         artifacts = self.artifacts(
             options=HugoRenderOptions(

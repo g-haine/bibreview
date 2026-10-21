@@ -69,6 +69,11 @@ def _hugo_text(value: str) -> str:
     return value.replace("{{<", "&#123;&#123;&lt;").replace("{{%", "&#123;&#123;%")
 
 
+def _render_lines(lines: list[str]) -> str:
+    """Render Markdown lines with exactly one trailing newline."""
+    return "\n".join(lines).rstrip("\n") + "\n"
+
+
 def _publication_names(publication: SitePublication) -> str:
     if publication.authors:
         return ", ".join(author.name for author in publication.authors)
@@ -217,7 +222,7 @@ def _render_publication(
             f"content/{options.publication_path_prefix}/"
             f"{publication.permalink}.md"
         ),
-        content="\n".join(lines) + "\n",
+        content=_render_lines(lines),
     )
 
 
@@ -269,14 +274,14 @@ def _render_author_pages(
         artifacts.append(
             RenderedArtifact(
                 path=f"content/{options.author_path_prefix}/{page.author.slug}.md",
-                content="\n".join(body) + "\n",
+                content=_render_lines(body),
             )
         )
     index_lines.append("")
     artifacts.append(
         RenderedArtifact(
             path=f"content/{options.author_path_prefix}/_index.md",
-            content="\n".join(index_lines) + "\n",
+            content=_render_lines(index_lines),
         )
     )
     return tuple(artifacts)
@@ -316,7 +321,7 @@ def _render_year_pages(
         artifacts.append(
             RenderedArtifact(
                 path=f"content/{options.year_path_prefix}/{year}.md",
-                content="\n".join(body) + "\n",
+                content=_render_lines(body),
             )
         )
 
@@ -324,7 +329,7 @@ def _render_year_pages(
     artifacts.append(
         RenderedArtifact(
             path=f"content/{options.year_path_prefix}/_index.md",
-            content="\n".join(index_lines) + "\n",
+            content=_render_lines(index_lines),
         )
     )
     return tuple(artifacts)
