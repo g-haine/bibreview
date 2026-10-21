@@ -52,6 +52,26 @@ site:
 """
 
 
+HUGO_CONFIG = """\
+schema_version: 1
+project:
+  name: Example Review
+  slug: example-review
+paths:
+  bibliography: data/bibliography.json
+  author_mappings: data/author_mappings.json
+  bibtex: bib
+  site: site
+site:
+  enabled: true
+  implementation: hugo
+  source: site
+  hugo:
+    publish_data: true
+    include_authorless_year_publications: false
+"""
+
+
 class ProjectRenderTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -270,6 +290,78 @@ class ProjectRenderTests(unittest.TestCase):
 
         final = plan_project_render(self.config)
         self.assertFalse(final.changed)
+
+    def test_plan_and_apply_complete_hugo_site(self):
+        self.config_path.write_text(HUGO_CONFIG, encoding="utf-8")
+        config = load_config(self.config_path)
+        site = config.site.source
+        self.assertIsNotNone(site)
+        assert site is not None
+
+        obsolete_publication = site / "content/publications/obsolete.md"
+        obsolete_publication.parent.mkdir(parents=True, exist_ok=True)
+        obsolete_publication.write_text("obsolete", encoding="utf-8")
+        obsolete_public_data = site / "static/data/bibreview/obsolete.json"
+        obsolete_public_data.parent.mkdir(parents=True, exist_ok=True)
+        obsolete_public_data.write_text("{}\n", encoding="utf-8")
+        obsolete_bibtex = site / "static/bib/obsolete.bib"
+        obsolete_bibtex.parent.mkdir(parents=True, exist_ok=True)
+        obsolete_bibtex.write_text("@misc{obsolete}\n", encoding="utf-8")
+        manual = site / "manual.md"
+        manual.write_text("manual", encoding="utf-8")
+
+        plan = plan_project_render(config)
+
+        self.assertTrue(plan.changed)
+        self.assertEqual(plan.persistence.expected_count, 9)
+        self.assertIn(obsolete_publication, plan.persistence.deletes)
+        self.assertIn(obsolete_public_data, plan.persistence.deletes)
+        self.assertIn(obsolete_bibtex, plan.persistence.deletes)
+
+        apply_project_render(plan)
+
+        self.assertTrue(
+            (
+                site
+                / "content/publications/fluid-structure-example.md"
+            ).is_file()
+        )
+        self.assertTrue((site / "content/authors/ada-lovelace.md").is_file())
+        self.assertTrue((site / "content/authors/_index.md").is_file())
+        self.assertTrue((site / "content/years/2026.md").is_file())
+        self.assertTrue((site / "content/years/_index.md").is_file())
+        self.assertEqual(
+            (site / "data/bibreview/metadata.json").read_text(
+                encoding="utf-8"
+            ),
+            '{\n  "schema_version": 2,\n  "last_update": "2026-09-11"\n}\n',
+        )
+        self.assertEqual(
+            (site / "static/data/bibreview/bibliography.json").read_text(
+                encoding="utf-8"
+            ),
+            config.paths.bibliography.read_text(encoding="utf-8"),
+        )
+        self.assertEqual(
+            (site / "static/data/bibreview/author_mappings.json").read_text(
+                encoding="utf-8"
+            ),
+            config.paths.author_mappings.read_text(encoding="utf-8"),
+        )
+        self.assertEqual(
+            (site / "static/bib/fluid-structure-example.bib").read_text(
+                encoding="utf-8"
+            ),
+            "@article{example}\n",
+        )
+        self.assertFalse(obsolete_publication.exists())
+        self.assertFalse(obsolete_public_data.exists())
+        self.assertFalse(obsolete_bibtex.exists())
+        self.assertEqual(manual.read_text(), "manual")
+
+        final = plan_project_render(config)
+        self.assertFalse(final.changed)
+        self.assertEqual(final.persistence.unchanged_count, 9)
 
     def test_disabled_site_is_rejected(self):
         self.config_path.write_text(

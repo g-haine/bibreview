@@ -1,5 +1,6 @@
 """Static-site transformation, rendering, and persistence primitives."""
 
+from .hugo import HugoRenderOptions, render_hugo_site
 from .persist import (
     SitePersistenceError,
     SitePersistencePlan,
@@ -29,6 +30,7 @@ from .transform import (
 )
 
 __all__ = [
+    "HugoRenderOptions",
     "JekyllIndexRenderOptions",
     "JekyllPublicationRenderOptions",
     "RenderedArtifact",
@@ -47,6 +49,7 @@ __all__ = [
     "apply_rendered_artifacts",
     "build_site_model",
     "plan_rendered_artifacts",
+    "render_hugo_site",
     "render_jekyll_index_pages",
     "render_jekyll_publication_posts",
     "site_model_data",

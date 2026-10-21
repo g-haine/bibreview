@@ -158,3 +158,15 @@ site:
       - book
       - monograph
     include_authorless_year_publications: true
+
+  # Hugo renderer configuration. This block is ignored while
+  # site.implementation is "jekyll".
+  hugo:
+    publication_path_prefix: publications
+    author_path_prefix: authors
+    year_path_prefix: years
+    bibtex_asset_prefix: bib
+    # Optional public snapshots generated from canonical project data.
+    # When enabled, render owns site/static/data/bibreview/.
+    publish_data: false
+    include_authorless_year_publications: true

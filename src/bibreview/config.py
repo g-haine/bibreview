@@ -307,6 +307,18 @@ class JekyllSiteConfig:
 
 
 @dataclass(frozen=True)
+class HugoSiteConfig:
+    """Project-specific path policy for BibReview's Hugo renderer."""
+
+    publication_path_prefix: str = "publications"
+    author_path_prefix: str = "authors"
+    year_path_prefix: str = "years"
+    bibtex_asset_prefix: str = "bib"
+    publish_data: bool = False
+    include_authorless_year_publications: bool = True
+
+
+@dataclass(frozen=True)
 class SiteConfig:
     enabled: bool = True
     implementation: str = "jekyll"
@@ -317,6 +329,7 @@ class SiteConfig:
     search: bool = True
     branding: SiteBrandingConfig = SiteBrandingConfig()
     jekyll: JekyllSiteConfig = field(default_factory=JekyllSiteConfig)
+    hugo: HugoSiteConfig = field(default_factory=HugoSiteConfig)
 
 
 @dataclass(frozen=True)
@@ -696,6 +709,7 @@ def load_config(path: str | Path = "bibreview.yml") -> BibReviewConfig:
     site_raw = _mapping(raw.get("site"), "site")
     branding_raw = _mapping(site_raw.get("branding"), "site.branding")
     jekyll_raw = _mapping(site_raw.get("jekyll"), "site.jekyll")
+    hugo_raw = _mapping(site_raw.get("hugo"), "site.hugo")
     site = SiteConfig(
         enabled=_boolean(site_raw.get("enabled"), "site.enabled", True),
         implementation=_string(site_raw.get("implementation"), "site.implementation") or "jekyll",
@@ -770,6 +784,38 @@ def load_config(path: str | Path = "bibreview.yml") -> BibReviewConfig:
                 jekyll_raw.get("tag_delimiter"),
                 "site.jekyll.tag_delimiter",
                 ";",
+            ),
+        ),
+        hugo=HugoSiteConfig(
+            publication_path_prefix=_string(
+                hugo_raw.get("publication_path_prefix"),
+                "site.hugo.publication_path_prefix",
+            )
+            or "publications",
+            author_path_prefix=_string(
+                hugo_raw.get("author_path_prefix"),
+                "site.hugo.author_path_prefix",
+            )
+            or "authors",
+            year_path_prefix=_string(
+                hugo_raw.get("year_path_prefix"),
+                "site.hugo.year_path_prefix",
+            )
+            or "years",
+            bibtex_asset_prefix=_string(
+                hugo_raw.get("bibtex_asset_prefix"),
+                "site.hugo.bibtex_asset_prefix",
+            )
+            or "bib",
+            publish_data=_boolean(
+                hugo_raw.get("publish_data"),
+                "site.hugo.publish_data",
+                False,
+            ),
+            include_authorless_year_publications=_boolean(
+                hugo_raw.get("include_authorless_year_publications"),
+                "site.hugo.include_authorless_year_publications",
+                True,
             ),
         ),
     )

@@ -1705,14 +1705,28 @@ only `author_mappings.json`. See [Author identities](authors.md).
 
 ## render
 
-Render/reconcile Jekyll publication posts, author pages and year pages:
+Render/reconcile bibliographic site artifacts using the backend selected by
+`site.implementation`:
 
 ~~~bash
 bibreview --config bibreview.yml render
 ~~~
 
-Rendering performs no provider lookup. Every publication must have its tracked
-BibTeX file; missing BibTeX is reported as an error.
+Supported implementations are **Jekyll** and **Hugo**.
+
+Use the global dry-run flag to inspect the reconciliation plan without writing:
+
+~~~bash
+bibreview --config bibreview.yml --dry-run render
+~~~
+
+Rendering performs no provider lookup and never changes canonical bibliography
+state. Every publication must have its tracked BibTeX file; missing BibTeX is
+reported as an error.
+
+The renderer owns only its documented generated roots. Theme/layout files,
+CSS, navigation, search integration, category landing pages, analytics, and
+deployment remain project-owned.
 
 ## arxiv
 

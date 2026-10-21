@@ -50,14 +50,15 @@ canonical bibliography
 
 ## Publishing a site
 
-BibReview can render bibliographic data into an existing Jekyll project.
+BibReview can render bibliographic data into an existing Jekyll or Hugo project.
 
 - [GitHub Pages](github-pages.md) — rendering, GitHub Actions, Pages deployment,
   and scheduled arXiv refresh.
 - [GoatCounter](goatcounter.md) — optional lightweight analytics guidance.
 
-Jekyll presentation remains project-owned: BibReview generates bibliographic
-artifacts but does not own themes, CSS, navigation, or deployment policy.
+Presentation remains project-owned: BibReview generates bibliographic
+artifacts for Jekyll or Hugo but does not own themes, layouts, CSS, navigation,
+search integration, or deployment policy.
 
 ## Understanding the project
 

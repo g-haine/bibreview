@@ -13,7 +13,10 @@ Install:
 - Git;
 - Python 3.12 or newer;
 - a terminal;
-- optionally Ruby/Bundler if you also want to preview a Jekyll site locally.
+- optionally Ruby/Bundler to preview a Jekyll site locally;
+- optionally Hugo to preview a Hugo site locally;
+- optionally a current Node.js runtime if the host project builds a Pagefind
+  search index or other Node-based presentation assets.
 
 Check Python with:
 
