@@ -773,15 +773,23 @@ Keep the archive under version control only if that matches your project's
 retention policy; otherwise ensure you still have reliable Git history or an
 external backup.
 
-## Generated Jekyll data
+## Generated site data
 
-**bibreview render** owns only the generated roots used by its Jekyll renderer,
-not the whole site. It reconciles publication posts, author pages, year pages
-and BibReview metadata used by the site.
+**bibreview render** owns only the generated roots used by the selected site
+renderer, not the whole presentation site. It reconciles publication pages,
+author pages, year pages, BibReview metadata, and tracked BibTeX presentation
+artifacts.
+
+### Jekyll
+
+The Jekyll renderer generates publication posts plus author and year pages
+under its configured paths.
 
 When `site.jekyll.publish_data` is enabled, render additionally owns
 `assets/data/bibreview/` below the site root and publishes exact text snapshots
-of the canonical bibliography and reviewed author mappings there:
+of the canonical bibliography and reviewed author mappings there.
+
+Typical generated Jekyll artifacts include:
 
 ~~~text
 site/assets/data/bibreview/bibliography.json
@@ -789,16 +797,37 @@ site/assets/data/bibreview/author_mappings.json
 site/assets/bib/<publication-permalink>.bib
 ~~~
 
-The authoritative files remain under the configured project-state paths, normally
-`data/bibliography.json`, `data/author_mappings.json`, and `bib/*.bib`. The
-copies below the site root are disposable generated artifacts and must never
-become merge inputs.
+### Hugo
+
+The Hugo renderer generates Markdown content under its configured prefixes,
+normally:
+
+~~~text
+site/content/publications/
+site/content/authors/
+site/content/years/
+site/data/bibreview/metadata.json
+site/static/bib/<publication-permalink>.bib
+~~~
+
+When `site.hugo.publish_data` is enabled, render additionally owns:
+
+~~~text
+site/static/data/bibreview/bibliography.json
+site/static/data/bibreview/author_mappings.json
+~~~
+
+The authoritative files remain under the configured project-state paths,
+normally `data/bibliography.json`, `data/author_mappings.json`, and `bib/*.bib`.
+Copies below the site root are disposable generated presentation artifacts and
+must never become merge inputs.
 
 The renderer receives editors through the renderer-independent site model. It
 may label editor-only rows explicitly (for example **Ed.** or **Eds.**) and
 render a dedicated **Editors** section.
 
-Themes, layouts, CSS, hand-written pages, analytics and deployment remain
-project-owned. BibReview therefore does not need a second project-specific
-"Jekyll template" module: the existing site-model/renderer boundary is the
-extension point.
+Themes, layouts, CSS, hand-written pages, category landing pages, search
+integration, analytics, and deployment remain project-owned. The
+renderer-independent site-model boundary is the extension point for supporting
+multiple presentation backends without coupling canonical bibliography state to
+Jekyll, Hugo, or a particular theme.

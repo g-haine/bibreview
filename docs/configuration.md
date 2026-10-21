@@ -507,6 +507,15 @@ does not change the bibliography update date.
 
 ## Site rendering
 
+BibReview supports both **Jekyll** and **Hugo** renderers. Select the backend
+with `site.implementation`.
+
+Rendering is deliberately limited to bibliographic artifacts. Themes, layouts,
+CSS, navigation, search integration, category pages, analytics, and deployment
+remain owned by the host project.
+
+### Jekyll
+
 ~~~yaml
 site:
   enabled: true
@@ -531,20 +540,66 @@ site:
 
 `include_authorless_year_publications` is retained for compatibility with
 existing project configurations. In canonical bibliography schema version 2,
-a valid publication always has at least one author or editor; editor-only publications
-are therefore rendered even when this option is `false`.
+a valid publication always has at least one author or editor; editor-only
+publications are therefore rendered even when this option is `false`.
 
-**bibreview render** owns generated publication posts, author pages and year
-pages. It does not own your Jekyll theme, layouts, CSS, deployment or analytics.
+For Jekyll, **bibreview render** owns the generated publication posts, author
+pages, year pages and tracked BibTeX presentation artifacts.
 
 When `site.jekyll.publish_data: true`, render also owns the dedicated
 `assets/data/bibreview/` subtree below the configured site source and publishes
 read-only snapshots of the canonical `bibliography.json` and
-`author_mappings.json`, and also publishes the tracked BibTeX sources under
-the configured `site.jekyll.bibtex_asset_prefix` (default: `assets/bib`).
-These files are generated presentation artifacts, not canonical state. Other
-site data such as `assets/data/arxiv.json` remains outside those managed
-subtrees.
+`author_mappings.json`.
+
+Tracked BibTeX files are published below
+`site.jekyll.bibtex_asset_prefix`, which defaults to `assets/bib`.
+
+### Hugo
+
+~~~yaml
+site:
+  enabled: true
+  implementation: hugo
+  source: site
+  hugo:
+    publication_path_prefix: publications
+    author_path_prefix: authors
+    year_path_prefix: years
+    bibtex_asset_prefix: bib
+    publish_data: false
+    include_authorless_year_publications: true
+~~~
+
+The Hugo renderer generates Markdown content under:
+
+- `content/<publication_path_prefix>/`;
+- `content/<author_path_prefix>/`;
+- `content/<year_path_prefix>/`.
+
+It also generates `data/bibreview/metadata.json` and publishes the tracked
+BibTeX files below `static/<bibtex_asset_prefix>/`.
+
+When `site.hugo.publish_data: true`, BibReview additionally publishes
+read-only canonical snapshots under `static/data/bibreview/`:
+
+- `bibliography.json`;
+- `author_mappings.json`.
+
+The generated Markdown contains only bibliographic content and front matter.
+BibReview does **not** generate a Hugo theme, layouts, CSS, navigation, search
+UI, category pages, or deployment workflow. Those remain project presentation
+policy.
+
+This separation is intentional: the renderer consumes the same
+renderer-independent site model used by Jekyll, while each project remains free
+to choose its own presentation layer.
+
+All generated Hugo links between BibReview-managed pages are relative, so the
+same content works for a root site or a GitHub Pages project site deployed under
+a subpath.
+
+For both backends, generated public data and site artifacts are presentation
+outputs, not canonical bibliography state.
 
 Continue with [Local workflow](workflow.md) and
 [GitHub Pages](github-pages.md).

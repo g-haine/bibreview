@@ -1,7 +1,7 @@
-# GitHub Pages with BibReview and Jekyll
+# GitHub Pages with BibReview
 
-BibReview renders bibliographic content into an existing Jekyll site. It does
-not impose a theme or deploy the site for you.
+BibReview renders bibliographic content into an existing **Jekyll or Hugo**
+site. It does not impose a theme or deploy the site for you.
 
 A typical repository looks like this:
 
@@ -28,8 +28,9 @@ site/
   workflows/
 ~~~
 
-Generated publication posts, author pages and year pages are created under the
-configured site source by **bibreview render**.
+Generated publication, author and year artifacts are created under the
+configured site source by **bibreview render**. The exact generated paths depend
+on the selected renderer.
 
 ## 1. Configure BibReview
 
@@ -59,7 +60,24 @@ site:
 Add your discovery, relevance, provider and rendering policies as described in
 [Configuration](configuration.md).
 
-## 2. Create the Jekyll site
+For a Hugo project, the equivalent renderer selection is:
+
+~~~yaml
+site:
+  enabled: true
+  implementation: hugo
+  source: site
+  hugo:
+    publication_path_prefix: publications
+    author_path_prefix: authors
+    year_path_prefix: years
+    bibtex_asset_prefix: bib
+    publish_data: true
+~~~
+
+## 2. Create the presentation site
+
+### Jekyll
 
 A minimal Gemfile may start with:
 
@@ -99,7 +117,31 @@ defaults:
 Adapt the theme, layouts, navigation and CSS to your project. BibReview only
 owns the bibliographic generated artifacts.
 
-## 3. Complete the small Jekyll contract
+### Hugo
+
+Create a Hugo site below the configured source path, for example:
+
+~~~bash
+hugo new site site --format yaml
+~~~
+
+A minimal `site/hugo.yaml` for a GitHub Pages project site may contain:
+
+~~~yaml
+baseURL: https://USERNAME.github.io/REPOSITORY/
+locale: en-us
+title: My Literature Review
+~~~
+
+The project supplies its own Hugo layouts, CSS, navigation and optional search
+integration. BibReview generates bibliographic content and data but deliberately
+does not choose a Hugo theme.
+
+Do not commit `site/public/`; Hugo recreates it during the build.
+
+## 3. Complete the presentation contract
+
+### Jekyll
 
 BibReview renders publication posts plus author/year index pages. Your Jekyll
 site still owns layouts, category landing pages and shared includes.
@@ -140,6 +182,16 @@ permalink: /categories/articles
 Your theme must provide the corresponding **category** layout, or you may choose
 another category-page implementation.
 
+### Hugo
+
+BibReview generates publication Markdown plus author and year content under the
+configured Hugo prefixes. The Hugo project must provide layouts capable of
+rendering those sections and regular publication pages.
+
+Category landing pages remain project-owned. A project may derive categories
+from the generated `publication_type` front matter without changing canonical
+bibliographic state.
+
 ## 4. Render and preview locally
 
 From the repository root:
@@ -148,7 +200,7 @@ From the repository root:
 bibreview --config bibreview.yml render
 ~~~
 
-Then:
+### Jekyll
 
 ~~~bash
 cd site
@@ -157,6 +209,26 @@ bundle exec jekyll serve
 ~~~
 
 Open the local URL printed by Jekyll.
+
+### Hugo
+
+Build the production tree with:
+
+~~~bash
+hugo --source site --minify
+~~~
+
+Preview locally with:
+
+~~~bash
+hugo server --source site
+~~~
+
+Open the local URL printed by Hugo.
+
+If the host project uses Pagefind or another search/indexing tool, run that
+project-owned build step **after** Hugo has produced `site/public/`. BibReview
+does not install or configure Pagefind itself.
 
 ## 5. Enable GitHub Pages
 
@@ -170,7 +242,9 @@ GitHub's current custom-workflow documentation is:
 
 ## 6. Build and deploy with GitHub Actions
 
-Create .github/workflows/pages.yml:
+### Jekyll
+
+Create `.github/workflows/pages.yml`:
 
 ~~~yaml
 name: Deploy Pages
@@ -218,13 +292,13 @@ jobs:
           bundler-cache: true
 
       - name: Configure Pages
-        uses: actions/configure-pages@v5
+        uses: actions/configure-pages@v6
 
       - name: Build Jekyll
         run: bundle exec jekyll build --source site --destination site/_site
 
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v4
+        uses: actions/upload-pages-artifact@v5
         with:
           path: site/_site
 
@@ -236,18 +310,101 @@ jobs:
 
     steps:
       - name: Deploy Pages
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
 ~~~
 
-The example above pins BibReview to **v1.7.2**. Keep an exact release tag or
+### Hugo
+
+A minimal Hugo workflow follows the same BibReview-first boundary:
+
+~~~yaml
+name: Deploy Pages
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+
+env:
+  HUGO_VERSION: "0.168.0"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out project
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install pinned BibReview
+        run: python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.7.2"
+
+      - name: Reconcile generated bibliography artifacts
+        run: bibreview --config bibreview.yml render
+
+      - name: Configure Pages
+        id: pages
+        uses: actions/configure-pages@v6
+
+      - name: Install Hugo
+        run: |
+          curl -sfL --output-dir "${{ runner.temp }}" \
+            -O "https://github.com/gohugoio/hugo/releases/download/v${HUGO_VERSION}/hugo_${HUGO_VERSION}_linux-amd64.tar.gz"
+          mkdir -p "${HOME}/.local/hugo"
+          tar -C "${HOME}/.local/hugo" \
+            -xf "${{ runner.temp }}/hugo_${HUGO_VERSION}_linux-amd64.tar.gz"
+          echo "${HOME}/.local/hugo" >> "${GITHUB_PATH}"
+
+      - name: Build Hugo
+        run: |
+          hugo --source site \
+            --gc \
+            --minify \
+            --baseURL "${{ steps.pages.outputs.base_url }}/"
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: site/public
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
+~~~
+
+Projects that use Pagefind should add their Node setup and Pagefind indexing
+step after **Build Hugo** and before **Upload Pages artifact**.
+
+The examples above pin BibReview to **v1.7.2**. Keep an exact release tag or
 commit pin for reproducibility, and update it deliberately when adopting a newer
 BibReview release.
 
-GitHub's current Pages documentation uses configure-pages v5,
-upload-pages-artifact v4 and deploy-pages v4 for custom Pages workflows.
-checkout/setup-python are shown here at their current major versions. Recheck
-the official documentation when you create or substantially update the
-deployment workflow.
+GitHub Pages deployment action majors evolve independently from BibReview.
+Recheck the official GitHub Pages and Hugo deployment documentation when you
+create or substantially update a deployment workflow.
 
 ## 7. Schedule the optional arXiv cache
 
@@ -364,6 +521,7 @@ See [GoatCounter analytics](goatcounter.md).
 
 ## 11. Showcase
 
-PHRAISE is a public BibReview-powered Jekyll site and can be used as an
-integration reference. Project-specific content and policy remain outside the
-BibReview engine.
+PHRAISE is the public BibReview-powered **Jekyll** integration reference.
+of.FSI.der is the **Hugo** integration demonstrator used to validate the Hugo
+renderer and GitHub Pages workflow. Project-specific content and presentation
+policy remain outside the BibReview engine.
