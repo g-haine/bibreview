@@ -160,7 +160,7 @@ bibreview collect
 bibreview --dry-run merge
 bibreview merge
 
-# Only for still-pending DOI records with unusable contributors,
+# Only for still-pending DOI records with structurally invalid contributors,
 # after the previous merge has emptied staging:
 bibreview --dry-run repair
 bibreview repair
@@ -177,8 +177,9 @@ bibreview render
 `merge` is the explicit promotion boundary into the canonical bibliography.
 
 `repair` is a narrow human-reviewed recovery path for pending DOI metadata that
-was retrieved successfully but cannot pass canonical validation because it has
-no usable author or editor. It does not replace `collect`, does not edit
+was retrieved successfully but cannot pass canonical contributor validation:
+missing usable author/editor information or a mixed person/institution list.
+It does not replace `collect`, does not edit
 provider evidence, and does not promote anything directly into the
 canonical bibliography. Run it only when staging is empty (merge any
 already-collected changes first). Repaired records are staged through the
