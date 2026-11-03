@@ -280,7 +280,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install pinned BibReview
-        run: python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.7.2"
+        run: python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.7.3"
 
       - name: Render bibliography
         run: bibreview --config bibreview.yml render
@@ -352,7 +352,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install pinned BibReview
-        run: python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.7.2"
+        run: python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.7.3"
 
       - name: Reconcile generated bibliography artifacts
         run: bibreview --config bibreview.yml render
@@ -398,7 +398,7 @@ jobs:
 Projects that use Pagefind should add their Node setup and Pagefind indexing
 step after **Build Hugo** and before **Upload Pages artifact**.
 
-The examples above pin BibReview to **v1.7.2**. Keep an exact release tag or
+The examples above pin BibReview to **v1.7.3**. Keep an exact release tag or
 commit pin for reproducibility, and update it deliberately when adopting a newer
 BibReview release.
 
@@ -446,7 +446,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install pinned BibReview
-        run: python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.7.2"
+        run: python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.7.3"
 
       - name: Refresh arXiv cache
         run: bibreview --config bibreview.yml arxiv
