@@ -742,6 +742,30 @@ class AuditCliTests(unittest.TestCase):
         self.assertFalse(self.config.audit.campaign.exists())
         self.assertFalse(self.config.audit.report.exists())
 
+    def test_dry_run_text_renders_audit_plan_without_discovery_state(self):
+        before = self.snapshot()
+        stdout = StringIO()
+        stderr = StringIO()
+
+        with patch("bibreview.cli.build_audit_services") as services, redirect_stdout(
+            stdout
+        ), redirect_stderr(stderr):
+            code = main([
+                "--config",
+                str(self.config_path),
+                "--dry-run",
+                "audit",
+                "--batch-size",
+                "1",
+            ])
+
+        self.assertEqual(code, 0, stderr.getvalue())
+        services.assert_not_called()
+        self.assertIn("Dry run:", stdout.getvalue())
+        self.assertIn("Would audit 1 publication(s)", stdout.getvalue())
+        self.assertNotIn("OpenAlex discovery:", stdout.getvalue())
+        self.assertEqual(before, self.snapshot())
+
     def test_audit_processes_one_batch_and_reports_completion(self):
         source = FakeAuditSource()
         stdout = StringIO()
