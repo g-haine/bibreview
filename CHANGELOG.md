@@ -4,6 +4,33 @@ All notable BibReview releases are documented here.
 
 ## Unreleased
 
+## 1.7.3 — 2026-11-03
+
+This release includes the features merged after v1.7.2 and fixes a regression
+discovered when PHRAISE adopted the new first-class review CLIs.
+
+### Fixes
+
+- fix a crash in the **human-readable** `bibreview --dry-run audit --batch-size 1`
+  path caused by a misplaced reference to initialization-only
+  `discovery_diagnostics`; audit planning remains provider-free and read-only;
+- add regression coverage for text-mode audit dry runs, including expected
+  summary output, no provider requests, and no project-file writes.
+
+### Hugo rendering
+
+- add a first-class **Hugo** backend via `site.implementation: hugo`, with
+  deterministic generated publication, author and year Markdown, relative links,
+  tracked BibTeX copies, and optional public canonical data snapshots;
+- preserve the existing **Jekyll** renderer and the explicit
+  `bibreview render` boundary; projects own their themes, layouts, navigation,
+  search integration and deployment;
+- document Hugo configuration, local builds, and a pinned GitHub Pages workflow;
+- normalize generated Hugo Markdown trailing newlines and metadata whitespace
+  to avoid noisy, nonsemantic diffs.
+
+### Contributor identity and BibTeX hygiene
+
 - add safe `hygiene --authors --remove-author-variant SLUG NAME` for exact
   author variants no longer used by canonical publications, with dry-run,
   last-variant protection, and validated atomic mapping updates;
@@ -58,7 +85,6 @@ All notable BibReview releases are documented here.
 - add explicit dry-runnable `hygiene --authors --merge-author SOURCE TARGET`
   and `--rename-author OLD NEW` operations so reviewed identity cleanup no
   longer requires direct `author_mappings.json` editing.
-
 
 ## 1.7.2 — 2026-10-19
 

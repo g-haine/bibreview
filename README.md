@@ -6,7 +6,7 @@ databases and static scholarly websites.**
 It automates repetitive bibliographic work while keeping ambiguous decisions,
 provider disagreements, and canonical changes inspectable by a human maintainer.
 
-Current release line: **v1.7.2**.
+Current release line: **v1.7.3**.
 
 ## What BibReview is for
 
@@ -24,7 +24,7 @@ It provides:
 - reviewed author identity mappings;
 - resumable audit, reference, refresh, backfill, and hygiene workflows;
 - tracked canonical BibTeX;
-- deterministic Jekyll publication, author, and year rendering;
+- deterministic Jekyll **or Hugo** publication, author, and year rendering;
 - an optional display-only arXiv feed cache;
 - dry-run planning, checkpoints, and backups for mutating workflows.
 
@@ -45,7 +45,7 @@ For reproducible use, install an exact release tag:
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.7.2"
+python -m pip install "git+https://github.com/g-haine/bibreview.git@v1.7.3"
 
 bibreview --version
 ~~~
@@ -136,11 +136,11 @@ human review when needed
    ↓
 collect
    ↓
-repair missing contributor metadata when needed
-   ↓
 inspect collected.json + BibTeX
    ↓
 merge
+   ↓
+optional contributor repair for still-pending DOI records (empty staging required)
    ↓
 authors
    ↓
@@ -154,12 +154,16 @@ bibreview discover
 bibreview --dry-run review
 bibreview review
 
+bibreview --dry-run collect
 bibreview collect
 
-# Only when provider metadata has no usable author or editor:
+bibreview --dry-run merge
+bibreview merge
+
+# Only for still-pending DOI records with structurally invalid contributors,
+# after the previous merge has emptied staging:
 bibreview --dry-run repair
 bibreview repair
-
 bibreview --dry-run merge
 bibreview merge
 
@@ -173,11 +177,13 @@ bibreview render
 `merge` is the explicit promotion boundary into the canonical bibliography.
 
 `repair` is a narrow human-reviewed recovery path for pending DOI metadata that
-was retrieved successfully but cannot pass canonical validation because it has
-no usable author or editor. It does not replace `collect`, does not edit
+was retrieved successfully but cannot pass canonical contributor validation:
+missing usable author/editor information or a mixed person/institution list.
+It does not replace `collect`, does not edit
 provider evidence, and does not promote anything directly into the
-canonical bibliography. Repaired records are staged through the ordinary
-collection pipeline and still require an explicit `merge`.
+canonical bibliography. Run it only when staging is empty (merge any
+already-collected changes first). Repaired records are staged through the
+ordinary collection pipeline and still require an explicit `merge`.
 
 ## Add a publication without a DOI
 
@@ -223,7 +229,7 @@ Routine maintenance is split into focused workflows rather than one destructive
 | `relevance` | Analyze retained screening evidence and discover deterministic rule signals offline. |
 | `review` | Resolve manual publication relevance decisions from `checkID.txt`. |
 | `authors` | Resolve contributor identity mappings. |
-| `render` | Reconcile generated Jekyll bibliography artifacts. |
+| `render` | Reconcile generated Jekyll or Hugo bibliography artifacts. |
 | `arxiv` | Refresh the optional display-only arXiv cache. |
 
 All reviewed correction workflows preserve the same principle:
@@ -297,18 +303,22 @@ live-request overrides, while `providers --check` always remains live. See
 
 ## Static-site rendering
 
-BibReview can render bibliography content into an existing Jekyll project.
-Themes, layouts, CSS, navigation, analytics, and deployment remain project-owned.
+BibReview can render bibliography content into an existing **Jekyll or Hugo**
+project. Choose the renderer in `site.implementation` (`jekyll` or `hugo`).
+Themes, layouts, CSS, navigation, search, analytics, and deployment remain
+project-owned.
 
 BibReview can generate:
 
-- publication posts;
+- generated publication posts or Markdown content;
 - author pages;
 - year pages;
 - canonical metadata snapshots for the site;
 - public copies of tracked canonical BibTeX.
 
-See [GitHub Pages with BibReview and Jekyll](docs/github-pages.md).
+See [GitHub Pages with BibReview, Jekyll and Hugo](docs/github-pages.md).
+The backend-specific configuration and generated paths are detailed in
+[Configuration](docs/configuration.md).
 
 ## Documentation
 
@@ -338,7 +348,8 @@ The v1.7 line marks the stabilization of the current core architecture:
 - project-facing identifier state is typed and generic;
 - historical audit/reference/hygiene campaigns have been exercised on PHRAISE;
 - tracked BibTeX and generated site state reconcile deterministically;
-- PHRAISE serves as the primary real-world integration demonstrator.
+- PHRAISE serves as the primary Jekyll integration demonstrator;
+- of.FSI.der exercises the Hugo backend.
 
 The next development priorities are onboarding new bibliographies, filling the
 remaining manual-maintenance gaps, and reducing unnecessary provider traffic
