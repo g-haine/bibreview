@@ -2760,20 +2760,6 @@ def main(argv: list[str] | None = None) -> int:
                     print(json.dumps(payload, ensure_ascii=False, indent=2))
                 elif not args.quiet:
                     print(f"Dry run: {plan.summary()}")
-                    if discovery_diagnostics is not None:
-                        total = (
-                            str(discovery_diagnostics.total_matches)
-                            if discovery_diagnostics.total_matches is not None
-                            else "unknown"
-                        )
-                        print(
-                            "OpenAlex discovery: "
-                            f"{total} matching work(s); "
-                            f"{discovery_diagnostics.works_examined} examined "
-                            f"across {discovery_diagnostics.pages_fetched} page(s); "
-                            f"{len(discovery_diagnostics.candidates)} DOI candidate(s); "
-                            f"truncated: {'yes' if discovery_diagnostics.truncated else 'no'}."
-                        )
                     if plan.batch is not None:
                         print(
                             f"Would audit {len(plan.batch.keys)} publication(s) "
